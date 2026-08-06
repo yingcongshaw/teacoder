@@ -66,6 +66,7 @@ const QUICK_ACTIONS = [
 
 export default function BottomPanel() {
   const sessions = useAppStore((s) => s.sessions);
+  const projects = useAppStore((s) => s.projects);
   const activeTabId = useAppStore((s) => s.activeTabId);
   const [collapsed, setCollapsed] = useState(false);
   const [activeTab, setActiveTab] = useState("files");
@@ -85,7 +86,7 @@ export default function BottomPanel() {
     return [
       {
         key: "root",
-        title: activeTabState.workDir,
+        title: projects.find((p) => p.id === activeTabState.projectId)?.name || "项目",
         icon: <FolderOutlined />,
         children: [
           {

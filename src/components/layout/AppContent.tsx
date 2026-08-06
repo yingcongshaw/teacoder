@@ -27,10 +27,12 @@ const TOOL_COLORS: Record<string, string> = {
 
 export default function AppContent() {
   const sessions = useAppStore((s) => s.sessions);
+  const projects = useAppStore((s) => s.projects);
   const openTabIds = useAppStore((s) => s.openTabIds);
   const activeTabId = useAppStore((s) => s.activeTabId);
   const activeTab = sessions.find((s) => s.id === activeTabId);
   const setNewSessionModalOpen = useAppStore((s) => s.setNewSessionModalOpen);
+  const setNewProjectModalOpen = useAppStore((s) => s.setNewProjectModalOpen);
   const deleteSession = useAppStore((s) => s.deleteSession);
   const openTab = useAppStore((s) => s.openTab);
   const setActiveTab = useAppStore((s) => s.setActiveTab);
@@ -98,14 +100,14 @@ export default function AppContent() {
               </div>
               <div className="text-center">
                 <p className="text-[#999999] text-sm mb-4">
-                  暂无会话，点击「新建会话」开始
+                  暂无会话，先创建一个项目
                 </p>
                 <button
-                  onClick={() => setNewSessionModalOpen(true)}
+                  onClick={() => setNewProjectModalOpen(true)}
                   className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#3b82f6] text-white rounded-lg hover:bg-[#2563eb] transition-colors text-sm shadow-sm"
                 >
                   <PlusOutlined />
-                  新建会话
+                  新建项目
                 </button>
               </div>
             </div>
@@ -161,11 +163,11 @@ export default function AppContent() {
                       </div>
                     </div>
 
-                    {/* Project / working directory */}
+                    {/* Project */}
                     <div className="flex items-center gap-1.5 text-xs text-[#888888] mb-3">
                       <FolderOutlined style={{ fontSize: 11 }} />
                       <span className="truncate">
-                        {session.workDir.split(/[/\\]/).pop() || session.workDir}
+                        {projects.find((p) => p.id === session.projectId)?.name || "未知项目"}
                       </span>
                     </div>
 

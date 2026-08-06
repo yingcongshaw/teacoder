@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Switch, Input, InputNumber, Tooltip } from "antd";
 import { FolderOpenOutlined } from "@ant-design/icons";
-import { open } from "@tauri-apps/api/dialog";
+import { open } from "@tauri-apps/plugin-dialog";
 
 interface CliArgsClaudeProps {
   value: Record<string, unknown>;

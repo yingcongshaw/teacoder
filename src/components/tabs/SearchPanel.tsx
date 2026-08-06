@@ -8,6 +8,7 @@ export default function SearchPanel() {
   const searchOpen = useAppStore((s) => s.searchOpen);
   const setSearchOpen = useAppStore((s) => s.setSearchOpen);
   const sessions = useAppStore((s) => s.sessions);
+  const projects = useAppStore((s) => s.projects);
   const openTab = useAppStore((s) => s.openTab);
   const setActiveTab = useAppStore((s) => s.setActiveTab);
   const openTabIds = useAppStore((s) => s.openTabIds);
@@ -21,12 +22,15 @@ export default function SearchPanel() {
     }
   }, [searchOpen]);
 
+  const getProjectName = (projectId: string) =>
+    projects.find((p) => p.id === projectId)?.name || projectId;
+
   const filtered = query
     ? sessions.filter(
         (t) =>
-          t.title.toLowerCase().includes(query.toLowerCase()) ||
+          (t.title || "").toLowerCase().includes(query.toLowerCase()) ||
           TOOL_DISPLAY_NAMES[t.toolType].toLowerCase().includes(query.toLowerCase()) ||
-          t.workDir.toLowerCase().includes(query.toLowerCase()),
+          getProjectName(t.projectId).toLowerCase().includes(query.toLowerCase()),
       )
     : sessions;
 
@@ -75,7 +79,7 @@ export default function SearchPanel() {
                   {tab.title || TOOL_DISPLAY_NAMES[tab.toolType]}
                 </span>
               }
-              description={tab.workDir}
+              description={getProjectName(tab.projectId)}
             />
           </List.Item>
         )}

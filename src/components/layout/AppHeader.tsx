@@ -18,6 +18,7 @@ export default function AppHeader() {
   const settingsPage = useAppStore((s) => s.settingsPage);
   const setSettingsPage = useAppStore((s) => s.setSettingsPage);
   const sessions = useAppStore((s) => s.sessions);
+  const projects = useAppStore((s) => s.projects);
   const activeTabId = useAppStore((s) => s.activeTabId);
 
   const handleRedetect = () => {
@@ -58,7 +59,7 @@ export default function AppHeader() {
                 </span>
               </span>
               <span className="text-[#333333]">|</span>
-              <span className="truncate max-w-xs">{activeTab.workDir}</span>
+              <span className="truncate max-w-xs">{projects.find((p) => p.id === activeTab.projectId)?.name || activeTab.projectId}</span>
             </div>
           )}
         </div>

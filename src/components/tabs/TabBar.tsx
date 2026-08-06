@@ -1,12 +1,13 @@
 import { useState, useRef, useEffect } from "react";
-import { Modal, Dropdown, Input, App } from "antd";
+import { Modal, Dropdown, Input, Select, App } from "antd";
 import type { MenuProps, InputRef } from "antd";
 import { useAppStore } from "../../stores/appStore";
 import { TOOL_DISPLAY_NAMES } from "../../types";
-import type { TabState } from "../../types";
+import type { Session } from "../../types";
 
 export default function TabBar() {
   const sessions = useAppStore((s) => s.sessions);
+  const projects = useAppStore((s) => s.projects);
   const openTabIds = useAppStore((s) => s.openTabIds);
   const activeTabId = useAppStore((s) => s.activeTabId);
   const setActiveTab = useAppStore((s) => s.setActiveTab);
@@ -20,15 +21,15 @@ export default function TabBar() {
 
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
-  const [propertiesTab, setPropertiesTab] = useState<TabState | null>(null);
-  const [movingTab, setMovingTab] = useState<TabState | null>(null);
-  const [moveTargetDir, setMoveTargetDir] = useState("");
+  const [propertiesTab, setPropertiesTab] = useState<Session | null>(null);
+  const [movingTab, setMovingTab] = useState<Session | null>(null);
+  const [moveTargetProjectId, setMoveTargetProjectId] = useState<string | null>(null);
   const renameInputRef = useRef<InputRef | null>(null);
 
   // 只显示已打开的标签
   const openTabs = openTabIds
     .map((id) => sessions.find((s) => s.id === id))
-    .filter((s): s is TabState => s !== undefined);
+    .filter((s): s is Session => s !== undefined);
 
   useEffect(() => {
     if (renamingId) {
@@ -51,7 +52,7 @@ export default function TabBar() {
     }
   };
 
-  const handleDelete = (tab: TabState) => {
+  const handleDelete = (tab: Session) => {
     Modal.confirm({
       title: "删除会话",
       content: "确认删除此会话记录？此操作不可恢复。",
@@ -65,7 +66,7 @@ export default function TabBar() {
     });
   };
 
-  const handleRename = (tab: TabState) => {
+  const handleRename = (tab: Session) => {
     setRenamingId(tab.id);
     setRenameValue(tab.title || "");
   };
@@ -77,20 +78,23 @@ export default function TabBar() {
     }
   };
 
-  const handleMoveToProject = (tab: TabState) => {
+  const handleMoveToProject = (tab: Session) => {
     setMovingTab(tab);
-    setMoveTargetDir(tab.workDir);
+    setMoveTargetProjectId(tab.projectId);
   };
 
   const confirmMove = () => {
-    if (movingTab && moveTargetDir.trim()) {
-      updateSession(movingTab.id, { workDir: moveTargetDir.trim() });
+    if (movingTab && moveTargetProjectId) {
+      updateSession(movingTab.id, { projectId: moveTargetProjectId });
       message.success("已移动到新项目");
     }
     setMovingTab(null);
   };
 
-  const buildContextMenu = (tab: TabState): MenuProps["items"] => [
+  const getProjectName = (projectId: string) =>
+    projects.find((p) => p.id === projectId)?.name || "未知项目";
+
+  const buildContextMenu = (tab: Session): MenuProps["items"] => [
     {
       key: "rename",
       label: "重命名",
@@ -250,12 +254,16 @@ export default function TabBar() {
               <span>{TOOL_DISPLAY_NAMES[propertiesTab.toolType]}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-gray-500">工作目录</span>
-              <span className="truncate ml-4 max-w-[300px]">{propertiesTab.workDir}</span>
+              <span className="text-gray-500">项目</span>
+              <span>{getProjectName(propertiesTab.projectId)}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-gray-500">Profile ID</span>
               <span className="text-xs">{propertiesTab.profileId || "(无)"}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-500">思考强度</span>
+              <span>{propertiesTab.thinkingIntensity}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-gray-500">状态</span>
@@ -271,11 +279,11 @@ export default function TabBar() {
                 </pre>
               </div>
             )}
-            {propertiesTab.args && (
+            {propertiesTab.cliArgs && (
               <div>
                 <span className="text-gray-500">启动参数</span>
                 <pre className="mt-1 p-2 bg-gray-50 dark:bg-gray-800 rounded text-xs whitespace-pre-wrap">
-                  {propertiesTab.args}
+                  {propertiesTab.cliArgs}
                 </pre>
               </div>
             )}
@@ -293,13 +301,22 @@ export default function TabBar() {
       >
         <div className="space-y-2">
           <p className="text-sm text-gray-500">
-            输入新的工作目录路径，会话将归类到该项目下。
+            选择目标项目，会话将移动到该项目下。
           </p>
-          <Input
-            value={moveTargetDir}
-            onChange={(e) => setMoveTargetDir(e.target.value)}
-            placeholder="~/projects/other-app"
-          />
+          <Select
+            value={moveTargetProjectId || undefined}
+            onChange={setMoveTargetProjectId}
+            style={{ width: "100%" }}
+            placeholder="选择项目"
+          >
+            {projects
+              .filter((p) => p.id !== movingTab?.projectId)
+              .map((p) => (
+                <Select.Option key={p.id} value={p.id}>
+                  {p.name}
+                </Select.Option>
+              ))}
+          </Select>
           <p className="text-xs text-gray-400">
             注意：此操作仅改变会话的项目分组，不会重新启动 CLI 进程。
           </p>

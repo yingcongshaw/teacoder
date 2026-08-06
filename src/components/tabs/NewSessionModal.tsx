@@ -56,7 +56,6 @@ function buildCliArgs(toolType: ToolType, params: Record<string, unknown>): stri
 export default function NewSessionModal({ open: isOpen, projectId, onClose }: NewSessionModalProps) {
   const { message } = App.useApp();
   const createSession = useAppStore((s) => s.createSession);
-  const deleteSession = useAppStore((s) => s.deleteSession);
   const cliTools = useAppStore((s) => s.cliTools);
   const setCliTools = useAppStore((s) => s.setCliTools);
   const profiles = useAppStore((s) => s.profiles);

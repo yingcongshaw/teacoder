@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Modal, Input, App } from "antd";
-import { open } from "@tauri-apps/api/dialog";
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { useAppStore } from "../../stores/appStore";
 
 const PROJECT_COLORS = [
@@ -25,7 +25,7 @@ export default function NewProjectModal({ open, onClose }: NewProjectModalProps)
   const [loading, setLoading] = useState(false);
 
   const handleBrowse = async () => {
-    const selected = await open({ directory: true, multiple: false });
+    const selected = await openDialog({ directory: true, multiple: false });
     if (selected && typeof selected === "string") {
       setPath(selected);
       if (!name.trim()) {
