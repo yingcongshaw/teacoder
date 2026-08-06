@@ -10,6 +10,7 @@ import AppHeader from "./AppHeader";
 import AppSidebar from "./AppSidebar";
 import AppContent from "./AppContent";
 import NewSessionModal from "../tabs/NewSessionModal";
+import NewProjectModal from "../project/NewProjectModal";
 import SearchPanel from "../tabs/SearchPanel";
 import { AgreementModal, OnboardingGuide, useOnboarding } from "../onboarding/OnboardingFlow";
 
@@ -20,6 +21,10 @@ export default function AppLayout() {
   const setProfiles = useAppStore((s) => s.setProfiles);
   const newSessionModalOpen = useAppStore((s) => s.newSessionModalOpen);
   const setNewSessionModalOpen = useAppStore((s) => s.setNewSessionModalOpen);
+  const newProjectModalOpen = useAppStore((s) => s.newProjectModalOpen);
+  const setNewProjectModalOpen = useAppStore((s) => s.setNewProjectModalOpen);
+  const loadProjects = useAppStore((s) => s.loadProjects);
+  const loadSessions = useAppStore((s) => s.loadSessions);
   const sessions = useAppStore((s) => s.sessions);
   const setCostTick = useAppStore((s) => s.setCostTick);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -44,7 +49,9 @@ export default function AppLayout() {
     listProfiles()
       .then(setProfiles)
       .catch(() => {});
-  }, [setCliTools, setProfiles]);
+    loadProjects().catch(() => {});
+    loadSessions().catch(() => {});
+  }, [setCliTools, setProfiles, loadProjects, loadSessions]);
 
   // 30s cost polling when sessions are running
   useEffect(() => {
@@ -138,6 +145,10 @@ export default function AppLayout() {
             </div>
           </div>
         </div>
+        <NewProjectModal
+          open={newProjectModalOpen}
+          onClose={() => setNewProjectModalOpen(false)}
+        />
         <NewSessionModal
           open={newSessionModalOpen}
           onClose={() => setNewSessionModalOpen(false)}
