@@ -103,6 +103,7 @@ interface AppState {
   toggleProjectCollapsed: (id: string) => void;
 
   newProjectModalOpen: boolean;
+  setNewProjectModalOpen: (open: boolean) => void;
   newSessionModalOpen: boolean;
   newSessionProjectId: string | null;
   setNewSessionModalOpen: (open: boolean, projectId?: string | null) => void;
@@ -429,6 +430,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     }),
 
   newProjectModalOpen: false,
+  setNewProjectModalOpen: (open) => set({ newProjectModalOpen: open }),
   newSessionModalOpen: false,
   newSessionProjectId: null,
   setNewSessionModalOpen: (open, projectId) =>
