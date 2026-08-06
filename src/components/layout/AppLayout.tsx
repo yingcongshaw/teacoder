@@ -21,6 +21,7 @@ export default function AppLayout() {
   const setProfiles = useAppStore((s) => s.setProfiles);
   const newSessionModalOpen = useAppStore((s) => s.newSessionModalOpen);
   const setNewSessionModalOpen = useAppStore((s) => s.setNewSessionModalOpen);
+  const newSessionProjectId = useAppStore((s) => s.newSessionProjectId);
   const newProjectModalOpen = useAppStore((s) => s.newProjectModalOpen);
   const setNewProjectModalOpen = useAppStore((s) => s.setNewProjectModalOpen);
   const loadProjects = useAppStore((s) => s.loadProjects);
@@ -151,6 +152,7 @@ export default function AppLayout() {
         />
         <NewSessionModal
           open={newSessionModalOpen}
+          projectId={newSessionProjectId}
           onClose={() => setNewSessionModalOpen(false)}
         />
         <SearchPanel />
