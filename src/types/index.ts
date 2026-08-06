@@ -56,6 +56,50 @@ export interface PricingConfig {
   isCustom: boolean;
 }
 
+export interface Project {
+  id: string;
+  name: string;
+  path: string;
+  color?: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface Session {
+  id: string;
+  projectId: string;
+  title?: string;
+  toolType: ToolType;
+  profileId?: string;
+  color?: string;
+  thinkingIntensity: string;
+  templateId?: string;
+  cliArgs?: string;
+  envVars?: string;
+  isRunning: boolean;
+  createdAt: number;
+  updatedAt: number;
+  closedAt?: number;
+}
+
+export interface SessionTemplate {
+  id: string;
+  name: string;
+  icon?: string;
+  defaultThinkingIntensity?: string;
+  defaultCliArgs?: Record<string, unknown>;
+  description?: string;
+}
+
+export const BUILTIN_SESSION_TEMPLATES: SessionTemplate[] = [
+  { id: "none", name: "无模板", description: "空白会话" },
+  { id: "workstation", name: "用工作站", description: "通用工作站模式", defaultThinkingIntensity: "high" },
+  { id: "code-review", name: "代码审查", description: "代码审查专用", defaultThinkingIntensity: "medium" },
+  { id: "bug-fix", name: "Bug修复", description: "Bug 定位与修复", defaultThinkingIntensity: "medium" },
+  { id: "feature-dev", name: "功能开发", description: "新功能开发", defaultThinkingIntensity: "high" },
+  { id: "refactor", name: "代码重构", description: "代码重构与优化", defaultThinkingIntensity: "medium" },
+];
+
 export interface TabState {
   id: string;
   title: string;

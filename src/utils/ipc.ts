@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { CliTool, Profile, SessionCost, CostSummary, PricingConfig, ToolSettings } from "../types";
+import type { CliTool, Profile, SessionCost, CostSummary, PricingConfig, ToolSettings, Project, Session } from "../types";
 
 export async function detectCliTools(): Promise<CliTool[]> {
   return invoke<CliTool[]>("detect_cli_tools");
@@ -11,7 +11,7 @@ export async function startSession(params: {
   workDir: string;
   tabId: string;
   envVars?: Record<string, string>;
-  args?: string[];
+  cliArgs?: string;
 }): Promise<void> {
   return invoke("start_session", params);
 }
@@ -118,4 +118,69 @@ export async function upsertToolSettings(input: Omit<ToolSettings, "id" | "creat
 
 export async function deleteToolSettings(profileId: string): Promise<void> {
   return invoke("delete_tool_settings", { profileId });
+}
+
+// Project IPC
+export async function projectList(): Promise<Project[]> {
+  return invoke<Project[]>("project_list");
+}
+
+export async function projectCreate(input: {
+  name: string;
+  path: string;
+  color?: string;
+}): Promise<Project> {
+  return invoke<Project>("project_create", { input });
+}
+
+export async function projectUpdate(
+  id: string,
+  input: { name?: string; color?: string },
+): Promise<Project> {
+  return invoke<Project>("project_update", { id, input });
+}
+
+export async function projectDelete(id: string): Promise<void> {
+  return invoke("project_delete", { id });
+}
+
+// Session IPC
+export async function sessionList(projectId?: string): Promise<Session[]> {
+  return invoke<Session[]>("session_list", { projectId });
+}
+
+export async function sessionCreate(input: {
+  projectId: string;
+  toolType: string;
+  title?: string;
+  profileId?: string;
+  color?: string;
+  thinkingIntensity?: string;
+  templateId?: string;
+  cliArgs?: string;
+  envVars?: string;
+}): Promise<Session> {
+  return invoke<Session>("session_create", { input });
+}
+
+export async function sessionUpdate(
+  id: string,
+  input: {
+    title?: string;
+    profileId?: string;
+    color?: string;
+    thinkingIntensity?: string;
+    templateId?: string;
+    cliArgs?: string;
+    envVars?: string;
+    isRunning?: boolean;
+    closedAt?: number;
+    projectId?: string;
+  },
+): Promise<Session> {
+  return invoke<Session>("session_update", { id, input });
+}
+
+export async function sessionDelete(id: string): Promise<void> {
+  return invoke("session_delete", { id });
 }

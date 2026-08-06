@@ -1,43 +1,27 @@
 import { create } from "zustand";
-import type { TabState, CliTool, Profile, TerminalSettings } from "../types";
-import { DEFAULT_TERMINAL_SETTINGS } from "../types";
-import { stopSession, startSession } from "../utils/ipc";
+import type { CliTool, Profile, TerminalSettings, Project, Session, SessionTemplate } from "../types";
+import { DEFAULT_TERMINAL_SETTINGS, BUILTIN_SESSION_TEMPLATES } from "../types";
+import {
+  stopSession,
+  startSession,
+  projectList,
+  projectCreate,
+  projectUpdate,
+  projectDelete,
+  sessionList,
+  sessionCreate,
+  sessionUpdate,
+  sessionDelete,
+} from "../utils/ipc";
 
-const SESSIONS_KEY = "codingtea_sessions";
 const OPEN_TABS_KEY = "codingtea_open_tabs";
 const TERMINAL_SETTINGS_KEY = "codingtea_terminal_settings";
-
-function loadSessions(): TabState[] {
-  try {
-    const raw = localStorage.getItem(SESSIONS_KEY);
-    if (raw) return JSON.parse(raw);
-    // 迁移旧数据
-    const oldRaw = localStorage.getItem("codingtea_tabs");
-    if (oldRaw) {
-      localStorage.setItem(SESSIONS_KEY, oldRaw);
-      localStorage.removeItem("codingtea_tabs");
-      return JSON.parse(oldRaw);
-    }
-    return [];
-  } catch {
-    return [];
-  }
-}
-
-function saveSessions(sessions: TabState[]) {
-  try {
-    localStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions));
-  } catch {
-    // storage full or unavailable — non-critical
-  }
-}
 
 function loadOpenTabIds(): string[] {
   try {
     const raw = localStorage.getItem(OPEN_TABS_KEY);
     if (raw) return JSON.parse(raw);
-    // 迁移：旧数据中所有 sessions 都视为已打开
-    return loadSessions().map((s) => s.id);
+    return [];
   } catch {
     return [];
   }
@@ -77,18 +61,37 @@ interface AppState {
   cliTools: CliTool[];
   setCliTools: (tools: CliTool[]) => void;
 
-  // 会话记录（持久化，关闭标签不影响）
-  sessions: TabState[];
+  // 项目列表（从后端加载）
+  projects: Project[];
+  loadProjects: () => Promise<void>;
+  createProject: (name: string, path: string, color?: string) => Promise<Project>;
+  updateProject: (id: string, updates: { name?: string; color?: string }) => Promise<void>;
+  deleteProject: (id: string) => Promise<void>;
+
+  // 会话列表（从后端加载，替换旧的 sessions: TabState[]）
+  sessions: Session[];
+  loadSessions: () => Promise<void>;
+  createSession: (input: {
+    projectId: string;
+    toolType: string;
+    title?: string;
+    profileId?: string;
+    color?: string;
+    thinkingIntensity?: string;
+    templateId?: string;
+    cliArgs?: string;
+    envVars?: string;
+  }) => Promise<Session>;
+  updateSession: (id: string, updates: Partial<Session>) => Promise<void>;
+  deleteSession: (id: string) => Promise<void>;
+
   // 已打开标签 ID 列表
   openTabIds: string[];
   activeTabId: string | null;
 
-  createSession: (tab: TabState) => void;
   closeTab: (id: string) => void;
   openTab: (id: string) => void;
-  deleteSession: (id: string) => void;
   setActiveTab: (id: string | null) => void;
-  updateSession: (id: string, updates: Partial<TabState>) => void;
   duplicateSession: (id: string) => void;
   closeOtherTabs: (id: string) => void;
   closeTabsToRight: (id: string) => void;
@@ -96,8 +99,17 @@ interface AppState {
   favoriteTabs: string[];
   toggleFavorite: (tabId: string) => void;
 
-  collapsedProjects: string[];
-  toggleProjectCollapsed: (workDir: string) => void;
+  collapsedProjectIds: string[];
+  toggleProjectCollapsed: (id: string) => void;
+
+  newProjectModalOpen: boolean;
+  newSessionModalOpen: boolean;
+  newSessionProjectId: string | null;
+  setNewSessionModalOpen: (open: boolean, projectId?: string | null) => void;
+
+  sessionTemplates: SessionTemplate[];
+  globalThinkingIntensity: string;
+  setGlobalThinkingIntensity: (intensity: string) => void;
 
   profiles: Profile[];
   setProfiles: (profiles: Profile[]) => void;
@@ -110,9 +122,6 @@ interface AppState {
 
   compactMode: boolean;
   toggleCompactMode: () => void;
-
-  newSessionModalOpen: boolean;
-  setNewSessionModalOpen: (open: boolean) => void;
 
   searchOpen: boolean;
   setSearchOpen: (open: boolean) => void;
@@ -164,27 +173,114 @@ function saveCollapsed(collapsed: string[]) {
   }
 }
 
-const initialSessions = loadSessions();
 const initialOpenTabIds = loadOpenTabIds();
 
 export const useAppStore = create<AppState>((set, get) => ({
   cliTools: [],
   setCliTools: (tools) => set({ cliTools: tools }),
 
-  sessions: initialSessions,
+  // 项目
+  projects: [],
+  loadProjects: async () => {
+    const projects = await projectList();
+    set({ projects });
+  },
+  createProject: async (name, path, color) => {
+    const project = await projectCreate({ name, path, color });
+    set((state) => ({ projects: [...state.projects, project] }));
+    return project;
+  },
+  updateProject: async (id, updates) => {
+    const updated = await projectUpdate(id, updates);
+    set((state) => ({
+      projects: state.projects.map((p) => (p.id === id ? updated : p)),
+    }));
+  },
+  deleteProject: async (id) => {
+    await projectDelete(id);
+    // 同时移除关联的 sessions
+    const relatedSessions = get().sessions.filter((s) => s.projectId === id);
+    for (const s of relatedSessions) {
+      if (s.isRunning) {
+        stopSession(s.id).catch(() => {});
+      }
+      await sessionDelete(s.id).catch(() => {});
+    }
+    set((state) => ({
+      projects: state.projects.filter((p) => p.id !== id),
+      sessions: state.sessions.filter((s) => s.projectId !== id),
+      openTabIds: state.openTabIds.filter((tid) => !relatedSessions.some((s) => s.id === tid)),
+      activeTabId:
+        relatedSessions.some((s) => s.id === state.activeTabId)
+          ? state.openTabIds.filter((tid) => !relatedSessions.some((s) => s.id === tid)).slice(-1)[0] ?? null
+          : state.activeTabId,
+    }));
+  },
+
+  // 会话
+  sessions: [],
+  loadSessions: async () => {
+    const sessions = await sessionList();
+    set({ sessions });
+  },
+  createSession: async (input) => {
+    const session = await sessionCreate(input);
+    // 启动 CLI 进程
+    const project = get().projects.find((p) => p.id === input.projectId);
+    const envVars = parseEnvVars(input.envVars || "");
+    await startSession({
+      toolType: input.toolType,
+      profileId: input.profileId || "",
+      workDir: project?.path || "~",
+      tabId: session.id,
+      envVars,
+      cliArgs: input.cliArgs,
+    }).catch(() => {});
+    const updatedSession = { ...session, isRunning: true };
+    set((state) => ({
+      sessions: [...state.sessions, updatedSession],
+      openTabIds: [...state.openTabIds, session.id],
+      activeTabId: session.id,
+    }));
+    saveOpenTabIds([...get().openTabIds, session.id]);
+    return updatedSession;
+  },
+  updateSession: async (id, updates) => {
+    const updated = await sessionUpdate(id, updates);
+    set((state) => ({
+      sessions: state.sessions.map((s) => (s.id === id ? { ...s, ...updated } : s)),
+    }));
+  },
+  deleteSession: async (id) => {
+    const session = get().sessions.find((s) => s.id === id);
+    if (session?.isRunning) {
+      stopSession(id).catch(() => {});
+    }
+    await sessionDelete(id);
+    set((state) => {
+      const openTabIds = state.openTabIds.filter((tid) => tid !== id);
+      const activeTabId =
+        state.activeTabId === id
+          ? openTabIds.length > 0
+            ? openTabIds[openTabIds.length - 1]
+            : null
+          : state.activeTabId;
+      const favoriteTabs = state.favoriteTabs.filter((fid) => fid !== id);
+      saveOpenTabIds(openTabIds);
+      saveFavorites(favoriteTabs);
+      return {
+        sessions: state.sessions.filter((s) => s.id !== id),
+        openTabIds,
+        activeTabId,
+        favoriteTabs,
+      };
+    });
+  },
+
   openTabIds: initialOpenTabIds,
   activeTabId: initialOpenTabIds.length > 0
     ? initialOpenTabIds[initialOpenTabIds.length - 1]
     : null,
-
-  createSession: (tab) =>
-    set((state) => {
-      const sessions = [...state.sessions, tab];
-      const openTabIds = [...state.openTabIds, tab.id];
-      saveSessions(sessions);
-      saveOpenTabIds(openTabIds);
-      return { sessions, openTabIds, activeTabId: tab.id };
-    }),
 
   closeTab: (id) => {
     const state = get();
@@ -192,12 +288,13 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (session?.isRunning) {
       stopSession(id).catch(() => {});
     }
+    // 标记 closedAt 和 isRunning
+    sessionUpdate(id, { isRunning: false, closedAt: Date.now() }).catch(() => {});
     set((state) => {
       const sessions = state.sessions.map((s) =>
         s.id === id ? { ...s, isRunning: false, closedAt: Date.now() } : s,
       );
       const openTabIds = state.openTabIds.filter((tid) => tid !== id);
-      saveSessions(sessions);
       saveOpenTabIds(openTabIds);
       const activeTabId =
         state.activeTabId === id
@@ -217,80 +314,55 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
     const session = state.sessions.find((s) => s.id === id);
     if (!session) return;
-    // 重新启动 CLI 进程
+    // 从 projects 查找 workDir
+    const project = state.projects.find((p) => p.id === session.projectId);
     const envVars = parseEnvVars(session.envVars || "");
-    const args = parseArgs(session.args || "");
     startSession({
       toolType: session.toolType,
       profileId: session.profileId || "",
-      workDir: session.workDir || "~",
+      workDir: project?.path || "~",
       tabId: id,
       envVars,
-      args,
+      cliArgs: session.cliArgs,
     }).catch(() => {});
+    // 标记 isRunning
+    sessionUpdate(id, { isRunning: true }).catch(() => {});
     set((state) => {
       const sessions = state.sessions.map((s) =>
         s.id === id ? { ...s, isRunning: true } : s,
       );
       const openTabIds = [...state.openTabIds, id];
-      saveSessions(sessions);
       saveOpenTabIds(openTabIds);
       return { sessions, openTabIds, activeTabId: id };
     });
   },
 
-  deleteSession: (id) => {
-    const state = get();
-    const session = state.sessions.find((s) => s.id === id);
-    if (session?.isRunning) {
-      stopSession(id).catch(() => {});
-    }
-    set((state) => {
-      const sessions = state.sessions.filter((s) => s.id !== id);
-      const openTabIds = state.openTabIds.filter((tid) => tid !== id);
-      saveSessions(sessions);
-      saveOpenTabIds(openTabIds);
-      const activeTabId =
-        state.activeTabId === id
-          ? openTabIds.length > 0
-            ? openTabIds[openTabIds.length - 1]
-            : null
-          : state.activeTabId;
-      const favoriteTabs = state.favoriteTabs.filter((fid) => fid !== id);
-      saveFavorites(favoriteTabs);
-      return { sessions, openTabIds, activeTabId, favoriteTabs };
-    });
-  },
-
   setActiveTab: (id) => set({ activeTabId: id }),
 
-  updateSession: (id, updates) =>
-    set((state) => {
-      const sessions = state.sessions.map((s) =>
-        s.id === id ? { ...s, ...updates } : s,
-      );
-      saveSessions(sessions);
-      return { sessions };
-    }),
-
-  duplicateSession: (id) =>
-    set((state) => {
-      const src = state.sessions.find((s) => s.id === id);
-      if (!src) return state;
-      const newId = crypto.randomUUID();
-      const copy: TabState = {
-        ...src,
-        id: newId,
-        title: src.title ? `${src.title} 副本` : "",
-        isRunning: false,
-      };
-      const idx = state.sessions.findIndex((s) => s.id === id);
-      const sessions = [...state.sessions.slice(0, idx + 1), copy, ...state.sessions.slice(idx + 1)];
-      const openTabIds = [...state.openTabIds, newId];
-      saveSessions(sessions);
-      saveOpenTabIds(openTabIds);
-      return { sessions, openTabIds, activeTabId: newId };
-    }),
+  duplicateSession: (id) => {
+    const state = get();
+    const src = state.sessions.find((s) => s.id === id);
+    if (!src) return;
+    // 创建新 session（同 projectId，标题加"副本"）
+    sessionCreate({
+      projectId: src.projectId,
+      toolType: src.toolType,
+      title: src.title ? `${src.title} 副本` : undefined,
+      profileId: src.profileId,
+      color: src.color,
+      thinkingIntensity: src.thinkingIntensity,
+      templateId: src.templateId,
+      cliArgs: src.cliArgs,
+      envVars: src.envVars,
+    }).then((newSession) => {
+      set((state) => {
+        const sessions = [...state.sessions, newSession];
+        const openTabIds = [...state.openTabIds, newSession.id];
+        saveOpenTabIds(openTabIds);
+        return { sessions, openTabIds, activeTabId: newSession.id };
+      });
+    }).catch(() => {});
+  },
 
   closeOtherTabs: (id) => {
     const state = get();
@@ -299,6 +371,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       .forEach((tid) => {
         const s = state.sessions.find((sess) => sess.id === tid);
         if (s?.isRunning) stopSession(tid).catch(() => {});
+        sessionUpdate(tid, { isRunning: false, closedAt: Date.now() }).catch(() => {});
       });
     set((state) => {
       const openTabIds = [id];
@@ -308,7 +381,6 @@ export const useAppStore = create<AppState>((set, get) => ({
           : s,
       );
       saveOpenTabIds(openTabIds);
-      saveSessions(sessions);
       return { openTabIds, sessions, activeTabId: id };
     });
   },
@@ -321,6 +393,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     closingIds.forEach((tid) => {
       const s = state.sessions.find((sess) => sess.id === tid);
       if (s?.isRunning) stopSession(tid).catch(() => {});
+      sessionUpdate(tid, { isRunning: false, closedAt: Date.now() }).catch(() => {});
     });
     set((state) => {
       const openTabIds = state.openTabIds.slice(0, idx + 1);
@@ -328,7 +401,6 @@ export const useAppStore = create<AppState>((set, get) => ({
         closingIds.includes(s.id) ? { ...s, isRunning: false, closedAt: Date.now() } : s,
       );
       saveOpenTabIds(openTabIds);
-      saveSessions(sessions);
       const activeTabId = openTabIds.includes(state.activeTabId || "")
         ? state.activeTabId
         : id;
@@ -346,15 +418,25 @@ export const useAppStore = create<AppState>((set, get) => ({
       return { favoriteTabs: favorites };
     }),
 
-  collapsedProjects: loadCollapsed(),
-  toggleProjectCollapsed: (workDir) =>
+  collapsedProjectIds: loadCollapsed(),
+  toggleProjectCollapsed: (id) =>
     set((state) => {
-      const collapsed = state.collapsedProjects.includes(workDir)
-        ? state.collapsedProjects.filter((d) => d !== workDir)
-        : [...state.collapsedProjects, workDir];
+      const collapsed = state.collapsedProjectIds.includes(id)
+        ? state.collapsedProjectIds.filter((d) => d !== id)
+        : [...state.collapsedProjectIds, id];
       saveCollapsed(collapsed);
-      return { collapsedProjects: collapsed };
+      return { collapsedProjectIds: collapsed };
     }),
+
+  newProjectModalOpen: false,
+  newSessionModalOpen: false,
+  newSessionProjectId: null,
+  setNewSessionModalOpen: (open, projectId) =>
+    set({ newSessionModalOpen: open, newSessionProjectId: open ? (projectId ?? null) : null }),
+
+  sessionTemplates: BUILTIN_SESSION_TEMPLATES,
+  globalThinkingIntensity: "medium",
+  setGlobalThinkingIntensity: (intensity) => set({ globalThinkingIntensity: intensity }),
 
   profiles: [],
   setProfiles: (profiles) => set({ profiles }),
@@ -369,9 +451,6 @@ export const useAppStore = create<AppState>((set, get) => ({
   compactMode: false,
   toggleCompactMode: () =>
     set((state) => ({ compactMode: !state.compactMode })),
-
-  newSessionModalOpen: false,
-  setNewSessionModalOpen: (open) => set({ newSessionModalOpen: open }),
 
   searchOpen: false,
   setSearchOpen: (open) => set({ searchOpen: open }),
@@ -403,8 +482,4 @@ function parseEnvVars(text: string): Record<string, string> {
     if (key) result[key] = value;
   }
   return result;
-}
-
-function parseArgs(text: string): string[] {
-  return text.trim().split(/\s+/).filter(Boolean);
 }
