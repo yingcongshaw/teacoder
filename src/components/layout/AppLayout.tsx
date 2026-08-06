@@ -3,7 +3,7 @@ import { ConfigProvider, theme as antdTheme, App as AntdApp } from "antd";
 import zhCN from "antd/locale/zh_CN";
 import { listen } from "@tauri-apps/api/event";
 import { useAppStore } from "../../stores/appStore";
-import { detectCliTools, listProfiles, pollCosts } from "../../utils/ipc";
+import { detectCliTools, listProfiles, pollCosts, projectList, projectCreate, sessionCreate } from "../../utils/ipc";
 import { resolveTheme } from "../../themes";
 import useKeyboardShortcuts from "../../hooks/useKeyboardShortcuts";
 import AppHeader from "./AppHeader";
@@ -50,8 +50,51 @@ export default function AppLayout() {
     listProfiles()
       .then(setProfiles)
       .catch(() => {});
-    loadProjects().catch(() => {});
-    loadSessions().catch(() => {});
+    loadProjects()
+      .then(async () => {
+        // 迁移旧 localStorage 数据到后端
+        const oldSessionsRaw = localStorage.getItem("codingtea_sessions");
+        if (oldSessionsRaw) {
+          try {
+            const oldSessions = JSON.parse(oldSessionsRaw);
+            if (Array.isArray(oldSessions) && oldSessions.length > 0) {
+              const existingProjects = await projectList();
+              if (existingProjects.length === 0) {
+                const workDirs = new Set<string>();
+                for (const s of oldSessions) {
+                  if (s.workDir) workDirs.add(s.workDir);
+                }
+                for (const workDir of workDirs) {
+                  const name = workDir.split(/[/\\]/).pop() || workDir;
+                  await projectCreate({ name, path: workDir });
+                }
+                const projects = await projectList();
+                for (const s of oldSessions) {
+                  const project = projects.find((p) => p.path === (s.workDir || "~"));
+                  if (project) {
+                    await sessionCreate({
+                      projectId: project.id,
+                      toolType: s.toolType,
+                      title: s.title || undefined,
+                      profileId: s.profileId || undefined,
+                      color: s.color || undefined,
+                      envVars: s.envVars || undefined,
+                    });
+                  }
+                }
+              }
+              localStorage.removeItem("codingtea_sessions");
+              localStorage.removeItem("codingtea_tabs");
+            }
+          } catch {
+            // 迁移失败不影响启动
+          }
+        }
+        loadSessions().catch(() => {});
+      })
+      .catch(() => {
+        loadSessions().catch(() => {});
+      });
   }, [setCliTools, setProfiles, loadProjects, loadSessions]);
 
   // 30s cost polling when sessions are running
