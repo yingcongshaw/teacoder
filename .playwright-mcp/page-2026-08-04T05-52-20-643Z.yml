@@ -1,0 +1,143 @@
+- generic [ref=f1e1]:
+  - generic [ref=f1e5]:
+    - generic [ref=f1e6]:
+      - button "≡" [ref=f1e7] [cursor=pointer]
+      - strong [ref=f1e10]: 茶码 CodingTea
+      - button [ref=f1e11] [cursor=pointer]:
+        - img "tool" [ref=f1e13]
+      - button [ref=f1e16] [cursor=pointer]:
+        - img "reload" [ref=f1e18]
+      - button [ref=f1e21] [cursor=pointer]:
+        - img "search" [ref=f1e23]
+      - button [active] [ref=f1e26] [cursor=pointer]:
+        - img "setting" [ref=f1e28]
+    - generic [ref=f1e31]:
+      - generic [ref=f1e32]:
+        - button "plus 新建会话" [ref=f1e34] [cursor=pointer]:
+          - img "plus" [ref=f1e36]
+          - generic [ref=f1e40]: 新建会话
+        - generic [ref=f1e41]:
+          - generic [ref=f1e42]:
+            - img "search" [ref=f1e44]
+            - textbox "搜索会话..." [ref=f1e47]
+          - generic [ref=f1e49]:
+            - button "caret-down 全部" [ref=f1e50] [cursor=pointer]:
+              - img "caret-down" [ref=f1e52]
+              - generic [ref=f1e55]: 全部
+            - button [ref=f1e56] [cursor=pointer]:
+              - img "sort-ascending" [ref=f1e58]
+        - generic [ref=f1e62]:
+          - img "暂无数据" [ref=f1e64]
+          - generic [ref=f1e70]: 暂无会话
+        - generic [ref=f1e72]:
+          - text: 已检测工具
+          - img "reload" [ref=f1e73] [cursor=pointer]
+      - generic [ref=f1e94]:
+        - generic [ref=f1e95]:
+          - generic [ref=f1e96]: 设置
+          - menu [ref=f1e97]:
+            - menuitem "setting 通用设置" [ref=f1e98] [cursor=pointer]:
+              - img "setting" [ref=f1e99]
+              - generic [ref=f1e102]: 通用设置
+            - menuitem "code 终端设置" [ref=f1e103] [cursor=pointer]:
+              - img "code" [ref=f1e104]
+              - generic [ref=f1e107]: 终端设置
+            - menuitem "user Profile 管理" [ref=f1e108] [cursor=pointer]:
+              - img "user" [ref=f1e109]
+              - generic [ref=f1e112]: Profile 管理
+            - menuitem "robot Claude Code" [ref=f1e113] [cursor=pointer]:
+              - img "robot" [ref=f1e114]
+              - generic [ref=f1e117]: Claude Code
+            - menuitem "thunderbolt Codex CLI" [ref=f1e118] [cursor=pointer]:
+              - img "thunderbolt" [ref=f1e119]
+              - generic [ref=f1e122]: Codex CLI
+            - menuitem "api Gemini CLI" [ref=f1e123] [cursor=pointer]:
+              - img "api" [ref=f1e124]
+              - generic [ref=f1e127]: Gemini CLI
+            - menuitem "code OpenCode" [ref=f1e128] [cursor=pointer]:
+              - img "code" [ref=f1e129]
+              - generic [ref=f1e132]: OpenCode
+            - menuitem "dollar 费用统计" [ref=f1e133] [cursor=pointer]:
+              - img "dollar" [ref=f1e134]
+              - generic [ref=f1e137]: 费用统计
+            - menuitem "tag 模型单价" [ref=f1e138] [cursor=pointer]:
+              - img "tag" [ref=f1e139]
+              - generic [ref=f1e142]: 模型单价
+            - menuitem "info-circle 关于" [ref=f1e143] [cursor=pointer]:
+              - img "info-circle" [ref=f1e144]
+              - generic [ref=f1e148]: 关于
+        - generic [ref=f1e150]:
+          - generic [ref=f1e151]:
+            - heading "通用设置" [level=4] [ref=f1e152]
+            - generic [ref=f1e153]:
+              - button "reload 重置默认" [ref=f1e155] [cursor=pointer]:
+                - img "reload" [ref=f1e157]
+                - generic [ref=f1e160]: 重置默认
+              - button "save 保存设置" [ref=f1e162] [cursor=pointer]:
+                - img "save" [ref=f1e164]
+                - generic [ref=f1e167]: 保存设置
+          - generic [ref=f1e168]:
+            - generic [ref=f1e169]:
+              - generic [ref=f1e173]:
+                - img "info-circle" [ref=f1e174]
+                - text: 外观
+              - generic [ref=f1e178]:
+                - generic [ref=f1e180]:
+                  - generic "语言" [ref=f1e182]
+                  - generic [ref=f1e186] [cursor=pointer]:
+                    - generic "简体中文" [ref=f1e187]:
+                      - text: 简体中文
+                      - combobox "语言" [ref=f1e188]
+                    - img "down" [ref=f1e190]
+                - generic [ref=f1e194]:
+                  - generic "主题" [ref=f1e196]
+                  - generic [ref=f1e200] [cursor=pointer]:
+                    - generic "跟随系统" [ref=f1e201]:
+                      - text: 跟随系统
+                      - combobox "主题" [ref=f1e202]
+                    - img "down" [ref=f1e204]
+            - generic [ref=f1e207]:
+              - generic [ref=f1e211]:
+                - img "info-circle" [ref=f1e212]
+                - text: 字体
+              - generic [ref=f1e216]:
+                - generic [ref=f1e218]:
+                  - generic "字体" [ref=f1e220]
+                  - generic [ref=f1e224] [cursor=pointer]:
+                    - generic "系统默认" [ref=f1e225]:
+                      - text: 系统默认
+                      - combobox "字体" [ref=f1e226]
+                    - img "down" [ref=f1e228]
+                - generic [ref=f1e232]:
+                  - generic "字号" [ref=f1e234]
+                  - generic [ref=f1e238] [cursor=pointer]:
+                    - slider [ref=f1e244]
+                    - generic:
+                      - generic [ref=f1e245]: "10"
+                      - generic [ref=f1e246]: "14"
+                      - generic [ref=f1e247]: "20"
+            - generic [ref=f1e248]:
+              - generic [ref=f1e252]:
+                - img "info-circle" [ref=f1e253]
+                - text: 窗口行为
+              - generic [ref=f1e257]:
+                - generic [ref=f1e259]:
+                  - generic "启动时恢复上次会话" [ref=f1e261]
+                  - switch "启动时恢复上次会话" [checked] [ref=f1e265] [cursor=pointer]
+                - generic [ref=f1e269]:
+                  - generic "关闭窗口行为" [ref=f1e271]
+                  - generic [ref=f1e275] [cursor=pointer]:
+                    - generic "最小化到托盘" [ref=f1e276]:
+                      - text: 最小化到托盘
+                      - combobox "关闭窗口行为" [ref=f1e277]
+                    - img "down" [ref=f1e279]
+            - separator [ref=f1e282]
+            - generic [ref=f1e284]:
+              - button "reload 重置默认" [ref=f1e286] [cursor=pointer]:
+                - img "reload" [ref=f1e288]
+                - generic [ref=f1e291]: 重置默认
+              - button "save 保存设置" [ref=f1e293] [cursor=pointer]:
+                - img "save" [ref=f1e295]
+                - generic [ref=f1e298]: 保存设置
+    - generic [ref=f1e93]: 茶码 CodingTea v0.1
+  - tooltip "返回终端" [ref=f1e300]

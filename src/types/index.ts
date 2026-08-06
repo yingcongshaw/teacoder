@@ -1,0 +1,292 @@
+export type ToolType = "claude" | "codex" | "gemini" | "opencode";
+export type AuthType = "api_key" | "oauth";
+
+export interface CliTool {
+  toolType: ToolType;
+  version: string | null;
+  path: string | null;
+  isAvailable: boolean;
+  lastDetectedAt: number;
+}
+
+export interface Profile {
+  id: string;
+  name: string;
+  toolType: ToolType;
+  authType: AuthType;
+  baseUrl?: string;
+  appDataRoot?: string;
+  color?: string;
+  description?: string;
+  createdAt: number;
+  updatedAt: number;
+  apiKeyStored?: string;
+  oauthTokenStored?: string;
+  oauthRefreshTokenStored?: string;
+}
+
+export interface SessionCost {
+  sessionId: string;
+  profileId: string;
+  toolType: ToolType;
+  inputTokens: number;
+  outputTokens: number;
+  cacheCreationTokens: number;
+  cacheReadTokens: number;
+  costUsd: number;
+  model: string;
+  startedAt: number;
+  endedAt: number | null;
+}
+
+export interface CostSummary {
+  inputTokens: number;
+  outputTokens: number;
+  cacheCreationTokens: number;
+  cacheReadTokens: number;
+  costUsd: number;
+}
+
+export interface PricingConfig {
+  model: string;
+  inputPrice: number;
+  outputPrice: number;
+  cacheCreationPrice: number;
+  cacheReadPrice: number;
+  isCustom: boolean;
+}
+
+export interface TabState {
+  id: string;
+  title: string;
+  toolType: ToolType;
+  profileId: string;
+  workDir: string;
+  color?: string;
+  isRunning: boolean;
+  envVars?: string;
+  args?: string;
+  createdAt: number;
+  closedAt?: number;
+}
+
+export interface ToolSettings {
+  id: string;
+  profileId: string;
+  toolType: string;
+  model?: string;
+  thinkingIntensity?: string;
+  autoSubmit?: boolean;
+  customInstructions?: string;
+  settingsJson?: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export const TOOL_DISPLAY_NAMES: Record<ToolType, string> = {
+  claude: "Claude Code",
+  codex: "Codex CLI",
+  gemini: "Gemini CLI",
+  opencode: "OpenCode",
+};
+
+export const TOOL_EXECUTABLES: Record<ToolType, string> = {
+  claude: "claude",
+  codex: "codex",
+  gemini: "gemini",
+  opencode: "opencode",
+};
+
+export interface TerminalSettings {
+  shell: string;
+  shellArgs: string;
+  fontFamily: string;
+  fontSize: number;
+  lineHeight: number;
+  cursorStyle: "block" | "bar" | "underline";
+  cursorBlink: boolean;
+  colorTheme: string;
+  scrollback: number;
+  scrollOnOutput: boolean;
+  bell: boolean;
+  copyOnSelect: boolean;
+  rightClickPaste: boolean;
+  envVars: string;
+}
+
+export const DEFAULT_TERMINAL_SETTINGS: TerminalSettings = {
+  shell: "default",
+  shellArgs: "",
+  fontFamily: "JetBrains Mono",
+  fontSize: 14,
+  lineHeight: 1.2,
+  cursorStyle: "block",
+  cursorBlink: true,
+  colorTheme: "one-dark",
+  scrollback: 10000,
+  scrollOnOutput: true,
+  bell: false,
+  copyOnSelect: true,
+  rightClickPaste: true,
+  envVars: "",
+};
+
+export interface TerminalColorTheme {
+  name: string;
+  label: string;
+  colors: {
+    background: string;
+    foreground: string;
+    cursor: string;
+    selectionBackground: string;
+    black: string;
+    red: string;
+    green: string;
+    yellow: string;
+    blue: string;
+    magenta: string;
+    cyan: string;
+    white: string;
+    brightBlack: string;
+    brightRed: string;
+    brightGreen: string;
+    brightYellow: string;
+    brightBlue: string;
+    brightMagenta: string;
+    brightCyan: string;
+    brightWhite: string;
+  };
+}
+
+export const TERMINAL_COLOR_THEMES: TerminalColorTheme[] = [
+  {
+    name: "one-dark",
+    label: "One Dark",
+    colors: {
+      background: "#1e1e2e",
+      foreground: "#cdd6f4",
+      cursor: "#f5e0dc",
+      selectionBackground: "#585b7066",
+      black: "#45475a",
+      red: "#f38ba8",
+      green: "#a6e3a1",
+      yellow: "#f9e2af",
+      blue: "#89b4fa",
+      magenta: "#f5c2e7",
+      cyan: "#94e2d5",
+      white: "#bac2de",
+      brightBlack: "#585b70",
+      brightRed: "#f38ba8",
+      brightGreen: "#a6e3a1",
+      brightYellow: "#f9e2af",
+      brightBlue: "#89b4fa",
+      brightMagenta: "#f5c2e7",
+      brightCyan: "#94e2d5",
+      brightWhite: "#a6adc8",
+    },
+  },
+  {
+    name: "windows-console",
+    label: "Windows Console",
+    colors: {
+      background: "#0c0c0c",
+      foreground: "#cccccc",
+      cursor: "#cccccc",
+      selectionBackground: "#444444",
+      black: "#0c0c0c",
+      red: "#c50f1f",
+      green: "#13a10e",
+      yellow: "#c19c00",
+      blue: "#0037da",
+      magenta: "#881798",
+      cyan: "#3a96dd",
+      white: "#cccccc",
+      brightBlack: "#767676",
+      brightRed: "#e74856",
+      brightGreen: "#16c60c",
+      brightYellow: "#f9f1a5",
+      brightBlue: "#3b78ff",
+      brightMagenta: "#b4009e",
+      brightCyan: "#61d6d6",
+      brightWhite: "#f2f2f2",
+    },
+  },
+  {
+    name: "dracula",
+    label: "Dracula",
+    colors: {
+      background: "#282a36",
+      foreground: "#f8f8f2",
+      cursor: "#f8f8f2",
+      selectionBackground: "#44475a",
+      black: "#21222c",
+      red: "#ff5555",
+      green: "#50fa7b",
+      yellow: "#f1fa8c",
+      blue: "#bd93f9",
+      magenta: "#ff79c6",
+      cyan: "#8be9fd",
+      white: "#f8f8f2",
+      brightBlack: "#6272a4",
+      brightRed: "#ff6e6e",
+      brightGreen: "#69ff94",
+      brightYellow: "#ffffa5",
+      brightBlue: "#d6acff",
+      brightMagenta: "#ff92df",
+      brightCyan: "#a4ffff",
+      brightWhite: "#ffffff",
+    },
+  },
+  {
+    name: "tokyo-night",
+    label: "Tokyo Night",
+    colors: {
+      background: "#1a1b26",
+      foreground: "#a9b1d6",
+      cursor: "#c0caf5",
+      selectionBackground: "#33467c",
+      black: "#15161e",
+      red: "#f7768e",
+      green: "#9ece6a",
+      yellow: "#e0af68",
+      blue: "#7aa2f7",
+      magenta: "#bb9af7",
+      cyan: "#7dcfff",
+      white: "#a9b1d6",
+      brightBlack: "#414868",
+      brightRed: "#f7768e",
+      brightGreen: "#9ece6a",
+      brightYellow: "#e0af68",
+      brightBlue: "#7aa2f7",
+      brightMagenta: "#bb9af7",
+      brightCyan: "#7dcfff",
+      brightWhite: "#c0caf5",
+    },
+  },
+  {
+    name: "monokai",
+    label: "Monokai",
+    colors: {
+      background: "#272822",
+      foreground: "#f8f8f2",
+      cursor: "#f8f8f0",
+      selectionBackground: "#49483e",
+      black: "#272822",
+      red: "#f92672",
+      green: "#a6e22e",
+      yellow: "#f4bf75",
+      blue: "#66d9ef",
+      magenta: "#ae81ff",
+      cyan: "#a1efe4",
+      white: "#f8f8f2",
+      brightBlack: "#75715e",
+      brightRed: "#fd971f",
+      brightGreen: "#a6e22e",
+      brightYellow: "#e6db74",
+      brightBlue: "#66d9ef",
+      brightMagenta: "#ae81ff",
+      brightCyan: "#a1efe4",
+      brightWhite: "#f9f8f5",
+    },
+  },
+];

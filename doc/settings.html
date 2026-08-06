@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>设置 - AI Coder</title>
+<script src="https://modao.cc/agent-py/static/source/js/tailwindcss.js"></script>
+<script src="https://modao.cc/agent-py/static/source/js/iconify-icon.min.js"></script>
+<style>
+        body {
+            background-color: #0a0a0a;
+            color: #e0e0e0;
+            font-family: 'JetBrains Mono', 'Fira Code', monospace;
+        }
+        .sidebar-item {
+            transition: all 0.2s;
+            cursor: pointer;
+        }
+        .sidebar-item:hover {
+            background-color: #1e1e1e;
+        }
+        .settings-card {
+            background-color: #161616;
+            border: 1px solid #333;
+            border-radius: 0.75rem;
+            padding: 1.5rem;
+        }
+        .input-dark {
+            background-color: #0d0d0d;
+            border: 1px solid #333;
+            color: #e0e0e0;
+            transition: border-color 0.3s;
+        }
+        .input-dark:focus {
+            border-color: #ff6b35;
+            outline: none;
+        }
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #0a0a0a;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #333;
+            border-radius: 2px;
+        }
+        input[type="range"] {
+            accent-color: #ff6b35;
+        }
+    </style>
+</head>
+<body class="h-screen flex flex-col overflow-hidden">
+<!-- 顶部导航栏 -->
+<header class="h-10 bg-[#111] border-b border-[#333] flex items-center justify-between px-4 text-[13px] flex-none">
+<div class="flex items-center space-x-4">
+<div class="flex items-center space-x-2">
+<iconify-icon class="text-[#ff6b35] text-xl" icon="mdi:robot-terminal"></iconify-icon>
+<span class="font-bold">AI Coder</span>
+</div>
+<div class="text-gray-500">系统设置</div>
+</div>
+<div class="flex items-center space-x-4">
+<button class="flex items-center space-x-1 text-gray-400 hover:text-white transition-colors" onclick="window.location.href='main.html'">
+<iconify-icon icon="mdi:arrow-left"></iconify-icon>
+<span>返回终端</span>
+</button>
+</div>
+</header>
+<div class="flex flex-1 overflow-hidden">
+<!-- 左侧边栏 (复用结构) -->
+<aside class="w-64 bg-[#0d0d0d] border-right border-[#333] flex flex-col flex-none border-r border-[#333]">
+<div class="p-4">
+<div class="text-gray-500 text-[10px] font-bold uppercase tracking-wider mb-4">导航</div>
+<nav class="space-y-1 text-xs">
+<div class="sidebar-item p-2 rounded flex items-center text-[#ff6b35] bg-[#1a1a1a]">
+<iconify-icon class="mr-2" icon="mdi:cog"></iconify-icon>
+<span>常规设置</span>
+</div>
+<div class="sidebar-item p-2 rounded flex items-center text-gray-400">
+<iconify-icon class="mr-2" icon="mdi:account"></iconify-icon>
+<span>账户与安全</span>
+</div>
+<div class="sidebar-item p-2 rounded flex items-center text-gray-400">
+<iconify-icon class="mr-2" icon="mdi:brain"></iconify-icon>
+<span>模型配置</span>
+</div>
+<div class="sidebar-item p-2 rounded flex items-center text-gray-400">
+<iconify-icon class="mr-2" icon="mdi:api"></iconify-icon>
+<span>API 接口</span>
+</div>
+<div class="sidebar-item p-2 rounded flex items-center text-gray-400">
+<iconify-icon class="mr-2" icon="mdi:palette"></iconify-icon>
+<span>界面主题</span>
+</div>
+</nav>
+</div>
+</aside>
+<!-- 设置面板主区 -->
+<main class="flex-1 overflow-y-auto custom-scrollbar p-8 bg-[#0a0a0a]">
+<div class="max-w-3xl mx-auto space-y-8 pb-20">
+<!-- 账户信息 -->
+<section class="space-y-4">
+<h2 class="text-lg font-bold flex items-center">
+<iconify-icon class="mr-2 text-[#ff6b35]" icon="mdi:account-circle"></iconify-icon>
+                        账户信息
+                    </h2>
+<div class="settings-card flex items-center space-x-6">
+<div class="relative">
+<img alt="User Avatar" class="w-20 h-20 rounded-full border-2 border-[#333]" src="https://modao.cc/agent-py/media/generated_images/2026-06-26/3393dfc3e7c24d7682de423bd1cfff13.jpg"/>
+<button class="absolute bottom-0 right-0 bg-[#333] p-1 rounded-full text-xs hover:bg-[#444]">
+<iconify-icon icon="mdi:camera"></iconify-icon>
+</button>
+</div>
+<div class="flex-1">
+<div class="flex items-center space-x-3 mb-1">
+<span class="text-xl font-bold">Admin_Dev</span>
+<span class="bg-[#3b82f6]/20 text-[#3b82f6] text-[10px] px-2 py-0.5 rounded border border-[#3b82f6]/30 font-bold uppercase">专业版</span>
+</div>
+<div class="text-sm text-gray-500">admin@aicoder.demo.com</div>
+<div class="mt-3">
+<button class="text-[11px] bg-[#333] hover:bg-[#444] px-3 py-1 rounded transition-colors">修改资料</button>
+</div>
+</div>
+</div>
+</section>
+<!-- 模型设置 -->
+<section class="space-y-4">
+<h2 class="text-lg font-bold flex items-center">
+<iconify-icon class="mr-2 text-[#ff6b35]" icon="mdi:brain"></iconify-icon>
+                        模型设置
+                    </h2>
+<div class="settings-card space-y-6">
+<div class="grid grid-cols-2 gap-6">
+<div class="space-y-2">
+<label class="text-xs text-gray-500 block">默认生成模型</label>
+<select class="input-dark w-full px-3 py-2 rounded text-sm appearance-none">
+<option>Claude 3.5 Opus (推荐)</option>
+<option>Claude 3.5 Sonnet</option>
+<option>Claude 3 Haiku</option>
+<option>GPT-4o</option>
+</select>
+</div>
+<div class="space-y-2">
+<label class="text-xs text-gray-500 block">Temperature (创造力)</label>
+<div class="flex items-center space-x-3 mt-1">
+<input class="flex-1" max="1" min="0" step="0.1" type="range" value="0.7"/>
+<span class="text-xs font-bold text-[#ff6b35]">0.7</span>
+</div>
+</div>
+</div>
+<div class="flex items-center justify-between p-3 bg-[#0d0d0d] rounded border border-[#333]">
+<div>
+<div class="text-sm font-bold">流式输出</div>
+<div class="text-[11px] text-gray-500">实时看到生成的代码块，降低感知延迟</div>
+</div>
+<div class="w-10 h-5 bg-[#ff6b35] rounded-full relative cursor-pointer">
+<div class="absolute right-1 top-1 w-3 h-3 bg-white rounded-full"></div>
+</div>
+</div>
+</div>
+</section>
+<!-- API 设置 -->
+<section class="space-y-4">
+<h2 class="text-lg font-bold flex items-center">
+<iconify-icon class="mr-2 text-[#ff6b35]" icon="mdi:api"></iconify-icon>
+                        API 设置
+                    </h2>
+<div class="settings-card space-y-4">
+<div class="space-y-2">
+<label class="text-xs text-gray-500 block">API Key</label>
+<div class="relative">
+<input class="input-dark w-full px-3 py-2 rounded text-sm pr-10" type="password" value="sk-ant-api03-xk9l2m3n4o5p6q7r8s9t0"/>
+<iconify-icon class="absolute right-3 top-2.5 text-gray-500 cursor-pointer" icon="mdi:eye-off"></iconify-icon>
+</div>
+</div>
+<div class="space-y-2">
+<label class="text-xs text-gray-500 block">API Endpoint URL</label>
+<input class="input-dark w-full px-3 py-2 rounded text-sm" type="text" value="https://api.anthropic.com/v1"/>
+</div>
+</div>
+</section>
+<!-- 界面设置 -->
+<section class="space-y-4">
+<h2 class="text-lg font-bold flex items-center">
+<iconify-icon class="mr-2 text-[#ff6b35]" icon="mdi:palette"></iconify-icon>
+                        界面设置
+                    </h2>
+<div class="settings-card space-y-6">
+<div class="flex items-center justify-between">
+<span class="text-sm">深色模式</span>
+<div class="flex space-x-2 bg-[#0d0d0d] p-1 rounded border border-[#333]">
+<button class="px-3 py-1 bg-[#ff6b35] text-white rounded text-xs transition-colors">深色</button>
+<button class="px-3 py-1 text-gray-500 hover:text-white rounded text-xs transition-colors">浅色</button>
+</div>
+</div>
+<div class="space-y-4">
+<div class="flex items-center justify-between">
+<span class="text-sm">字体大小</span>
+<span class="text-xs font-bold text-gray-500">14px</span>
+</div>
+<input class="w-full" max="20" min="12" step="1" type="range" value="14"/>
+</div>
+<div class="space-y-2">
+<label class="text-xs text-gray-500 block">代码字体</label>
+<select class="input-dark w-full px-3 py-2 rounded text-sm appearance-none">
+<option>JetBrains Mono</option>
+<option>Fira Code</option>
+<option>Source Code Pro</option>
+<option>Menlo</option>
+</select>
+</div>
+</div>
+</section>
+<!-- 关于 -->
+<section class="pt-8 border-t border-[#333] flex items-center justify-between">
+<div>
+<div class="text-sm font-bold">AI Coder Workbench</div>
+<div class="text-xs text-gray-500 mt-1">当前版本 v4.50.0-stable</div>
+</div>
+<button class="bg-[#333] hover:bg-[#444] text-white px-4 py-2 rounded text-xs transition-colors">
+                        检查更新
+                    </button>
+</section>
+</div>
+</main>
+</div>
+<!-- 底部状态栏 (复用结构) -->
+<footer class="h-8 bg-[#0d0d0d] border-t border-[#333] flex items-center justify-between px-4 text-[11px] flex-none">
+<div class="flex items-center space-x-4 text-gray-500">
+<span>READY</span>
+<span>UTF-8</span>
+</div>
+<div class="flex items-center text-gray-500">
+<span>AI Coder © 2026 GeekTech Labs</span>
+</div>
+</footer>
+</body>
+</html>

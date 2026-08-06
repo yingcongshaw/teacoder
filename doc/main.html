@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>AI Coder - 开发终端</title>
+<script src="https://modao.cc/agent-py/static/source/js/tailwindcss.js"></script>
+<script src="https://modao.cc/agent-py/static/source/js/iconify-icon.min.js"></script>
+<script src="https://modao.cc/agent-py/static/source/js/echarts.min.js"></script>
+<style>
+        /* 主题变量系统 */
+        :root {
+            /* 深色主题（默认） */
+            --bg-primary: #0a0a0a;
+            --bg-secondary: #111111;
+            --bg-card: #1e1e1e;
+            --bg-tertiary: #2a2a2a;
+            --bg-hover: #333333;
+            --text-primary: #e0e0e0;
+            --text-secondary: #888888;
+            --text-emphasis: #ffffff;
+            --border-color: #333333;
+            --accent-orange: #ff6b35;
+            --accent-blue: #3b82f6;
+            --accent-green: #22c55e;
+            --accent-yellow: #eab308;
+            --code-bg: #0d0d0d;
+            --input-bg: #1a1a1a;
+            --sidebar-bg: #0d0d0d;
+            --topbar-bg: #111111;
+            --statusbar-bg: #0d0d0d;
+            --shadow-color: rgba(0,0,0,0.5);
+        }
+
+        /* 浅色主题 */
+        [data-theme="light"] {
+            --bg-primary: #f5f5f5;
+            --bg-secondary: #ffffff;
+            --bg-card: #ffffff;
+            --bg-tertiary: #e8e8e8;
+            --bg-hover: #dddddd;
+            --text-primary: #1a1a1a;
+            --text-secondary: #666666;
+            --text-emphasis: #000000;
+            --border-color: #d0d0d0;
+            --accent-orange: #e85d2a;
+            --accent-blue: #2563eb;
+            --accent-green: #16a34a;
+            --accent-yellow: #ca8a04;
+            --code-bg: #f0f0f0;
+            --input-bg: #ffffff;
+            --sidebar-bg: #fafafa;
+            --topbar-bg: #ffffff;
+            --statusbar-bg: #fafafa;
+            --shadow-color: rgba(0,0,0,0.1);
+        }
+
+        * {
+            transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        body {
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            font-family: 'JetBrains Mono', 'Fira Code', monospace;
+        }
+        .sidebar-item {
+            transition: all 0.2s;
+            cursor: pointer;
+        }
+        .sidebar-item:hover {
+            background-color: var(--bg-hover);
+        }
+        .sidebar-item.active {
+            background-color: var(--bg-card);
+            border-left: 2px solid var(--accent-orange);
+        }
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: var(--bg-primary);
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: var(--border-color);
+            border-radius: 2px;
+        }
+        .terminal-input {
+            background: transparent;
+            border: none;
+            outline: none;
+            color: var(--text-primary);
+            width: 100%;
+        }
+        .code-block {
+            background-color: var(--code-bg);
+            border: 1px solid var(--border-color);
+            padding: 1rem;
+            border-radius: 0.5rem;
+            margin: 0.5rem 0;
+            font-family: monospace;
+            position: relative;
+        }
+        .modal-overlay {
+            background-color: var(--shadow-color);
+            backdrop-filter: blur(4px);
+        }
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0; }
+        }
+        .cursor-blink {
+            animation: blink 1s infinite;
+        }
+    </style>
+</head>
+<body class="h-screen flex flex-col overflow-hidden">
+<!-- 顶部状态提示条 -->
+<div class="bg-[#ff6b35] text-black text-[12px] font-bold py-1 px-4 flex justify-between items-center z-50">
+<span>免费试用剩余 9 天</span>
+<button class="hover:underline" onclick="openModal('subModal')">立即续费体验专业版 →</button>
+</div>
+<!-- 顶部导航栏 -->
+<header class="h-10 bg-[var(--topbar-bg)] border-b border-[var(--border-color)] flex items-center justify-between px-4 text-[13px] flex-none">
+<div class="flex items-center space-x-4">
+<div class="flex items-center space-x-2">
+<iconify-icon class="text-[#ff6b35] text-xl" icon="mdi:robot-terminal"></iconify-icon>
+<span class="font-bold">AI Coder</span>
+</div>
+<div class="flex items-center space-x-2 bg-[var(--input-bg)] px-2 py-0.5 rounded border border-[var(--border-color)]">
+<span class="text-gray-500">https://aicoder.demo.com [实例 73]</span>
+<span class="bg-[#3b82f6] text-white text-[10px] px-1.5 rounded">本地</span>
+</div>
+</div>
+<div class="flex items-center space-x-4">
+<span class="text-gray-500">v4.50.0</span>
+<div class="flex items-center space-x-3 text-gray-400">
+<button class="p-1 rounded-lg hover:bg-[var(--bg-hover)] transition-all duration-300" id="themeToggle" title="切换主题">
+<svg class="w-5 h-5" fill="none" id="themeIcon" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24">
+<!-- 太阳图标 (浅色模式) -->
+<path class="sun-icon" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"></path>
+<!-- 月亮图标 (深色模式) -->
+<path class="moon-icon" d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" style="display:none"></path>
+</svg>
+</button>
+<button class="hover:text-white" onclick="window.location.href='settings.html'"><iconify-icon class="text-lg" icon="mdi:cog-outline"></iconify-icon></button>
+<button class="hover:text-white"><iconify-icon class="text-lg" icon="mdi:bell-outline"></iconify-icon></button>
+<button class="bg-[#ffd700] text-black px-3 py-0.5 rounded font-bold text-[11px] hover:bg-yellow-400 transition-colors" onclick="openModal('subModal')">立即订阅</button>
+</div>
+</div>
+</header>
+<div class="flex flex-1 overflow-hidden">
+<!-- 左侧边栏 -->
+<aside class="w-64 bg-[var(--sidebar-bg)] border-right border-[var(--border-color)] flex flex-col flex-none border-r border-[var(--border-color)]">
+<div class="p-4 space-y-4">
+<div class="relative">
+<iconify-icon class="absolute left-3 top-2.5 text-gray-500" icon="mdi:magnify"></iconify-icon>
+<input class="w-full bg-[var(--input-bg)] border border-[var(--border-color)] rounded px-9 py-2 text-xs focus:outline-none focus:border-[#ff6b35]" placeholder="搜索..." type="text"/>
+<iconify-icon class="absolute right-3 top-2.5 text-gray-500" icon="mdi:microphone"></iconify-icon>
+</div>
+<button class="w-full bg-[#3b82f6] text-white py-2 rounded text-sm font-medium hover:bg-blue-600 transition-colors flex items-center justify-center space-x-2" onclick="newSession()">
+<iconify-icon icon="mdi:plus"></iconify-icon>
+<span>新建会话</span>
+</button>
+</div>
+<nav class="flex-1 overflow-y-auto custom-scrollbar text-xs">
+<div class="px-2 mb-4">
+<div class="flex items-center justify-between text-gray-500 px-2 py-1 uppercase tracking-wider text-[10px] font-bold">
+<span>项目列表</span>
+<iconify-icon icon="mdi:chevron-down"></iconify-icon>
+</div>
+<div class="mt-1">
+<div class="sidebar-group">
+<div class="flex items-center p-2 text-gray-300 hover:text-white">
+<iconify-icon class="mr-2 text-yellow-600" icon="mdi:folder-open"></iconify-icon>
+<span>interview-full</span>
+</div>
+<div class="ml-4 space-y-1">
+<div class="sidebar-item active p-2 rounded flex items-center justify-between">
+<div class="flex items-center">
+<div class="w-2 h-2 rounded-full bg-green-500 mr-2"></div>
+<span>省版</span>
+</div>
+<span class="text-[9px] text-gray-600">7小时前</span>
+</div>
+<div class="sidebar-item p-2 rounded flex items-center">
+<iconify-icon class="mr-2 text-gray-600" icon="mdi:file-document-outline"></iconify-icon>
+<span>面试题整理</span>
+</div>
+</div>
+</div>
+<div class="sidebar-group mt-2">
+<div class="flex items-center p-2 text-gray-300 hover:text-white">
+<iconify-icon class="mr-2 text-gray-600" icon="mdi:folder"></iconify-icon>
+<span>project-alpha</span>
+</div>
+<div class="ml-4 space-y-1">
+<div class="sidebar-item p-2 rounded flex items-center">
+<iconify-icon class="mr-2 text-gray-600" icon="mdi:file-document-outline"></iconify-icon>
+<span>需求分析</span>
+</div>
+<div class="sidebar-item p-2 rounded flex items-center">
+<iconify-icon class="mr-2 text-gray-600" icon="mdi:file-document-outline"></iconify-icon>
+<span>架构设计</span>
+</div>
+</div>
+</div>
+<div class="sidebar-group mt-2">
+<div class="flex items-center p-2 text-gray-300 hover:text-white">
+<iconify-icon class="mr-2 text-gray-600" icon="mdi:folder"></iconify-icon>
+<span>work-docs</span>
+</div>
+</div>
+</div>
+</div>
+</nav>
+</aside>
+<!-- 主内容区 -->
+<main class="flex-1 flex flex-col relative bg-[#0a0a0a]">
+<!-- 对话区头部信息 -->
+<div class="p-4 border-b border-[#333] flex items-center justify-between text-[11px] text-gray-500">
+<div class="flex items-center space-x-4">
+<div class="flex items-center">
+<iconify-icon class="mr-1 text-[#ff6b35]" icon="mdi:robot"></iconify-icon>
+<span class="text-white font-bold">Claude Code</span>
+<span class="ml-1">v2.1.148</span>
+</div>
+<div class="flex items-center">
+<iconify-icon class="mr-1" icon="mdi:chip"></iconify-icon>
+<span>claude-opus-5[lm] · API 用量计费</span>
+</div>
+<div class="flex items-center">
+<iconify-icon class="mr-1" icon="mdi:folder-outline"></iconify-icon>
+<span>/work/project/src</span>
+</div>
+</div>
+<div class="flex items-center space-x-3">
+<iconify-icon class="cursor-pointer hover:text-white" icon="mdi:history"></iconify-icon>
+<iconify-icon class="cursor-pointer hover:text-white" icon="mdi:dots-vertical"></iconify-icon>
+</div>
+</div>
+<!-- 提示信息 -->
+<div class="bg-[#ff6b35]/10 border-b border-[#ff6b35]/20 px-4 py-1 text-[11px] text-[#ff6b35] flex items-center">
+<iconify-icon class="mr-2" icon="mdi:information-outline"></iconify-icon>
+<span>Opus 4.7 xhigh 现已可用！· 使用 /model 切换</span>
+</div>
+<!-- 对话流内容区 -->
+<div class="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar text-[13px]" id="chat-flow">
+<!-- 历史对话项 -->
+<div class="space-y-2">
+<div class="flex items-center text-gray-300">
+<span class="text-[#ff6b35] mr-2 font-bold">/&gt;</span>
+<span>/resume</span>
+</div>
+<div class="ml-6 text-gray-500 italic">
+                        └ Resume cancelled
+                    </div>
+</div>
+<div class="space-y-2">
+<div class="flex items-center text-gray-300">
+<span class="text-[#ff6b35] mr-2 font-bold">/&gt;</span>
+<span>继续</span>
+</div>
+<div class="ml-6 text-gray-500">
+                        └ 已中断 · 需要 Claude 做什么？
+                    </div>
+</div>
+<div class="space-y-2">
+<div class="flex items-center text-gray-300">
+<span class="text-[#ff6b35] mr-2 font-bold">/&gt;</span>
+<span>帮我写一个快速排序算法</span>
+</div>
+<div class="ml-6 bg-[#111] border border-[#333] rounded-lg p-4 space-y-3">
+<div class="flex items-center justify-between border-b border-[#333] pb-2 mb-2">
+<span class="text-xs text-gray-500">python</span>
+<iconify-icon class="text-xs cursor-pointer hover:text-white" icon="mdi:content-copy"></iconify-icon>
+</div>
+<pre class="text-xs overflow-x-auto"><span class="text-blue-400">def</span> <span class="text-yellow-400">quick_sort</span>(arr):
+    <span class="text-green-600"># 如果数组长度小于等于1，直接返回</span>
+    <span class="text-blue-400">if</span> <span class="text-orange-400">len</span>(arr) &lt;= <span class="text-purple-400">1</span>:
+        <span class="text-blue-400">return</span> arr
+    
+    pivot = arr[<span class="text-orange-400">len</span>(arr) // <span class="text-purple-400">2</span>]
+    left = [x <span class="text-blue-400">for</span> x <span class="text-blue-400">in</span> arr <span class="text-blue-400">if</span> x &lt; pivot]
+    middle = [x <span class="text-blue-400">for</span> x <span class="text-blue-400">in</span> arr <span class="text-blue-400">if</span> x == pivot]
+    right = [x <span class="text-blue-400">for</span> x <span class="text-blue-400">in</span> arr <span class="text-blue-400">if</span> x &gt; pivot]
+    
+    <span class="text-blue-400">return</span> quick_sort(left) + middle + quick_sort(right)</pre>
+</div>
+</div>
+<div class="space-y-2">
+<div class="flex items-center text-gray-300">
+<span class="text-[#ff6b35] mr-2 font-bold">/&gt;</span>
+<span>解释一下这段代码</span>
+</div>
+<div class="ml-6 text-gray-300 leading-relaxed">
+<p>这是一个经典的快速排序（Quick Sort）递归实现：</p>
+<ul class="list-disc ml-5 mt-2 space-y-1 text-gray-400">
+<li><span class="text-white">基准选择</span>：选取数组中间位置的元素作为 <code class="bg-[#1e1e1e] px-1 rounded">pivot</code>。</li>
+<li><span class="text-white">分区</span>：通过列表推导式将数组分为 <code class="text-blue-300">left</code>（小于基准）、<code class="text-yellow-300">middle</code>（等于基准）和 <code class="text-green-300">right</code>（大于基准）。</li>
+<li><span class="text-white">递归</span>：递归处理左右两部分，最后合并结果。</li>
+</ul>
+</div>
+</div>
+</div>
+<!-- 输入区 -->
+<div class="p-4 bg-[#0a0a0a] border-t border-[#333]">
+<div class="flex items-start space-x-2 bg-[#111] border border-[#333] rounded-lg p-3 focus-within:border-[#ff6b35] transition-colors shadow-inner">
+<span class="text-[#ff6b35] font-bold mt-0.5">/&gt;</span>
+<input class="terminal-input text-sm" id="chat-input" onkeydown="handleKeyPress(event)" placeholder="输入命令或向 Claude 提问..." type="text"/>
+<button class="text-gray-500 hover:text-[#ff6b35]" onclick="sendMessage()">
+<iconify-icon class="text-xl" icon="mdi:send"></iconify-icon>
+</button>
+</div>
+<div class="flex items-center space-x-4 mt-2 text-[10px] text-gray-600 px-1">
+<span class="flex items-center"><span class="bg-gray-700 px-1 rounded mr-1">Enter</span> 发送</span>
+<span class="flex items-center"><span class="bg-gray-700 px-1 rounded mr-1">/</span> 命令模式</span>
+<span class="flex items-center"><span class="bg-gray-700 px-1 rounded mr-1">Shift+Tab</span> 切换上下文</span>
+</div>
+</div>
+</main>
+</div>
+<!-- 底部状态栏 -->
+<footer class="h-8 bg-[#0d0d0d] border-t border-[#333] flex items-center justify-between px-4 text-[11px] flex-none">
+<div class="flex items-center space-x-4 text-red-500">
+<div class="flex items-center">
+<iconify-icon class="mr-1" icon="mdi:close-circle"></iconify-icon>
+<span>自动更新失败 · 尝试 /status</span>
+</div>
+<div class="text-red-400">
+<span>bypass permissions on (shift+tab 切换)</span>
+</div>
+</div>
+<div class="flex items-center space-x-6 text-gray-500">
+<div class="flex items-center space-x-2">
+<iconify-icon class="text-green-500" icon="mdi:connection"></iconify-icon>
+<span>main</span>
+<span class="bg-red-500 text-white text-[9px] px-1 rounded-full">99+</span>
+</div>
+<div class="flex items-center space-x-4">
+<span class="hover:text-white cursor-pointer">继续</span>
+<span class="hover:text-white cursor-pointer">建议</span>
+<span class="hover:text-white cursor-pointer">采纳</span>
+<iconify-icon class="hover:text-white cursor-pointer" icon="mdi:github"></iconify-icon>
+</div>
+</div>
+</footer>
+<!-- 订阅模态框 -->
+<div class="fixed inset-0 z-[100] hidden flex items-center justify-center p-4" id="subModal">
+<div class="modal-overlay absolute inset-0" onclick="closeModal('subModal')"></div>
+<div class="relative bg-[#161616] border border-[#333] rounded-2xl w-full max-w-3xl overflow-hidden shadow-2xl">
+<div class="p-8">
+<div class="flex justify-between items-start mb-8">
+<div>
+<h2 class="text-2xl font-bold text-white">提升你的开发效率</h2>
+<p class="text-gray-400 mt-1">选择最适合你的 AI Coder 方案</p>
+</div>
+<button class="text-gray-500 hover:text-white" onclick="closeModal('subModal')">
+<iconify-icon class="text-2xl" icon="mdi:close"></iconify-icon>
+</button>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+<!-- 基础版 -->
+<div class="bg-[#1e1e1e] border border-[#333] rounded-xl p-6 flex flex-col hover:border-[#3b82f6] transition-colors">
+<h3 class="text-lg font-bold">基础版</h3>
+<div class="my-4">
+<span class="text-3xl font-bold">$0</span>
+<span class="text-gray-500">/月</span>
+</div>
+<ul class="text-sm text-gray-400 space-y-3 flex-1">
+<li class="flex items-center"><iconify-icon class="text-green-500 mr-2" icon="mdi:check"></iconify-icon> Claude Sonnet 访问</li>
+<li class="flex items-center"><iconify-icon class="text-green-500 mr-2" icon="mdi:check"></iconify-icon> 基础代码生成</li>
+<li class="flex items-center"><iconify-icon class="text-green-500 mr-2" icon="mdi:check"></iconify-icon> 社区支持</li>
+</ul>
+<button class="mt-8 w-full py-2 bg-[#333] text-white rounded-lg hover:bg-[#444] transition-colors">当前方案</button>
+</div>
+<!-- 专业版 -->
+<div class="bg-[#1e1e1e] border-2 border-[#ff6b35] rounded-xl p-6 flex flex-col relative scale-105 shadow-xl">
+<div class="absolute -top-3 left-1/2 transform -translate-x-1/2 bg-[#ff6b35] text-black text-[10px] font-bold px-3 py-1 rounded-full uppercase">推荐</div>
+<h3 class="text-lg font-bold">专业版</h3>
+<div class="my-4">
+<span class="text-3xl font-bold">$19</span>
+<span class="text-gray-500">/月</span>
+</div>
+<ul class="text-sm text-gray-400 space-y-3 flex-1">
+<li class="flex items-center"><iconify-icon class="text-[#ff6b35] mr-2" icon="mdi:check"></iconify-icon> Claude Opus 优先访问</li>
+<li class="flex items-center"><iconify-icon class="text-[#ff6b35] mr-2" icon="mdi:check"></iconify-icon> 无限次代码补全</li>
+<li class="flex items-center"><iconify-icon class="text-[#ff6b35] mr-2" icon="mdi:check"></iconify-icon> 高级终端命令</li>
+<li class="flex items-center"><iconify-icon class="text-[#ff6b35] mr-2" icon="mdi:check"></iconify-icon> 优先技术支持</li>
+</ul>
+<button class="mt-8 w-full py-2 bg-[#ff6b35] text-white rounded-lg hover:bg-[#ff7b4b] transition-colors font-bold">立即升级</button>
+</div>
+<!-- 企业版 -->
+<div class="bg-[#1e1e1e] border border-[#333] rounded-xl p-6 flex flex-col hover:border-purple-500 transition-colors">
+<h3 class="text-lg font-bold">企业版</h3>
+<div class="my-4">
+<span class="text-3xl font-bold">$99</span>
+<span class="text-gray-500">/月</span>
+</div>
+<ul class="text-sm text-gray-400 space-y-3 flex-1">
+<li class="flex items-center"><iconify-icon class="text-purple-500 mr-2" icon="mdi:check"></iconify-icon> 私有化部署</li>
+<li class="flex items-center"><iconify-icon class="text-purple-500 mr-2" icon="mdi:check"></iconify-icon> SSO/SAML 登录</li>
+<li class="flex items-center"><iconify-icon class="text-purple-500 mr-2" icon="mdi:check"></iconify-icon> 专属架构师服务</li>
+</ul>
+<button class="mt-8 w-full py-2 bg-[#333] text-white rounded-lg hover:bg-[#444] transition-colors">联系销售</button>
+</div>
+</div>
+</div>
+</div>
+</div>
+<script>
+        function openModal(id) {
+            document.getElementById(id).classList.remove('hidden');
+        }
+
+        function closeModal(id) {
+            document.getElementById(id).classList.add('hidden');
+        }
+
+        function handleKeyPress(e) {
+            if (e.key === 'Enter') {
+                sendMessage();
+            }
+        }
+
+        function sendMessage() {
+            const input = document.getElementById('chat-input');
+            const flow = document.getElementById('chat-flow');
+            const text = input.value.trim();
+            
+            if (!text) return;
+
+            // 添加用户消息
+            const userMsg = document.createElement('div');
+            userMsg.className = 'space-y-2';
+            userMsg.innerHTML = `
+                <div class="flex items-center text-gray-300">
+                    <span class="text-[#ff6b35] mr-2 font-bold">/></span>
+                    <span>${text}</span>
+                </div>
+            `;
+            flow.appendChild(userMsg);
+            input.value = '';
+
+            // 模拟 AI 回复
+            setTimeout(() => {
+                const aiMsg = document.createElement('div');
+                aiMsg.className = 'space-y-2';
+                aiMsg.innerHTML = `
+                    <div class="ml-6 text-gray-400">
+                        <span class="text-green-500 mr-2">●</span> 处理中...
+                    </div>
+                `;
+                flow.appendChild(aiMsg);
+                flow.scrollTop = flow.scrollHeight;
+
+                setTimeout(() => {
+                    aiMsg.innerHTML = `
+                        <div class="ml-6 text-gray-300 leading-relaxed">
+                            └ 已处理您的请求：<span class="text-blue-400">"${text}"</span>。这是一个模拟演示回复，在完整版中，Claude 会根据您的代码库提供精确的建议。
+                        </div>
+                    `;
+                    flow.scrollTop = flow.scrollHeight;
+                }, 1000);
+            }, 500);
+        }
+
+        function newSession() {
+            const name = prompt("请输入新会话的名称:", "未命名会话");
+            if (name) {
+                alert("已创建新会话: " + name);
+            }
+        }
+
+        // 默认滚动到底部
+        window.onload = () => {
+            const flow = document.getElementById('chat-flow');
+            flow.scrollTop = flow.scrollHeight;
+        };
+    </script>
+</body>
+</html>

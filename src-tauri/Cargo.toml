@@ -1,0 +1,32 @@
+[package]
+name = "codingtea"
+version = "0.1.0"
+description = "茶码 CodingTea — AI 编程 CLI 工具桌面管理客户端"
+authors = ["苦鼎茶 <codingtea@codingtea.com>"] 
+edition = "2021"
+license = ""
+
+[lib]
+name = "codingtea_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-opener = "2"
+tauri-plugin-dialog = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+axum = "0.8"
+rusqlite = { version = "0.35", features = ["bundled"] }
+portable-pty = "0.8"
+keyring = "3"
+thiserror = "2"
+uuid = { version = "1", features = ["v4"] }
+chrono = "0.4"
+walkdir = "2"
+dirs = "6"
+async-trait = "0.1"

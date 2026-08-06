@@ -1,0 +1,176 @@
+- generic [ref=e5]:
+  - generic [ref=e7]:
+    - generic [ref=e8]: 茶码 CodingTea
+    - generic [ref=e14]:
+      - button [ref=e15] [cursor=pointer]:
+        - img "tool" [ref=e18]
+      - button [ref=e21] [cursor=pointer]:
+        - img "reload" [ref=e23]
+      - button [ref=e26] [cursor=pointer]:
+        - img "search" [ref=e28]
+      - button [ref=e31] [cursor=pointer]:
+        - img "setting" [ref=e33]
+  - generic [ref=e37]:
+    - generic [ref=e39]:
+      - generic [ref=e41]:
+        - img "search" [ref=e43]
+        - textbox "搜索会话..." [ref=e46]
+      - generic [ref=e48]:
+        - generic [ref=e49]:
+          - img "message" [ref=e50]
+          - generic [ref=e53]: 会话
+        - button [ref=e54] [cursor=pointer]:
+          - img "plus" [ref=e56]
+      - generic [ref=e61]:
+        - paragraph [ref=e62]: 暂无会话
+        - button "plus 新建会话" [ref=e63] [cursor=pointer]:
+          - img "plus" [ref=e65]
+          - generic [ref=e69]: 新建会话
+      - generic [ref=e70]:
+        - generic [ref=e72]:
+          - generic [ref=e73]: 已检测工具
+          - img "reload" [ref=e74] [cursor=pointer]
+        - generic [ref=e77] [cursor=pointer]:
+          - img "dollar" [ref=e78]
+          - generic [ref=e81]: 费用统计
+        - generic [ref=e82] [cursor=pointer]:
+          - img "setting" [ref=e83]
+          - generic [ref=e86]: 设置
+    - generic [ref=e292]:
+      - generic [ref=e293]:
+        - generic [ref=e294]: 设置
+        - menu [ref=e296]:
+          - text: 通用
+          - group [ref=e297]:
+            - menuitem "通用设置" [ref=e298] [cursor=pointer]
+          - text: AI 工具
+          - group [ref=e300]:
+            - menuitem "Claude Code" [ref=e301] [cursor=pointer]
+            - menuitem "Codex CLI" [ref=e303] [cursor=pointer]
+            - menuitem "Gemini CLI" [ref=e305] [cursor=pointer]
+            - menuitem "Antigravity" [ref=e307] [cursor=pointer]
+            - menuitem "OpenCode" [ref=e309] [cursor=pointer]
+          - text: 终端
+          - group [ref=e311]:
+            - menuitem "终端设置" [active] [ref=e312] [cursor=pointer]
+          - text: AI 辅助
+          - group [ref=e314]:
+            - menuitem "AI 辅助" [ref=e315] [cursor=pointer]
+          - text: 网络
+          - group [ref=e317]:
+            - menuitem "网络" [ref=e318] [cursor=pointer]
+          - text: 远程
+          - group [ref=e320]:
+            - menuitem "远程访问" [ref=e321] [cursor=pointer]
+          - text: 快捷键
+          - group [ref=e323]:
+            - menuitem "快捷键" [ref=e324] [cursor=pointer]
+          - text: 通知
+          - group [ref=e326]:
+            - menuitem "通知" [ref=e327] [cursor=pointer]
+          - text: 数据
+          - group [ref=e329]:
+            - menuitem "数据管理" [ref=e330] [cursor=pointer]
+            - menuitem "同步" [ref=e332] [cursor=pointer]
+          - text: MCP
+          - group [ref=e334]:
+            - menuitem "MCP 接入" [ref=e335] [cursor=pointer]
+          - text: 关于
+          - group [ref=e337]:
+            - menuitem "关于" [ref=e338] [cursor=pointer]
+      - generic [ref=e340]:
+        - generic [ref=e341]:
+          - generic [ref=e342]: 终端设置
+          - generic [ref=e343]:
+            - img "search" [ref=e345]
+            - textbox "搜索设置..." [ref=e348]
+        - generic [ref=e472]:
+          - generic [ref=e473]: Shell
+          - generic [ref=e474]:
+            - generic [ref=e475]:
+              - generic [ref=e476]: 默认 Shell
+              - generic [ref=e477]: 选择终端使用的 Shell 程序
+            - generic [ref=e479] [cursor=pointer]:
+              - generic "默认 Shell" [ref=e480]:
+                - text: 默认 Shell
+                - combobox [ref=e481]
+              - img "down" [ref=e483]
+          - generic [ref=e486]:
+            - generic [ref=e487]:
+              - generic [ref=e488]: Shell 参数
+              - generic [ref=e489]: 启动 Shell 时传递的额外参数
+            - textbox "例如：-l -v" [ref=e491]
+          - generic [ref=e492]: 外观
+          - generic [ref=e493]:
+            - generic [ref=e494]:
+              - generic [ref=e495]: 字体
+              - generic [ref=e496]: 终端使用的等宽字体
+            - generic [ref=e498] [cursor=pointer]:
+              - generic "JetBrains Mono" [ref=e499]:
+                - text: JetBrains Mono
+                - combobox [ref=e500]
+              - img "down" [ref=e502]
+          - generic [ref=e505]:
+            - generic [ref=e506]:
+              - generic [ref=e507]: 字号
+              - generic [ref=e508]: 终端文字大小
+            - generic [ref=e510]:
+              - slider [ref=e514] [cursor=pointer]
+              - generic [ref=e515]: "14"
+          - generic [ref=e516]:
+            - generic [ref=e517]:
+              - generic [ref=e518]: 行高
+              - generic [ref=e519]: 终端行间距倍数
+            - generic [ref=e521]:
+              - slider [ref=e525] [cursor=pointer]
+              - generic [ref=e526]: "1.2"
+          - generic [ref=e527]:
+            - generic [ref=e528]:
+              - generic [ref=e529]: 光标样式
+              - generic [ref=e530]: 终端光标的显示形状
+            - generic [ref=e532] [cursor=pointer]:
+              - generic "方块 (Block)" [ref=e533]:
+                - text: 方块 (Block)
+                - combobox [ref=e534]
+              - img "down" [ref=e536]
+          - generic [ref=e539]:
+            - generic [ref=e540]:
+              - generic [ref=e541]: 光标闪烁
+              - generic [ref=e542]: 终端光标是否闪烁
+            - switch [checked] [ref=e544] [cursor=pointer]
+          - generic [ref=e547]: 缓冲区
+          - generic [ref=e548]:
+            - generic [ref=e549]:
+              - generic [ref=e550]: 滚动缓冲区
+              - generic [ref=e551]: 保留的终端输出行数
+            - generic [ref=e553]:
+              - slider [ref=e557] [cursor=pointer]
+              - generic [ref=e558]: 10K
+          - generic [ref=e559]:
+            - generic [ref=e560]:
+              - generic [ref=e561]: 回滚时暂停
+              - generic [ref=e562]: 滚动查看历史输出时暂停自动滚动
+            - switch [checked] [ref=e564] [cursor=pointer]
+          - generic [ref=e567]: 行为
+          - generic [ref=e568]:
+            - generic [ref=e569]:
+              - generic [ref=e570]: 终端响铃
+              - generic [ref=e571]: 终端发出 BEL 字符时播放提示音
+            - switch [ref=e573] [cursor=pointer]
+          - generic [ref=e576]:
+            - generic [ref=e577]:
+              - generic [ref=e578]: 复制选中内容
+              - generic [ref=e579]: 选中文本时自动复制到剪贴板
+            - switch [checked] [ref=e581] [cursor=pointer]
+          - generic [ref=e584]:
+            - generic [ref=e585]:
+              - generic [ref=e586]: 右键粘贴
+              - generic [ref=e587]: 右键点击时粘贴剪贴板内容
+            - switch [checked] [ref=e589] [cursor=pointer]
+          - generic [ref=e592]: 环境变量
+          - generic [ref=e593]:
+            - generic [ref=e594]:
+              - generic [ref=e595]: 自定义环境变量
+              - generic [ref=e596]: 每行一个，格式：KEY=VALUE
+            - textbox "NODE_OPTIONS=--max-old-space-size=4096 PYTHONPATH=/usr/local/lib/python3.9" [ref=e598]:
+              - /placeholder: "NODE_OPTIONS=--max-old-space-size=4096\nPYTHONPATH=/usr/local/lib/python3.9"

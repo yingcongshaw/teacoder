@@ -1,0 +1,90 @@
+- generic [ref=f7e4]:
+  - generic [ref=f7e6]:
+    - generic [ref=f7e7]: 茶码 CodingTea
+    - generic [ref=f7e13]:
+      - button [ref=f7e14] [cursor=pointer]:
+        - img "tool" [ref=f7e17]
+      - button [ref=f7e20] [cursor=pointer]:
+        - img "reload" [ref=f7e22]
+      - button [ref=f7e25] [cursor=pointer]:
+        - img "search" [ref=f7e27]
+      - button [ref=f7e30] [cursor=pointer]:
+        - img "setting" [ref=f7e32]
+  - generic [ref=f7e36]:
+    - generic [ref=f7e38]:
+      - img "reload" [ref=f7e40] [cursor=pointer]
+      - generic [ref=f7e44]:
+        - img "search" [ref=f7e46]
+        - textbox "搜索会话..." [ref=f7e49]
+      - generic [ref=f7e51]:
+        - generic [ref=f7e52]:
+          - img "message" [ref=f7e53]
+          - generic [ref=f7e56]: 会话
+        - button [ref=f7e57] [cursor=pointer]:
+          - img "plus" [ref=f7e59]
+      - generic [ref=f7e64]:
+        - paragraph [ref=f7e65]: 暂无会话
+        - button "plus 新建会话" [ref=f7e66] [cursor=pointer]:
+          - img "plus" [ref=f7e68]
+          - generic [ref=f7e72]: 新建会话
+    - generic [ref=f7e73]:
+      - generic [ref=f7e74]:
+        - generic [ref=f7e75]:
+          - heading "最近会话" [level=2] [ref=f7e77]
+          - generic [ref=f7e79]:
+            - generic [ref=f7e80]: 茶
+            - generic [ref=f7e81]:
+              - paragraph [ref=f7e82]: 暂无会话，点击「新建会话」开始
+              - button [ref=f7e83]:
+                - img "plus" [ref=f7e84]
+                - text: 新建会话
+        - generic [ref=f7e90] [cursor=pointer]:
+          - img "dollar" [ref=f7e91]
+          - generic [ref=f7e94]: 费用统计
+      - generic [ref=f7e96]:
+        - generic [ref=f7e97]:
+          - generic [ref=f7e98]: 费用统计
+          - button [ref=f7e99] [cursor=pointer]:
+            - img "close" [ref=f7e100]
+        - generic [ref=f7e104]:
+          - generic [ref=f7e105]:
+            - heading "费用统计" [level=4] [ref=f7e106]
+            - generic [ref=f7e107]:
+              - generic [ref=f7e108]:
+                - textbox "开始日期" [ref=f7e110]
+                - generic "to" [ref=f7e112]:
+                  - img "swap-right" [ref=f7e113]
+                - textbox "结束日期" [ref=f7e117]
+              - button "reload 扫描 Claude 数据" [ref=f7e118] [cursor=pointer]:
+                - img "reload" [ref=f7e120]
+                - generic [ref=f7e123]: 扫描 Claude 数据
+          - generic [ref=f7e124]:
+            - generic [ref=f7e128]:
+              - generic [ref=f7e129]: 总费用
+              - generic [ref=f7e131]:
+                - generic [ref=f7e132]: $
+                - generic [ref=f7e133]: "0.0000"
+            - generic [ref=f7e137]:
+              - generic [ref=f7e138]: 输入 Tokens
+              - generic [ref=f7e140]: "0"
+            - generic [ref=f7e145]:
+              - generic [ref=f7e146]: 输出 Tokens
+              - generic [ref=f7e148]: "0"
+            - generic [ref=f7e153]:
+              - generic [ref=f7e154]: 缓存 Tokens
+              - generic [ref=f7e156]: "0"
+          - generic [ref=f7e158]:
+            - generic [ref=f7e159]: 各 Profile 费用明细
+            - table [ref=f7e169]:
+              - rowgroup [ref=f7e170]:
+                - row [ref=f7e171]:
+                  - columnheader "Profile" [ref=f7e172]
+                  - columnheader "工具" [ref=f7e173]
+                  - columnheader "输入 Tokens" [ref=f7e174]
+                  - columnheader "输出 Tokens" [ref=f7e175]
+                  - columnheader "缓存创建" [ref=f7e176]
+                  - columnheader "缓存读取" [ref=f7e177]
+                  - columnheader "费用" [ref=f7e178]
+              - rowgroup [ref=f7e179]:
+                - row [ref=f7e180]:
+                  - cell "暂无数据，点击「扫描 Claude 数据」从本地文件读取" [ref=f7e181]

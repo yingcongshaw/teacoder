@@ -1,0 +1,24 @@
+- generic [ref=f4e4]:
+  - generic [ref=f4e5]:
+    - button "≡" [ref=f4e6] [cursor=pointer]
+    - strong [ref=f4e9]: 茶码 CodingTea
+    - button [ref=f4e10] [cursor=pointer]:
+      - img "tool" [ref=f4e12]
+    - button [ref=f4e15] [cursor=pointer]:
+      - img "reload" [ref=f4e17]
+    - button [ref=f4e20] [cursor=pointer]:
+      - img "search" [ref=f4e22]
+    - button [ref=f4e25] [cursor=pointer]:
+      - img "setting" [ref=f4e27]
+  - generic [ref=f4e30]:
+    - generic [ref=f4e31]:
+      - button "plus 新建会话" [ref=f4e33] [cursor=pointer]:
+        - img "plus" [ref=f4e35]
+        - generic [ref=f4e39]: 新建会话
+      - generic [ref=f4e41]:
+        - text: 已检测工具
+        - img "reload" [ref=f4e42] [cursor=pointer]
+    - generic [ref=f4e48]:
+      - img "暂无数据" [ref=f4e50]
+      - generic [ref=f4e61]: 暂无会话，点击左侧「新建会话」开始
+  - generic [ref=f4e62]: 茶码 CodingTea v0.1

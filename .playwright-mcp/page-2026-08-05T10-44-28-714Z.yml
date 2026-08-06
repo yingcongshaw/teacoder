@@ -1,0 +1,158 @@
+- generic [ref=e5]:
+  - generic [ref=e7]:
+    - generic [ref=e8]: 茶码 CodingTea
+    - generic [ref=e14]:
+      - button [ref=e15] [cursor=pointer]:
+        - img "tool" [ref=e18]
+      - button [ref=e21] [cursor=pointer]:
+        - img "reload" [ref=e23]
+      - button [ref=e26] [cursor=pointer]:
+        - img "search" [ref=e28]
+      - button [ref=e31] [cursor=pointer]:
+        - img "setting" [ref=e33]
+  - generic [ref=e37]:
+    - generic [ref=e39]:
+      - generic [ref=e41]:
+        - img "search" [ref=e43]
+        - textbox "搜索会话..." [ref=e46]
+      - generic [ref=e48]:
+        - generic [ref=e49]:
+          - img "message" [ref=e50]
+          - generic [ref=e53]: 会话
+        - button [ref=e54] [cursor=pointer]:
+          - img "plus" [ref=e56]
+      - generic [ref=e61]:
+        - paragraph [ref=e62]: 暂无会话
+        - button "plus 新建会话" [ref=e63] [cursor=pointer]:
+          - img "plus" [ref=e65]
+          - generic [ref=e69]: 新建会话
+      - generic [ref=e70]:
+        - generic [ref=e72]:
+          - generic [ref=e73]: 已检测工具
+          - img "reload" [ref=e74] [cursor=pointer]
+        - generic [ref=e77] [cursor=pointer]:
+          - img "dollar" [ref=e78]
+          - generic [ref=e81]: 费用统计
+        - generic [ref=e82] [cursor=pointer]:
+          - img "setting" [ref=e83]
+          - generic [ref=e86]: 设置
+    - generic [ref=e292]:
+      - generic [ref=e293]:
+        - generic [ref=e294]: 设置
+        - menu [ref=e296]:
+          - text: 通用
+          - group [ref=e297]:
+            - menuitem "通用设置" [ref=e298] [cursor=pointer]
+          - text: AI 工具
+          - group [ref=e300]:
+            - menuitem "Claude Code" [ref=e301] [cursor=pointer]
+            - menuitem "Codex CLI" [ref=e303] [cursor=pointer]
+            - menuitem "Gemini CLI" [ref=e305] [cursor=pointer]
+            - menuitem "Antigravity" [ref=e307] [cursor=pointer]
+            - menuitem "OpenCode" [ref=e309] [cursor=pointer]
+          - text: 终端
+          - group [ref=e311]:
+            - menuitem "终端设置" [ref=e312] [cursor=pointer]
+          - text: AI 辅助
+          - group [ref=e314]:
+            - menuitem "AI 辅助" [ref=e315] [cursor=pointer]
+          - text: 网络
+          - group [ref=e317]:
+            - menuitem "网络" [ref=e318] [cursor=pointer]
+          - text: 远程
+          - group [ref=e320]:
+            - menuitem "远程访问" [ref=e321] [cursor=pointer]
+          - text: 快捷键
+          - group [ref=e323]:
+            - menuitem "快捷键" [active] [ref=e324] [cursor=pointer]
+          - text: 通知
+          - group [ref=e326]:
+            - menuitem "通知" [ref=e327] [cursor=pointer]
+          - text: 数据
+          - group [ref=e329]:
+            - menuitem "数据管理" [ref=e330] [cursor=pointer]
+            - menuitem "同步" [ref=e332] [cursor=pointer]
+          - text: MCP
+          - group [ref=e334]:
+            - menuitem "MCP 接入" [ref=e335] [cursor=pointer]
+          - text: 关于
+          - group [ref=e337]:
+            - menuitem "关于" [ref=e338] [cursor=pointer]
+      - generic [ref=e340]:
+        - generic [ref=e341]:
+          - generic [ref=e342]: 快捷键
+          - generic [ref=e343]:
+            - img "search" [ref=e345]
+            - textbox "搜索设置..." [ref=e348]
+        - generic [ref=e599]:
+          - generic [ref=e600]: 全局快捷键
+          - generic [ref=e601]:
+            - generic [ref=e602]:
+              - generic [ref=e603]: 显示/隐藏窗口
+              - generic [ref=e604]: 全局快捷键切换窗口显示状态
+            - generic [ref=e606] [cursor=pointer]:
+              - generic [ref=e607]: Ctrl
+              - generic [ref=e608]: Shift
+              - generic [ref=e609]: T
+          - generic [ref=e610]:
+            - generic [ref=e611]:
+              - generic [ref=e612]: 新建会话
+              - generic [ref=e613]: 创建新的终端会话
+            - generic [ref=e615] [cursor=pointer]:
+              - generic [ref=e616]: Ctrl
+              - generic [ref=e617]: "N"
+          - generic [ref=e618]:
+            - generic [ref=e619]:
+              - generic [ref=e620]: 关闭会话
+              - generic [ref=e621]: 关闭当前终端会话
+            - generic [ref=e623] [cursor=pointer]:
+              - generic [ref=e624]: Ctrl
+              - generic [ref=e625]: W
+          - generic [ref=e626]: 终端快捷键
+          - generic [ref=e627]:
+            - generic [ref=e628]:
+              - generic [ref=e629]: 复制
+              - generic [ref=e630]: 复制终端选中内容
+            - generic [ref=e632] [cursor=pointer]:
+              - generic [ref=e633]: Ctrl
+              - generic [ref=e634]: Shift
+              - generic [ref=e635]: C
+          - generic [ref=e636]:
+            - generic [ref=e637]:
+              - generic [ref=e638]: 粘贴
+              - generic [ref=e639]: 粘贴内容到终端
+            - generic [ref=e641] [cursor=pointer]:
+              - generic [ref=e642]: Ctrl
+              - generic [ref=e643]: Shift
+              - generic [ref=e644]: V
+          - generic [ref=e645]:
+            - generic [ref=e646]:
+              - generic [ref=e647]: 清屏
+              - generic [ref=e648]: 清除终端屏幕内容
+            - generic [ref=e650] [cursor=pointer]:
+              - generic [ref=e651]: Ctrl
+              - generic [ref=e652]: L
+          - generic [ref=e653]:
+            - generic [ref=e654]:
+              - generic [ref=e655]: 搜索
+              - generic [ref=e656]: 在终端中搜索文本
+            - generic [ref=e658] [cursor=pointer]:
+              - generic [ref=e659]: Ctrl
+              - generic [ref=e660]: Shift
+              - generic [ref=e661]: F
+          - generic [ref=e662]: 编辑快捷键
+          - generic [ref=e663]:
+            - generic [ref=e664]:
+              - generic [ref=e665]: 撤销
+              - generic [ref=e666]: 撤销上一步操作
+            - generic [ref=e668] [cursor=pointer]:
+              - generic [ref=e669]: Ctrl
+              - generic [ref=e670]: Z
+          - generic [ref=e671]:
+            - generic [ref=e672]:
+              - generic [ref=e673]: 重做
+              - generic [ref=e674]: 重做已撤销的操作
+            - generic [ref=e676] [cursor=pointer]:
+              - generic [ref=e677]: Ctrl
+              - generic [ref=e678]: Shift
+              - generic [ref=e679]: Z

@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>登录 - AI Coder</title>
+<script src="https://modao.cc/agent-py/static/source/js/tailwindcss.js"></script>
+<script src="https://modao.cc/agent-py/static/source/js/iconify-icon.min.js"></script>
+<style>
+        body {
+            background-color: #0a0a0a;
+            background-image: radial-gradient(circle at 50% 50%, #1a1a1a 0%, #0a0a0a 100%);
+            position: relative;
+            overflow: hidden;
+        }
+        .grid-bg {
+            position: absolute;
+            inset: 0;
+            background-image: linear-gradient(rgba(255, 107, 53, 0.03) 1px, transparent 1px), 
+                              linear-gradient(90deg, rgba(255, 107, 53, 0.03) 1px, transparent 1px);
+            background-size: 40px 40px;
+            pointer-events: none;
+        }
+        .glow-button {
+            transition: all 0.3s ease;
+            box-shadow: 0 0 15px rgba(255, 107, 53, 0.2);
+        }
+        .glow-button:hover {
+            box-shadow: 0 0 25px rgba(255, 107, 53, 0.5);
+            transform: translateY(-1px);
+        }
+        .input-dark {
+            background-color: #1a1a1a;
+            border: 1px solid #333;
+            color: #e0e0e0;
+            transition: border-color 0.3s;
+        }
+        .input-dark:focus {
+            border-color: #ff6b35;
+            outline: none;
+        }
+    </style>
+</head>
+<body class="flex items-center justify-center min-h-screen text-gray-200">
+<div class="grid-bg"></div>
+<div class="relative z-10 w-full max-w-md p-8 bg-[#161616] border border-[#333] rounded-2xl shadow-2xl">
+<div class="flex flex-col items-center mb-8">
+<div class="w-16 h-16 bg-[#ff6b35] rounded-xl flex items-center justify-center mb-4 shadow-lg shadow-[#ff6b35]/20">
+<iconify-icon class="text-white text-4xl" icon="mdi:robot-terminal"></iconify-icon>
+</div>
+<h1 class="text-3xl font-bold tracking-tight text-white">AI <span class="text-[#ff6b35]">Coder</span></h1>
+<p class="text-gray-500 mt-2">下一代 AI 辅助编程工作台</p>
+</div>
+<form class="space-y-6" onsubmit="event.preventDefault(); window.location.href='main.html'">
+<div>
+<label class="block text-sm font-medium text-gray-400 mb-2">工作邮箱</label>
+<input class="input-dark w-full px-4 py-3 rounded-lg text-sm" placeholder="name@company.com" required="" type="email"/>
+</div>
+<div>
+<label class="block text-sm font-medium text-gray-400 mb-2">访问密钥</label>
+<input class="input-dark w-full px-4 py-3 rounded-lg text-sm" placeholder="••••••••" required="" type="password"/>
+</div>
+<div class="flex items-center justify-between text-xs text-gray-500">
+<label class="flex items-center cursor-pointer">
+<input class="mr-2 accent-[#ff6b35]" type="checkbox"/> 记住我
+                </label>
+<a class="hover:text-[#ff6b35] transition-colors" href="#">忘记密码？</a>
+</div>
+<button class="glow-button w-full py-3 bg-[#ff6b35] text-white font-bold rounded-lg hover:bg-[#ff7b4b] transition-colors" type="submit">
+                立即进入终端
+            </button>
+</form>
+<div class="mt-8 pt-6 border-t border-[#333] text-center">
+<p class="text-sm text-gray-500">
+                还没有账号？ <a class="text-[#ff6b35] hover:underline" href="#">立即注册</a>
+</p>
+</div>
+</div>
+<!-- 装饰线条 -->
+<div class="absolute bottom-10 left-10 text-[10px] text-gray-800 font-mono space-y-1 hidden md:block">
+<div>&gt; INITIALIZING CORE_SYSTEM...</div>
+<div>&gt; LOADING NEURAL_NETWORKS...</div>
+<div>&gt; AUTHENTICATION_READY</div>
+</div>
+</body>
+</html>
