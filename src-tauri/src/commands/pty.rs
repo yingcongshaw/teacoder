@@ -16,7 +16,7 @@ pub fn start_session(
     work_dir: String,
     profile_id: Option<String>,
     user_env_vars: Option<HashMap<String, String>>,
-    args: Option<Vec<String>>,
+    cli_args: Option<String>,
 ) -> Result<(), String> {
     let mut env_vars = HashMap::new();
 
@@ -85,7 +85,11 @@ pub fn start_session(
         }
     }
 
-    let args = args.unwrap_or_default();
+    let args: Vec<String> = if let Some(json) = cli_args {
+        serde_json::from_str(&json).unwrap_or_default()
+    } else {
+        vec![]
+    };
     pty_manager.start_session(&app, tab_id, tool_type, work_dir, env_vars, args)
 }
 

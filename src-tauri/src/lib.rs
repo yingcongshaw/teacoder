@@ -3,7 +3,9 @@ mod commands;
 mod cost;
 mod crypto;
 mod profile;
+mod project;
 mod pty;
+mod session;
 mod storage;
 mod tool_settings;
 
@@ -19,6 +21,12 @@ pub fn run() {
         .setup(|app| {
             let db = AppDatabase::new(app.handle())?;
             app.manage(db);
+
+            {
+                use crate::session;
+                let db_state = app.state::<AppDatabase>();
+                session::reset_all_running(&db_state).ok();
+            }
 
             // macOS: 保留原生信号灯按钮，使用 Overlay 标题栏
             #[cfg(target_os = "macos")]
@@ -49,6 +57,14 @@ pub fn run() {
             commands::profile::delete_profile,
             commands::profile::get_profile_credential,
             commands::profile::store_profile_credential,
+            commands::project::project_list,
+            commands::project::project_create,
+            commands::project::project_update,
+            commands::project::project_delete,
+            commands::session::session_list,
+            commands::session::session_create,
+            commands::session::session_update,
+            commands::session::session_delete,
             commands::cost::get_session_cost,
             commands::cost::get_profile_cost,
             commands::cost::get_global_cost,
