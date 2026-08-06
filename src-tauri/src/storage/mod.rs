@@ -18,7 +18,7 @@ impl AppDatabase {
         std::fs::create_dir_all(&app_dir)
             .map_err(|e| format!("Failed to create app data dir: {}", e))?;
 
-        let db_path = app_dir.join("codingtea.db");
+        let db_path = app_dir.join("teacoder.db");
         let conn = Connection::open(&db_path)
             .map_err(|e| format!("Failed to open database: {}", e))?;
 
@@ -86,25 +86,20 @@ impl AppDatabase {
     }
 
     fn migrations_dir() -> Result<PathBuf, String> {
+        // 编译时嵌入 src-tauri 目录路径，dev 和 prod 都可靠
+        let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let dir = manifest_dir.join("migrations");
+        if dir.exists() {
+            return Ok(dir);
+        }
+
+        // Fallback: 相对于 exe 查找
         let exe_dir = std::env::current_exe()
             .map_err(|e| format!("Failed to get exe path: {}", e))?
             .parent()
             .ok_or_else(|| "No parent dir for exe".to_string())?
             .to_path_buf();
 
-        // Dev mode: check relative to project root
-        let dev_path = exe_dir
-            .parent()
-            .and_then(|p| p.parent())
-            .map(|p| p.join("migrations"));
-
-        if let Some(ref p) = dev_path {
-            if p.exists() {
-                return Ok(p.clone());
-            }
-        }
-
-        // Production: migrations alongside binary
         Ok(exe_dir.join("migrations"))
     }
 }
