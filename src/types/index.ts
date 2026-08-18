@@ -80,6 +80,7 @@ export interface Session {
   createdAt: number;
   updatedAt: number;
   closedAt?: number;
+  cliSessionId?: string;
 }
 
 export interface SessionTemplate {
@@ -149,6 +150,7 @@ export interface TerminalSettings {
   lineHeight: number;
   cursorStyle: "block" | "bar" | "underline";
   cursorBlink: boolean;
+  followAppTheme: boolean;
   colorTheme: string;
   scrollback: number;
   scrollOnOutput: boolean;
@@ -161,12 +163,13 @@ export interface TerminalSettings {
 export const DEFAULT_TERMINAL_SETTINGS: TerminalSettings = {
   shell: "default",
   shellArgs: "",
-  fontFamily: "JetBrains Mono",
+  fontFamily: "Consolas",
   fontSize: 14,
   lineHeight: 1.2,
   cursorStyle: "block",
   cursorBlink: true,
-  colorTheme: "one-dark",
+  followAppTheme: false,
+  colorTheme: "tokyo-night",
   scrollback: 10000,
   scrollOnOutput: true,
   bell: false,
@@ -175,30 +178,49 @@ export const DEFAULT_TERMINAL_SETTINGS: TerminalSettings = {
   envVars: "",
 };
 
+export const DEFAULT_ANSI_COLORS = {
+  black: "#000000",
+  red: "#cc0000",
+  green: "#00a400",
+  yellow: "#a68a00",
+  blue: "#0000cc",
+  magenta: "#cc00cc",
+  cyan: "#00a4cc",
+  white: "#aaaaaa",
+  brightBlack: "#555555",
+  brightRed: "#e50000",
+  brightGreen: "#00d600",
+  brightYellow: "#d6d600",
+  brightBlue: "#3333ff",
+  brightMagenta: "#e500e5",
+  brightCyan: "#00d6d6",
+  brightWhite: "#ffffff",
+} as const;
+
 export interface TerminalColorTheme {
   name: string;
   label: string;
   colors: {
     background: string;
     foreground: string;
-    cursor: string;
-    selectionBackground: string;
-    black: string;
-    red: string;
-    green: string;
-    yellow: string;
-    blue: string;
-    magenta: string;
-    cyan: string;
-    white: string;
-    brightBlack: string;
-    brightRed: string;
-    brightGreen: string;
-    brightYellow: string;
-    brightBlue: string;
-    brightMagenta: string;
-    brightCyan: string;
-    brightWhite: string;
+    cursor?: string;
+    selectionBackground?: string;
+    black?: string;
+    red?: string;
+    green?: string;
+    yellow?: string;
+    blue?: string;
+    magenta?: string;
+    cyan?: string;
+    white?: string;
+    brightBlack?: string;
+    brightRed?: string;
+    brightGreen?: string;
+    brightYellow?: string;
+    brightBlue?: string;
+    brightMagenta?: string;
+    brightCyan?: string;
+    brightWhite?: string;
   };
 }
 
@@ -331,6 +353,198 @@ export const TERMINAL_COLOR_THEMES: TerminalColorTheme[] = [
       brightMagenta: "#ae81ff",
       brightCyan: "#a1efe4",
       brightWhite: "#f9f8f5",
+    },
+  },
+  {
+    name: "classic-white",
+    label: "经典白",
+    colors: {
+      background: "#ffffff",
+      foreground: "#333333",
+      cursor: "#333333",
+      selectionBackground: "#b3d7ff",
+      black: "#333333",
+      red: "#cc0000",
+      green: "#00a400",
+      yellow: "#a68a00",
+      blue: "#0000cc",
+      magenta: "#cc00cc",
+      cyan: "#00a4cc",
+      white: "#cccccc",
+      brightBlack: "#666666",
+      brightRed: "#e50000",
+      brightGreen: "#00d600",
+      brightYellow: "#d6d600",
+      brightBlue: "#3333ff",
+      brightMagenta: "#e500e5",
+      brightCyan: "#00d6d6",
+      brightWhite: "#ffffff",
+    },
+  },
+  {
+    name: "solarized-light",
+    label: "淡黄暖光",
+    colors: {
+      background: "#fdf6e3",
+      foreground: "#657b83",
+      cursor: "#586e75",
+      selectionBackground: "#eee8d5",
+      black: "#073642",
+      red: "#dc322f",
+      green: "#859900",
+      yellow: "#b58900",
+      blue: "#268bd2",
+      magenta: "#d33682",
+      cyan: "#2aa198",
+      white: "#eee8d5",
+      brightBlack: "#002b36",
+      brightRed: "#cb4b16",
+      brightGreen: "#586e75",
+      brightYellow: "#657b83",
+      brightBlue: "#839496",
+      brightMagenta: "#6c71c4",
+      brightCyan: "#93a1a1",
+      brightWhite: "#fdf6e3",
+    },
+  },
+  {
+    name: "green-on-black",
+    label: "黑底绿字",
+    colors: {
+      background: "#000000",
+      foreground: "#00ff00",
+      cursor: "#00ff00",
+      selectionBackground: "#003300",
+    },
+  },
+  {
+    name: "gruvbox-dark",
+    label: "Gruvbox Dark",
+    colors: {
+      background: "#282828",
+      foreground: "#ebdbb2",
+      cursor: "#ebdbb2",
+      selectionBackground: "#504945",
+      black: "#282828",
+      red: "#cc241d",
+      green: "#98971a",
+      yellow: "#d79921",
+      blue: "#458588",
+      magenta: "#b16286",
+      cyan: "#689d6a",
+      white: "#a89984",
+      brightBlack: "#928374",
+      brightRed: "#fb4934",
+      brightGreen: "#b8bb26",
+      brightYellow: "#fabd2f",
+      brightBlue: "#83a598",
+      brightMagenta: "#d3869b",
+      brightCyan: "#8ec07c",
+      brightWhite: "#ebdbb2",
+    },
+  },
+  {
+    name: "nord",
+    label: "Nord",
+    colors: {
+      background: "#2e3440",
+      foreground: "#d8dee9",
+      cursor: "#d8dee9",
+      selectionBackground: "#434c5e",
+      black: "#3b4252",
+      red: "#bf616a",
+      green: "#a3be8c",
+      yellow: "#ebcb8b",
+      blue: "#81a1c1",
+      magenta: "#b48ead",
+      cyan: "#88c0d0",
+      white: "#e5e9f0",
+      brightBlack: "#4c566a",
+      brightRed: "#bf616a",
+      brightGreen: "#a3be8c",
+      brightYellow: "#ebcb8b",
+      brightBlue: "#81a1c1",
+      brightMagenta: "#b48ead",
+      brightCyan: "#8fbcbb",
+      brightWhite: "#eceff4",
+    },
+  },
+  {
+    name: "catppuccin-mocha",
+    label: "Catppuccin Mocha",
+    colors: {
+      background: "#1e1e2e",
+      foreground: "#cdd6f4",
+      cursor: "#f5e0dc",
+      selectionBackground: "#585b7066",
+      black: "#45475a",
+      red: "#f38ba8",
+      green: "#a6e3a1",
+      yellow: "#f9e2af",
+      blue: "#89b4fa",
+      magenta: "#f5c2e7",
+      cyan: "#94e2d5",
+      white: "#bac2de",
+      brightBlack: "#585b70",
+      brightRed: "#f38ba8",
+      brightGreen: "#a6e3a1",
+      brightYellow: "#f9e2af",
+      brightBlue: "#89b4fa",
+      brightMagenta: "#f5c2e7",
+      brightCyan: "#94e2d5",
+      brightWhite: "#a6adc8",
+    },
+  },
+  {
+    name: "paper",
+    label: "纸张白",
+    colors: {
+      background: "#f5f0e8",
+      foreground: "#3c3836",
+      cursor: "#504945",
+      selectionBackground: "#d5c8b2",
+      black: "#3c3836",
+      red: "#9d0006",
+      green: "#79740e",
+      yellow: "#b57614",
+      blue: "#076678",
+      magenta: "#8f3f71",
+      cyan: "#427b58",
+      white: "#f5f0e8",
+      brightBlack: "#665c54",
+      brightRed: "#cc241d",
+      brightGreen: "#98971a",
+      brightYellow: "#d79921",
+      brightBlue: "#458588",
+      brightMagenta: "#b16286",
+      brightCyan: "#689d6a",
+      brightWhite: "#fbf1c7",
+    },
+  },
+  {
+    name: "gerry-storm",
+    label: "Gerry Storm",
+    colors: {
+      background: "#2b2b2b",
+      foreground: "#bbb7b0",
+      cursor: "#bbb7b0",
+      selectionBackground: "#4a4a4a",
+      black: "#3c3c3c",
+      red: "#c27e25",
+      green: "#587c38",
+      yellow: "#c8a033",
+      blue: "#4f6f8f",
+      magenta: "#a47569",
+      cyan: "#4e8c87",
+      white: "#bbb7b0",
+      brightBlack: "#5a5a5a",
+      brightRed: "#e6a339",
+      brightGreen: "#7eb84f",
+      brightYellow: "#e9c85f",
+      brightBlue: "#6c9bcf",
+      brightMagenta: "#c48d7e",
+      brightCyan: "#6cb4ad",
+      brightWhite: "#e0dbd3",
     },
   },
 ];

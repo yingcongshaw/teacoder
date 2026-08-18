@@ -43,10 +43,12 @@ export default function GeneralSettingsPage({ searchText = "" }: GeneralSettings
   const [settings, setSettings] = useState<GeneralSettings>(DEFAULT_SETTINGS);
   const compactMode = useAppStore((s) => s.compactMode);
   const toggleCompactMode = useAppStore((s) => s.toggleCompactMode);
+  const appTheme = useAppStore((s) => s.theme);
+  const setTheme = useAppStore((s) => s.setTheme);
 
   useEffect(() => {
     try {
-      const raw = localStorage.getItem("codingtea_general_settings");
+      const raw = localStorage.getItem("teacoder_general_settings");
       const saved = raw ? JSON.parse(raw) : {};
       setSettings({ ...DEFAULT_SETTINGS, ...saved });
     } catch {
@@ -60,9 +62,12 @@ export default function GeneralSettingsPage({ searchText = "" }: GeneralSettings
   ) => {
     const next = { ...settings, [key]: value };
     setSettings(next);
-    localStorage.setItem("codingtea_general_settings", JSON.stringify(next));
+    localStorage.setItem("teacoder_general_settings", JSON.stringify(next));
     if (key === "compactMode") {
       toggleCompactMode();
+    }
+    if (key === "theme") {
+      setTheme(value as string);
     }
     message.success("设置已保存");
   };
@@ -91,27 +96,57 @@ export default function GeneralSettingsPage({ searchText = "" }: GeneralSettings
       )}
       {matchesSearch("主题", "深色/浅色/跟随系统") && (
         <SettingRow label="主题" description="选择应用主题外观">
-          <Select
-            value={settings.theme}
-            onChange={(v) => updateSetting("theme", v)}
-            style={{ width: 200 }}
-            optionLabelProp="label"
+          <div
+            className="flex gap-2 overflow-x-auto pb-2"
+            style={{ maxWidth: 600 }}
           >
-            {BUILT_IN_THEMES.map((t) => (
-              <Select.Option key={t.key} value={t.key} label={t.label}>
-                <div className="flex items-center gap-2 py-1">
+            {BUILT_IN_THEMES.map((t) => {
+              const isSelected = appTheme === t.key;
+              return (
+                <div
+                  key={t.key}
+                  onClick={() => updateSetting("theme", t.key)}
+                  className="flex-shrink-0 cursor-pointer rounded-lg border-2 p-2 transition-all hover:border-[var(--ant-color-primary-border)]"
+                  style={{
+                    borderColor: isSelected ? "var(--ant-color-primary)" : "var(--ant-color-border-secondary)",
+                    backgroundColor: isSelected ? "var(--ant-color-primary-bg)" : "transparent",
+                    minWidth: 90,
+                  }}
+                >
+                  {/* Color preview */}
                   <div
-                    className="w-5 h-5 rounded border"
+                    className="flex gap-0.5 rounded mb-1"
                     style={{
-                      background: `linear-gradient(135deg, ${t.previewColors[0]} 50%, ${t.previewColors[1]} 50%)`,
-                      borderColor: "var(--ant-color-border-secondary)",
+                      height: 24,
+                      alignItems: "center",
+                      justifyContent: "center",
+                      background: `linear-gradient(135deg, ${t.previewColors[0]} 30%, ${t.previewColors[1]} 70%)`,
                     }}
-                  />
-                  <span className="font-medium">{t.label}</span>
+                  >
+                    <span
+                      style={{
+                        display: "inline-block",
+                        width: 8,
+                        height: 8,
+                        borderRadius: 1,
+                        backgroundColor: t.previewColors[2],
+                      }}
+                    />
+                  </div>
+                  {/* Theme name */}
+                  <div
+                    className="text-center text-xs truncate"
+                    style={{
+                      color: isSelected ? "var(--ant-color-primary)" : "var(--ant-color-text-secondary)",
+                      fontWeight: isSelected ? 600 : 400,
+                    }}
+                  >
+                    {t.label}
+                  </div>
                 </div>
-              </Select.Option>
-            ))}
-          </Select>
+              );
+            })}
+          </div>
         </SettingRow>
       )}
       {matchesSearch("字体大小") && (

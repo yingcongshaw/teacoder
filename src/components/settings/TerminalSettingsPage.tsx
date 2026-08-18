@@ -1,4 +1,5 @@
-import { Select, Switch, Slider, Input, message } from "antd";
+import { useState, useEffect, useMemo } from "react";
+import { Select, Switch, Slider, Input, message, Typography } from "antd";
 import SettingRow from "./components/SettingRow";
 import SectionHeader from "./components/SectionHeader";
 import { useAppStore } from "../../stores/appStore";
@@ -14,14 +15,37 @@ const SHELL_OPTIONS = [
   { value: "cmd", label: "CMD" },
 ];
 
-const FONT_OPTIONS = [
-  { value: "JetBrains Mono", label: "JetBrains Mono" },
-  { value: "Fira Code", label: "Fira Code" },
-  { value: "Source Code Pro", label: "Source Code Pro" },
-  { value: "Cascadia Code", label: "Cascadia Code" },
-  { value: "Consolas", label: "Consolas" },
-  { value: "Monaco", label: "Monaco" },
+const BUILTIN_FONTS = [
+  "Consolas",
+  "JetBrains Mono",
+  "Fira Code",
+  "Source Code Pro",
+  "Cascadia Code",
+  "Monaco",
+  "Courier New",
+  "Menlo",
 ];
+
+interface LocalFont {
+  family: string;
+  style: string;
+}
+
+async function querySystemFonts(): Promise<string[]> {
+  try {
+    if ("queryLocalFonts" in window) {
+      const fonts = await (window as unknown as { queryLocalFonts: () => Promise<LocalFont[]> }).queryLocalFonts();
+      const families = new Set<string>();
+      for (const f of fonts) {
+        families.add(f.family);
+      }
+      return Array.from(families).sort((a, b) => a.localeCompare(b));
+    }
+  } catch {
+    // 权限被拒绝或不支持
+  }
+  return [];
+}
 
 interface TerminalSettingsPageProps {
   searchText?: string;
@@ -30,6 +54,20 @@ interface TerminalSettingsPageProps {
 export default function TerminalSettingsPage({ searchText = "" }: TerminalSettingsPageProps) {
   const settings = useAppStore((s) => s.terminalSettings);
   const updateSetting = useAppStore((s) => s.updateTerminalSetting);
+  const [systemFonts, setSystemFonts] = useState<string[]>([]);
+  const [fontSearch, setFontSearch] = useState("");
+
+  useEffect(() => {
+    querySystemFonts().then(setSystemFonts);
+  }, []);
+
+  const fontOptions = useMemo(() => {
+    const allFonts = systemFonts.length > 0 ? systemFonts : BUILTIN_FONTS;
+    const filtered = fontSearch
+      ? allFonts.filter((f) => f.toLowerCase().includes(fontSearch.toLowerCase()))
+      : allFonts;
+    return filtered;
+  }, [systemFonts, fontSearch]);
 
   const handleUpdate = <K extends keyof TerminalSettings>(
     key: K,
@@ -76,16 +114,29 @@ export default function TerminalSettingsPage({ searchText = "" }: TerminalSettin
       {/* 外观 */}
       <SectionHeader title="外观" />
       {matchesSearch("字体") && (
-        <SettingRow label="字体" description="终端使用的等宽字体">
+        <SettingRow label="字体" description="终端使用的等宽字体，默认 Consolas">
           <Select
             value={settings.fontFamily}
             onChange={(v) => handleUpdate("fontFamily", v)}
             style={{ width: 200 }}
-          >
-            {FONT_OPTIONS.map((f) => (
-              <Select.Option key={f.value} value={f.value}>{f.label}</Select.Option>
-            ))}
-          </Select>
+            showSearch
+            filterOption={false}
+            onSearch={setFontSearch}
+            dropdownRender={(menu) => (
+              <>
+                {menu}
+                <div style={{ padding: "4px 8px", borderTop: "1px solid var(--ant-color-border)" }}>
+                  <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+                    {systemFonts.length > 0 ? `已加载 ${systemFonts.length} 个系统字体` : "使用内置字体列表"}
+                  </Typography.Text>
+                </div>
+              </>
+            )}
+            options={fontOptions.map((f) => ({
+              value: f,
+              label: f,
+            }))}
+          />
         </SettingRow>
       )}
       {matchesSearch("字号") && (
@@ -106,7 +157,7 @@ export default function TerminalSettingsPage({ searchText = "" }: TerminalSettin
         </SettingRow>
       )}
       {matchesSearch("行高") && (
-        <SettingRow label="行高" description="终端行间距倍数">
+        <SettingRow label="行高" description="终端行间距倍数（1.0-2.0）">
           <div style={{ width: 200, display: "flex", alignItems: "center", gap: 8 }}>
             <Slider
               min={1.0}
@@ -143,35 +194,75 @@ export default function TerminalSettingsPage({ searchText = "" }: TerminalSettin
           />
         </SettingRow>
       )}
+      {matchesSearch("跟随应用主题") && (
+        <SettingRow
+          label="跟随应用主题"
+          description="开启后终端配色随通用设置中的应用主题联动，关闭时使用下方独立配色"
+        >
+          <Switch
+            checked={settings.followAppTheme}
+            onChange={(v) => handleUpdate("followAppTheme", v)}
+          />
+        </SettingRow>
+      )}
       {matchesSearch("配色主题") && (
         <SettingRow label="配色主题" description="终端配色方案">
-          <Select
-            value={settings.colorTheme}
-            onChange={(v) => handleUpdate("colorTheme", v)}
-            style={{ width: 200 }}
+          <div
+            className="flex gap-2 overflow-x-auto pb-2"
+            style={{ maxWidth: 600 }}
           >
-            {TERMINAL_COLOR_THEMES.map((t) => (
-              <Select.Option key={t.name} value={t.name}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <div style={{ display: "flex", gap: 2 }}>
-                    {["background", "red", "green", "yellow", "blue", "magenta", "cyan", "foreground"].map((k) => (
+            {TERMINAL_COLOR_THEMES.map((t) => {
+              const isSelected = settings.colorTheme === t.name;
+              return (
+                <div
+                  key={t.name}
+                  onClick={() => !settings.followAppTheme && handleUpdate("colorTheme", t.name)}
+                  className="flex-shrink-0 cursor-pointer rounded-lg border-2 p-2 transition-all hover:border-[var(--ant-color-primary-border)]"
+                  style={{
+                    borderColor: isSelected ? "var(--ant-color-primary)" : "var(--ant-color-border-secondary)",
+                    backgroundColor: isSelected ? "var(--ant-color-primary-bg)" : "transparent",
+                    opacity: settings.followAppTheme ? 0.5 : 1,
+                    minWidth: 90,
+                  }}
+                >
+                  {/* Color preview row */}
+                  <div
+                    className="flex gap-0.5 rounded mb-1"
+                    style={{
+                      backgroundColor: t.colors.background,
+                      padding: "3px 4px",
+                      height: 24,
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    {["red", "green", "yellow", "blue", "magenta", "cyan", "foreground"].map((k) => (
                       <span
                         key={k}
                         style={{
                           display: "inline-block",
-                          width: 8,
-                          height: 8,
-                          borderRadius: 2,
-                          backgroundColor: t.colors[k as keyof typeof t.colors],
+                          width: 6,
+                          height: 6,
+                          borderRadius: 1,
+                          backgroundColor: t.colors[k as keyof typeof t.colors] || t.colors.foreground,
                         }}
                       />
                     ))}
                   </div>
-                  <span>{t.label}</span>
+                  {/* Theme name */}
+                  <div
+                    className="text-center text-xs truncate"
+                    style={{
+                      color: isSelected ? "var(--ant-color-primary)" : "var(--ant-color-text-secondary)",
+                      fontWeight: isSelected ? 600 : 400,
+                    }}
+                  >
+                    {t.label}
+                  </div>
                 </div>
-              </Select.Option>
-            ))}
-          </Select>
+              );
+            })}
+          </div>
         </SettingRow>
       )}
 

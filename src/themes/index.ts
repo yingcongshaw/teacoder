@@ -1,5 +1,7 @@
-// Theme system for CodingTea
+// Theme system for TeaCoder
 // Each theme defines Ant Design token overrides + Tailwind dark class handling
+
+import { TERMINAL_COLOR_THEMES } from "../types";
 
 export interface ThemeConfig {
   key: string;
@@ -171,6 +173,23 @@ export const BUILT_IN_THEMES: ThemeConfig[] = [
     tailwindClass: "dark",
     previewColors: ["#ffff00", "#000000", "#ffffff"],
   },
+  {
+    key: "warm-light",
+    label: "暖阳",
+    description: "暖色调浅色主题，配合淡黄暖光终端配色",
+    algorithm: "light",
+    token: {
+      colorBgBase: "#fef6e4",
+      colorTextBase: "#5c4f3d",
+      colorPrimary: "#c07c2e",
+      colorBorder: "#e8dfd0",
+      colorSuccess: "#6b8c42",
+      colorWarning: "#b8860b",
+      colorError: "#c44b4b",
+    },
+    tailwindClass: "",
+    previewColors: ["#c07c2e", "#fef6e4", "#5c4f3d"],
+  },
 ];
 
 export function getThemeConfig(key: string): ThemeConfig {
@@ -187,4 +206,20 @@ export function resolveTheme(
       : getThemeConfig("light");
   }
   return getThemeConfig(themeKey);
+}
+
+/**
+ * 应用主题 -> 终端配色主题映射。
+ * 同名主题直接匹配（one-dark/monokai/dracula/solarized-light），
+ * 无对应终端配色时按深浅算法回退：深色 -> tokyo-night，浅色 -> classic-white。
+ */
+export function terminalThemeForAppTheme(
+  themeKey: string,
+  systemDark: boolean,
+): string {
+  const resolved = resolveTheme(themeKey, systemDark);
+  if (TERMINAL_COLOR_THEMES.some((t) => t.name === resolved.key)) {
+    return resolved.key;
+  }
+  return resolved.algorithm === "dark" ? "tokyo-night" : "classic-white";
 }
