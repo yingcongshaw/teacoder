@@ -117,17 +117,17 @@ export default function AppStatusBar() {
   const isClaude = activeTab?.toolType === "claude";
 
   return (
-    <div className="flex items-center h-7 px-3 text-xs border-t border-[#333333] bg-[#0d0d0d] text-[#888888] flex-shrink-0">
+    <div className="flex items-center h-7 px-3 text-xs border-t border-[var(--ant-color-border)] bg-[var(--ant-color-bg-container)] text-[var(--ant-color-text-tertiary)] flex-shrink-0">
       {activeTab ? (
         <>
           {/* Left: tool info */}
           <div className="flex items-center gap-3 flex-shrink-0">
             <span>{TOOL_DISPLAY_NAMES[activeTab.toolType]}</span>
-            <span className="text-[#333333]">|</span>
+            <span className="text-[var(--ant-color-border)]">|</span>
             <span>{activeProfile ? activeProfile.name : "未选择 Profile"}</span>
           </div>
 
-          <span className="mx-2 text-[#333333]">|</span>
+          <span className="mx-2 text-[var(--ant-color-border)]">|</span>
 
           {/* Center: token stats */}
           <div className="flex items-center gap-2 flex-1">
@@ -136,7 +136,7 @@ export default function AppStatusBar() {
                 <span>
                   In: {formatTokens(profileCost.inputTokens)} Out: {formatTokens(profileCost.outputTokens)} Cache: {formatTokens(profileCost.cacheCreationTokens + profileCost.cacheReadTokens)}
                 </span>
-                <span className="text-[#333333]">|</span>
+                <span className="text-[var(--ant-color-border)]">|</span>
                 <span>{formatCost(profileCost.costUsd)}</span>
               </>
             ) : (
@@ -157,7 +157,7 @@ export default function AppStatusBar() {
                     options={CLAUDE_MODELS}
                   />
                 </Tooltip>
-                <span className="text-[#333333]">|</span>
+                <span className="text-[var(--ant-color-border)]">|</span>
                 <Tooltip title="思考强度">
                   <Select
                     size="small"
@@ -170,16 +170,16 @@ export default function AppStatusBar() {
                     )}
                   />
                 </Tooltip>
-                <span className="text-[#333333]">|</span>
+                <span className="text-[var(--ant-color-border)]">|</span>
               </>
             )}
-            <span className="cursor-pointer hover:text-[#e0e0e0]">继续</span>
-            <span className="text-[#333333]">|</span>
-            <span className="cursor-pointer hover:text-[#e0e0e0]">建议</span>
-            <span className="text-[#333333]">|</span>
-            <span className="cursor-pointer hover:text-[#e0e0e0]">采纳</span>
-            <span className="text-[#333333]">|</span>
-            <GithubOutlined className="cursor-pointer hover:text-[#e0e0e0]" />
+            <span className="cursor-pointer hover:text-[var(--ant-color-text)]">继续</span>
+            <span className="text-[var(--ant-color-border)]">|</span>
+            <span className="cursor-pointer hover:text-[var(--ant-color-text)]">建议</span>
+            <span className="text-[var(--ant-color-border)]">|</span>
+            <span className="cursor-pointer hover:text-[var(--ant-color-text)]">采纳</span>
+            <span className="text-[var(--ant-color-border)]">|</span>
+            <GithubOutlined className="cursor-pointer hover:text-[var(--ant-color-text)]" />
           </div>
 
           {/* Far right: global cost */}
@@ -189,7 +189,7 @@ export default function AppStatusBar() {
         </>
       ) : (
         <Typography.Text type="secondary" className="text-xs">
-          茶码 CodingTea v0.1
+          茶码 TeaCoder v0.1
         </Typography.Text>
       )}
     </div>

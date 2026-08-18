@@ -59,7 +59,7 @@ export default function AppContent() {
     // 有已打开的标签时，显示终端
     if (activeTab && openTabIds.length > 0) {
       return (
-        <div className="flex-1 flex flex-col min-w-0 bg-[#0a0a0a]">
+        <div className="flex-1 flex flex-col min-w-0 bg-[var(--ant-color-bg-container)]">
           <TabBar />
           <div className="flex-1 relative overflow-hidden min-h-0">
             {openTabIds.map((tabId) => {
@@ -85,26 +85,26 @@ export default function AppContent() {
 
     // 首页：卡片网格
     return (
-      <div className="flex-1 flex flex-col min-w-0 bg-[#1e2229]">
+      <div className="flex-1 flex flex-col min-w-0 bg-[var(--ant-color-bg-layout)]">
         {/* Section header */}
         <div className="px-8 pt-6 pb-4 flex items-center justify-between">
-          <h2 className="text-base font-medium text-[#e0e0e0] m-0">最近会话</h2>
+          <h2 className="text-base font-medium text-[var(--ant-color-text)] m-0">最近会话</h2>
         </div>
 
         {/* Card grid */}
         <div className="flex-1 overflow-y-auto px-8 pb-8">
           {sessions.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full gap-6">
-              <div className="w-24 h-24 rounded-2xl bg-gradient-to-br from-[#3b82f6] to-[#722ed1] flex items-center justify-center text-white text-3xl font-bold shadow-lg">
+              <div className="w-24 h-24 rounded-2xl bg-gradient-to-br from-[var(--ant-color-primary)] to-[#722ed1] flex items-center justify-center text-white text-3xl font-bold shadow-lg">
                 茶
               </div>
               <div className="text-center">
-                <p className="text-[#999999] text-sm mb-4">
+                <p className="text-[var(--ant-color-text-secondary)] text-sm mb-4">
                   暂无会话，先创建一个项目
                 </p>
                 <button
                   onClick={() => setNewProjectModalOpen(true)}
-                  className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#3b82f6] text-white rounded-lg hover:bg-[#2563eb] transition-colors text-sm shadow-sm"
+                  className="inline-flex items-center gap-2 px-5 py-2.5 bg-[var(--ant-color-primary)] text-white rounded-lg hover:opacity-90 transition-colors text-sm shadow-sm"
                 >
                   <PlusOutlined />
                   新建项目
@@ -115,7 +115,7 @@ export default function AppContent() {
             <div className="grid grid-cols-3 gap-4">
               {sessions.map((session) => {
                 const isHovered = hoveredCardId === session.id;
-                const toolColor = TOOL_COLORS[session.toolType] || "#888";
+                const toolColor = TOOL_COLORS[session.toolType] || "var(--ant-color-text-tertiary)";
                 const isOpen = openTabIds.includes(session.id);
 
                 return (
@@ -123,11 +123,11 @@ export default function AppContent() {
                     key={session.id}
                     className="rounded-lg border p-5 cursor-pointer transition-all"
                     style={{
-                      backgroundColor: isHovered ? "#252830" : "#1f222b",
-                      borderColor: isHovered ? "#3a3d48" : "#2a2d38",
+                      backgroundColor: isHovered ? "var(--ant-color-bg-elevated)" : "var(--ant-color-bg-container)",
+                      borderColor: isHovered ? "var(--ant-color-border)" : "var(--ant-color-border-secondary)",
                       boxShadow: isHovered
-                        ? "0 4px 12px rgba(0,0,0,0.4)"
-                        : "0 1px 3px rgba(0,0,0,0.3)",
+                        ? "0 4px 12px rgba(0,0,0,0.15)"
+                        : "0 1px 3px rgba(0,0,0,0.08)",
                     }}
                     onClick={() => {
                       if (isOpen) {
@@ -146,13 +146,13 @@ export default function AppContent() {
                           className="inline-block w-2 h-2 rounded-full flex-shrink-0"
                           style={{ backgroundColor: session.color || toolColor }}
                         />
-                        <span className="text-sm font-medium text-[#e0e0e0] truncate">
+                        <span className="text-sm font-medium text-[var(--ant-color-text)] truncate">
                           {session.title || TOOL_DISPLAY_NAMES[session.toolType]}
                         </span>
                       </div>
                       <div className="flex items-center gap-2 flex-shrink-0 ml-2">
                         {isOpen && (
-                          <span className="text-[10px] text-[#3b82f6]">已打开</span>
+                          <span className="text-[10px] text-[var(--ant-color-primary)]">已打开</span>
                         )}
                         <span
                           className="text-xs"
@@ -164,7 +164,7 @@ export default function AppContent() {
                     </div>
 
                     {/* Project */}
-                    <div className="flex items-center gap-1.5 text-xs text-[#888888] mb-3">
+                    <div className="flex items-center gap-1.5 text-xs text-[var(--ant-color-text-secondary)] mb-3">
                       <FolderOutlined style={{ fontSize: 11 }} />
                       <span className="truncate">
                         {projects.find((p) => p.id === session.projectId)?.name || "未知项目"}
@@ -173,7 +173,7 @@ export default function AppContent() {
 
                     {/* Bottom row: timestamp + actions */}
                     <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-1 text-xs text-[#666666]">
+                      <div className="flex items-center gap-1 text-xs text-[var(--ant-color-text-tertiary)]">
                         <ClockCircleOutlined style={{ fontSize: 11 }} />
                         <span>
                           {session.createdAt
@@ -181,7 +181,7 @@ export default function AppContent() {
                             : "--"}
                         </span>
                         {session.isRunning && (
-                          <span className="inline-block w-1.5 h-1.5 rounded-full bg-[#52c41a] ml-2" style={{ animation: "pulse-dot 2s ease-in-out infinite" }} />
+                          <span className="inline-block w-1.5 h-1.5 rounded-full bg-[var(--ant-color-success)] ml-2" style={{ animation: "pulse-dot 2s ease-in-out infinite" }} />
                         )}
                       </div>
 
@@ -194,7 +194,7 @@ export default function AppContent() {
                           <Button
                             type="text"
                             size="small"
-                            icon={<PlayCircleOutlined style={{ fontSize: 12, color: "#888888" }} />}
+                            icon={<PlayCircleOutlined style={{ fontSize: 12, color: "var(--ant-color-text-secondary)" }} />}
                             onClick={(e) => {
                               e.stopPropagation();
                               if (isOpen) {
@@ -210,7 +210,7 @@ export default function AppContent() {
                           <Button
                             type="text"
                             size="small"
-                            icon={<DeleteOutlined style={{ fontSize: 12, color: "#888888" }} />}
+                            icon={<DeleteOutlined style={{ fontSize: 12, color: "var(--ant-color-text-secondary)" }} />}
                             onClick={(e) => {
                               e.stopPropagation();
                               Modal.confirm({
@@ -235,21 +235,21 @@ export default function AppContent() {
               <div
                 className="rounded-lg border border-dashed p-5 cursor-pointer transition-all flex flex-col items-center justify-center gap-2 min-h-[130px]"
                 style={{
-                  backgroundColor: "#1f222b",
-                  borderColor: "#3a3d48",
+                  backgroundColor: "var(--ant-color-bg-container)",
+                  borderColor: "var(--ant-color-border)",
                 }}
                 onClick={() => setNewSessionModalOpen(true)}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.borderColor = "#3b82f6";
-                  e.currentTarget.style.backgroundColor = "#252835";
+                  e.currentTarget.style.borderColor = "var(--ant-color-primary)";
+                  e.currentTarget.style.backgroundColor = "var(--ant-color-bg-elevated)";
                 }}
                 onMouseLeave={(e) => {
-                  e.currentTarget.style.borderColor = "#3a3d48";
-                  e.currentTarget.style.backgroundColor = "#1f222b";
+                  e.currentTarget.style.borderColor = "var(--ant-color-border)";
+                  e.currentTarget.style.backgroundColor = "var(--ant-color-bg-container)";
                 }}
               >
-                <PlusOutlined style={{ fontSize: 20, color: "#999999" }} />
-                <span className="text-xs text-[#888888]">新建会话</span>
+                <PlusOutlined style={{ fontSize: 20, color: "var(--ant-color-text-secondary)" }} />
+                <span className="text-xs text-[var(--ant-color-text-secondary)]">新建会话</span>
               </div>
             </div>
           )}
@@ -263,16 +263,17 @@ export default function AppContent() {
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {mainContent}
         {/* Bottom cost bar */}
-        <div className="flex-shrink-0 border-t border-[#2a2d38] bg-[#1a1a1d]">
+        <div className="flex-shrink-0 border-t border-[var(--ant-color-border)] bg-[var(--ant-color-bg-container)]">
           <div
-            className="flex items-center justify-between px-3 py-1.5 cursor-pointer hover:bg-[#252830] transition-colors"
+            className="flex items-center justify-between px-3 py-1.5 cursor-pointer transition-colors"
+            style={{ backgroundColor: "var(--ant-color-bg-container)" }}
             onClick={() => setCostModalOpen(true)}
           >
-            <div className="flex items-center gap-2 text-xs text-[#888888]">
+            <div className="flex items-center gap-2 text-xs" style={{ color: "var(--ant-color-text-secondary)" }}>
               <DollarOutlined style={{ fontSize: 12 }} />
               <span>费用统计</span>
               {globalCost && globalCost.costUsd > 0 && (
-                <span className="text-[#e0e0e0]">{formatCost(globalCost.costUsd)}</span>
+                <span style={{ color: "var(--ant-color-text)" }}>{formatCost(globalCost.costUsd)}</span>
               )}
             </div>
           </div>
@@ -350,13 +351,15 @@ function DraggableModal({
   return (
     <div
       style={{
-        position: "fixed",
+        position: "absolute",
         inset: 0,
         zIndex: 1000,
         background: "rgba(0, 0, 0, 0.45)",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
+        borderRadius: 10,
+        overflow: "hidden",
       }}
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
