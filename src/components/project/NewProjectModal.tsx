@@ -77,11 +77,12 @@ export default function NewProjectModal({ open, onClose }: NewProjectModalProps)
       cancelText="取消"
       confirmLoading={loading}
       width={460}
-      destroyOnClose
+      destroyOnHidden
+      mask={{ closable: false }}
     >
       <div className="space-y-4 mt-2">
         <div>
-          <label className="block text-xs text-gray-400 mb-1">项目名称</label>
+          <label className="block text-xs text-[var(--ant-color-text-secondary)] mb-1">项目名称</label>
           <Input
             value={name}
             onChange={(e) => setName(e.target.value)}
@@ -90,14 +91,14 @@ export default function NewProjectModal({ open, onClose }: NewProjectModalProps)
           />
         </div>
         <div>
-          <label className="block text-xs text-gray-400 mb-1">项目路径</label>
+          <label className="block text-xs text-[var(--ant-color-text-secondary)] mb-1">项目路径</label>
           <Input
             value={path}
             onChange={(e) => setPath(e.target.value)}
             placeholder="~/projects/my-project"
             addonAfter={
               <span
-                className="cursor-pointer text-xs text-[#3b82f6]"
+                className="cursor-pointer text-xs text-[var(--ant-color-primary)]"
                 onClick={handleBrowse}
               >
                 浏览
@@ -106,7 +107,7 @@ export default function NewProjectModal({ open, onClose }: NewProjectModalProps)
           />
         </div>
         <div>
-          <label className="block text-xs text-gray-400 mb-1">颜色标记</label>
+          <label className="block text-xs text-[var(--ant-color-text-secondary)] mb-1">颜色标记</label>
           <div className="flex gap-2">
             {PROJECT_COLORS.map((c) => (
               <span
@@ -114,7 +115,7 @@ export default function NewProjectModal({ open, onClose }: NewProjectModalProps)
                 className="inline-block w-5 h-5 rounded-full cursor-pointer border-2 transition-transform"
                 style={{
                   backgroundColor: c,
-                  borderColor: color === c ? "#e0e0e0" : "transparent",
+                  borderColor: color === c ? "var(--ant-color-border)" : "transparent",
                   transform: color === c ? "scale(1.2)" : "scale(1)",
                 }}
                 onClick={() => setColor(c)}

@@ -107,7 +107,7 @@ interface SessionTemplate {
 ├─────────────────────────┤
 │ 项目 (3)        [+项目]  │
 ├─────────────────────────┤
-│ ▼ 📁 CodingTea    [+会话]│
+│ ▼ 📁 TeaCoder    [+会话]│
 │   🟣 Claude Code        │
 │   🔵 Codex CLI          │
 │ ▶ 📁 my-app             │
@@ -203,7 +203,7 @@ interface SessionTemplate {
 
 ### 前端迁移
 
-- 首次启动检测 localStorage 中有 `codingtea_sessions` 但后端 sessions 表为空时，执行迁移
+- 首次启动检测 localStorage 中有 `teacoder_sessions` 但后端 sessions 表为空时，执行迁移
 - 迁移逻辑：按 workDir 分组 → 为每个 workDir 创建 Project → 为每个 TabState 创建 Session（关联对应 project_id）
 - 迁移完成后清除 localStorage 中的旧数据
 

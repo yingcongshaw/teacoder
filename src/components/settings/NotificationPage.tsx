@@ -32,7 +32,7 @@ export default function NotificationPage({ searchText = "" }: NotificationPagePr
 
   useEffect(() => {
     try {
-      const raw = localStorage.getItem("codingtea_notification_settings");
+      const raw = localStorage.getItem("teacoder_notification_settings");
       const saved = raw ? JSON.parse(raw) : {};
       setSettings({ ...DEFAULT_SETTINGS, ...saved });
     } catch {
@@ -46,7 +46,7 @@ export default function NotificationPage({ searchText = "" }: NotificationPagePr
   ) => {
     const next = { ...settings, [key]: value };
     setSettings(next);
-    localStorage.setItem("codingtea_notification_settings", JSON.stringify(next));
+    localStorage.setItem("teacoder_notification_settings", JSON.stringify(next));
     message.success("设置已保存");
   };
 

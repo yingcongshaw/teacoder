@@ -37,7 +37,7 @@ export default function McpAccessPage({ searchText = "" }: McpAccessPageProps) {
 
   useEffect(() => {
     try {
-      const raw = localStorage.getItem("codingtea_mcpaccess_settings");
+      const raw = localStorage.getItem("teacoder_mcpaccess_settings");
       const saved = raw ? JSON.parse(raw) : {};
       setSettings({ ...DEFAULT_SETTINGS, ...saved });
     } catch {
@@ -47,7 +47,7 @@ export default function McpAccessPage({ searchText = "" }: McpAccessPageProps) {
 
   const saveSettings = (next: McpAccessSettings) => {
     setSettings(next);
-    localStorage.setItem("codingtea_mcpaccess_settings", JSON.stringify(next));
+    localStorage.setItem("teacoder_mcpaccess_settings", JSON.stringify(next));
     message.success("设置已保存");
   };
 

@@ -1,9 +1,0 @@
-[Desktop Entry]
-Type=Application
-Name=茶码 CodingTea
-Exec=@EXE@
-Icon=@ICON@
-Comment=CodingTea 代码编辑器
-Categories=Development;
-Terminal=false
-StartupWMClass=@WM_CLASS@

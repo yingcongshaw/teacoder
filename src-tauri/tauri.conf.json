@@ -1,23 +1,24 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "codingtea",
+  "productName": "teacoder",
   "version": "0.1.0",
-  "identifier": "com.codingtea.app",
+  "identifier": "com.teacoder.app",
   "build": {
     "beforeDevCommand": "pnpm dev",
-    "devUrl": "http://localhost:1420",
+    "devUrl": "http://localhost:1421",
     "beforeBuildCommand": "pnpm build",
     "frontendDist": "../dist"
   },
   "app": {
     "windows": [
       {
-        "title": "茶码 CodingTea",
+        "title": "茶码 TeaCoder",
         "width": 1200,
         "height": 800,
         "minWidth": 800,
         "minHeight": 600,
-        "decorations": false
+        "decorations": false,
+        "transparent": true
       }
     ],
     "security": {
@@ -30,8 +31,7 @@
     "linux": {
       "deb": {
         "section": "devel",
-        "priority": "optional",
-        "desktopTemplate": "./assets/codingtea.desktop.template"
+        "priority": "optional"
       }
     },
     "icon": [

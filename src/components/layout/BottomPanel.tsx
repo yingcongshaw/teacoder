@@ -129,8 +129,8 @@ export default function BottomPanel() {
 
   if (collapsed) {
     return (
-      <div className="border-t border-[#333333] bg-[#0d0d0d] h-8 flex items-center justify-between px-3 flex-shrink-0">
-        <span className="text-xs text-[#888888]">底部面板已折叠</span>
+      <div className="border-t border-[var(--ant-color-border)] bg-[var(--ant-color-bg-container)] h-8 flex items-center justify-between px-3 flex-shrink-0">
+        <span className="text-xs text-[var(--ant-color-text-tertiary)]">底部面板已折叠</span>
         <Button
           size="small"
           type="text"
@@ -142,8 +142,8 @@ export default function BottomPanel() {
   }
 
   return (
-    <div className="border-t border-[#333333] bg-[#0d0d0d] flex flex-col flex-shrink-0" style={{ height: 220 }}>
-      <div className="flex items-center justify-between px-2 py-1 border-b border-[#333333] flex-shrink-0">
+    <div className="border-t border-[var(--ant-color-border)] bg-[var(--ant-color-bg-container)] flex flex-col flex-shrink-0" style={{ height: 220 }}>
+      <div className="flex items-center justify-between px-2 py-1 border-b border-[var(--ant-color-border)] flex-shrink-0">
         <Tabs
           size="small"
           activeKey={activeTab}
@@ -189,7 +189,7 @@ export default function BottomPanel() {
             <div className="space-y-2 text-sm">
               <div className="flex items-center gap-2">
                 <BranchesOutlined />
-                <span className="text-[#888888]">当前分支:</span>
+                <span className="text-[var(--ant-color-text-tertiary)]">当前分支:</span>
                 <Tag color="blue">main</Tag>
               </div>
               <Empty
@@ -219,8 +219,8 @@ export default function BottomPanel() {
           )}
         </div>
 
-        <div className="w-56 border-l border-[#333333] p-2 flex flex-col gap-2 flex-shrink-0 overflow-y-auto">
-          <div className="text-xs text-[#888888] mb-1">快捷输入</div>
+        <div className="w-56 border-l border-[var(--ant-color-border-secondary)] p-2 flex flex-col gap-2 flex-shrink-0 overflow-y-auto">
+          <div className="text-xs text-[var(--ant-color-text-tertiary)] mb-1">快捷输入</div>
           <div className="grid grid-cols-2 gap-1">
             {QUICK_ACTIONS.map((action) => (
               <Button
@@ -246,7 +246,7 @@ export default function BottomPanel() {
             icon={<ReloadOutlined />}
             onClick={() => activeTabId && writeToPty(activeTabId, "/resume\n").catch(() => {})}
           >
-            恢复会话
+            恢复对话
           </Button>
         </div>
       </div>

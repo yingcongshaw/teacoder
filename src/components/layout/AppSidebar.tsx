@@ -11,6 +11,7 @@ import ProjectNode from "../project/ProjectNode";
 export default function AppSidebar() {
   const projects = useAppStore((s) => s.projects);
   const sessions = useAppStore((s) => s.sessions);
+  const categories = useAppStore((s) => s.categories);
   const setNewProjectModalOpen = useAppStore((s) => s.setNewProjectModalOpen);
   const setNewSessionModalOpen = useAppStore((s) => s.setNewSessionModalOpen);
 
@@ -36,33 +37,33 @@ export default function AppSidebar() {
     sessions.filter((s) => s.projectId === projectId);
 
   return (
-    <div className="w-full h-full bg-[#202023] flex flex-col">
+    <div className="h-full bg-[var(--ant-color-bg-container)] flex flex-col min-w-0" style={{ maxWidth: 240 }}>
       {/* Search bar */}
       <div className="px-3 pt-2 pb-2 flex-shrink-0">
         <Input
           size="small"
           placeholder="搜索项目/会话..."
-          prefix={<SearchOutlined className="text-[#555555]" />}
+          prefix={<SearchOutlined className="text-[var(--ant-color-text-quaternary)]" />}
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           allowClear
           style={{
-            backgroundColor: "#252830",
-            borderColor: "#2a2d38",
-            color: "#cccccc",
+            backgroundColor: "var(--ant-color-bg-elevated)",
+            borderColor: "var(--ant-color-border)",
+            color: "var(--ant-color-text)",
             borderRadius: 6,
           }}
         />
       </div>
 
       {/* Projects section header */}
-      <div className="px-3 py-1.5 flex items-center justify-between flex-shrink-0">
+      <div className="px-3 py-1.5 flex items-center justify-between flex-shrink-0 border-b border-[var(--ant-color-border)]">
         <div className="flex items-center gap-1.5">
-          <FolderOutlined style={{ fontSize: 11, color: "#888888" }} />
-          <span className="text-xs text-[#888888] font-medium">项目</span>
+          <FolderOutlined style={{ fontSize: 13, color: "var(--ant-color-primary)" }} />
+          <span className="text-xs text-[var(--ant-color-text-secondary)] font-semibold tracking-wide">项目</span>
           <Badge
             count={projects.length}
-            style={{ backgroundColor: "#2a2d38", color: "#aaaaaa", fontSize: 10 }}
+            style={{ backgroundColor: "var(--ant-color-bg-elevated)", color: "var(--ant-color-text-secondary)", fontSize: 10 }}
             size="small"
           />
         </div>
@@ -70,18 +71,18 @@ export default function AppSidebar() {
           <Button
             type="text"
             size="small"
-            icon={<PlusOutlined style={{ fontSize: 12, color: "#888888" }} />}
+            icon={<PlusOutlined style={{ fontSize: 12, color: "var(--ant-color-text-tertiary)" }} />}
             onClick={() => setNewProjectModalOpen(true)}
-            style={{ color: "#888888" }}
+            style={{ color: "var(--ant-color-text-tertiary)" }}
           />
         </Tooltip>
       </div>
 
       {/* Project list */}
-      <div className="flex-1 overflow-y-auto min-h-0">
+      <div className="flex-1 overflow-y-auto min-h-0 w-full min-w-0">
         {filteredProjects.length === 0 ? (
           <div className="px-3 py-8 text-center">
-            <p className="text-xs text-[#666666] mb-3">
+            <p className="text-xs text-[var(--ant-color-text-disabled)] mb-3">
               {searchQuery.trim() ? "未找到匹配项" : "暂无项目"}
             </p>
             {!searchQuery.trim() && (
@@ -91,7 +92,6 @@ export default function AppSidebar() {
                   size="small"
                   icon={<PlusOutlined />}
                   onClick={() => setNewProjectModalOpen(true)}
-                  style={{ backgroundColor: "#3b82f6", borderColor: "#3b82f6" }}
                 >
                   新建项目
                 </Button>
@@ -99,7 +99,7 @@ export default function AppSidebar() {
                   size="small"
                   icon={<PlusOutlined />}
                   onClick={() => setNewSessionModalOpen(true)}
-                  style={{ color: "#888888", borderColor: "#2a2d38" }}
+                  style={{ color: "var(--ant-color-text-tertiary)", borderColor: "var(--ant-color-border)" }}
                 >
                   新建会话
                 </Button>
@@ -112,6 +112,7 @@ export default function AppSidebar() {
               key={project.id}
               project={project}
               sessions={getProjectSessions(project.id)}
+              categories={categories}
             />
           ))
         )}

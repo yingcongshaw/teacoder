@@ -1,4 +1,4 @@
-# 茶码 CodingTea — 需求说明书 v0.1 (MVP)
+# 茶码 TeaCoder — 需求说明书 v0.1 (MVP)
 
 > 本文档面向 Claude Code 开发实现，描述 v0.1 最小可用版本的完整需求。所有功能需在 v0.1 中实现并可用。
 
@@ -8,7 +8,7 @@
 
 ### 1.1 项目名称
 
-茶码 CodingTea
+茶码 TeaCoder
 
 ### 1.2 版本
 
@@ -247,7 +247,7 @@ interface Profile {
 - **隔离方式**：每个 Profile 独立的 `app_data_root` 目录
 - **Claude Code 隔离**：
   - 默认 `~/.claude/`
-  - Profile 独立目录：`~/.codingtea/profiles/<profile_id>/claude-data/`
+  - Profile 独立目录：`~/.teacoder/profiles/<profile_id>/claude-data/`
   - 通过环境变量 `CLAUDE_CONFIG_DIR` 指向独立目录
 - **其他 CLI**：v0.1 暂不强制隔离，使用默认目录（文档标注"逐步适配"）
 
@@ -414,8 +414,8 @@ CREATE TABLE settings (
 
 ### 4.2 JSONL 用途
 
-- CLI 工具自身的会话记录保持 JSONL 格式（如 Claude Code 的 conversation_*.jsonl），CodingTea 只读取不写入
-- CodingTea 自身的审计日志（Profile 切换、CLI 启动/退出）写入 `~/.codingtea/logs/audit.jsonl`
+- CLI 工具自身的会话记录保持 JSONL 格式（如 Claude Code 的 conversation_*.jsonl），TeaCoder 只读取不写入
+- TeaCoder 自身的审计日志（Profile 切换、CLI 启动/退出）写入 `~/.teacoder/logs/audit.jsonl`
 
 ---
 

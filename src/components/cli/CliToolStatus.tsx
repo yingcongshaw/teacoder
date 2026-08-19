@@ -47,7 +47,7 @@ export default function CliToolStatus() {
       ))}
       <Tooltip title="重新检测">
         <ReloadOutlined
-          className="text-[10px] text-[#555555] cursor-pointer hover:text-[#cccccc] ml-auto"
+          className="text-[10px] text-[var(--ant-color-text-quaternary)] cursor-pointer hover:text-[var(--ant-color-text)] ml-auto"
           onClick={handleRedetect}
         />
       </Tooltip>

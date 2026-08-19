@@ -1,4 +1,4 @@
-# CodingTea vs AICoder 浏览器截图对比报告
+# TeaCoder vs AICoder 浏览器截图对比报告
 
 > 生成时间：2026-08-04
 > 对比范围：Week 1（设置系统）+ Week 2（会话管理/底部面板）已完成功能
@@ -9,7 +9,7 @@
 
 ### 1.1 首页布局
 
-| 维度 | AICoder | CodingTea（当前） | 差异评估 |
+| 维度 | AICoder | TeaCoder（当前） | 差异评估 |
 |------|---------|-------------------|----------|
 | **顶部栏** | 有：窗口控制按钮（最小化/最大化/关闭）+ 搜索框 + 用户头像 | 有：汉堡菜单 + 标题 + 工具/刷新/搜索/设置图标按钮 | ⚠️ 缺少窗口控制按钮、用户头像 |
 | **左侧边栏** | 有：项目列表 + 会话列表 + 底部快捷操作 | 有：新建会话按钮 + 搜索 + 排序 + 过滤 + 项目分组 + 收藏 | ✅ 功能更全（搜索/排序/过滤/收藏） |
@@ -35,9 +35,9 @@ AICoder 首页：
 │ [模型▼] [思考强度▼]  Token: 1.2K/3.4K   │  ← 状态栏
 └─────────────────────────────────────────┘
 
-CodingTea 首页：
+TeaCoder 首页：
 ┌─────────────────────────────────────────┐
-│ [≡] 茶码 CodingTea  [tool][refresh][search][setting] │  ← 顶部栏（无窗口控制）
+│ [≡] 茶码 TeaCoder  [tool][refresh][search][setting] │  ← 顶部栏（无窗口控制）
 ├────────┬────────────────────────────────┤
 │ [+新建] │                                │
 │ [搜索] │      终端区域                   │  ← 主体
@@ -56,19 +56,19 @@ CodingTea 首页：
 
 ### 2.1 登录与首次引导
 
-| 功能 | AICoder | CodingTea | 状态 |
+| 功能 | AICoder | TeaCoder | 状态 |
 |------|---------|-----------|------|
 | 用户协议弹窗 | ✅ 有（首次启动） | ❌ 无 | **缺失** |
 | 首次登录指引 | ✅ 有（多步骤引导） | ❌ 无 | **缺失** |
 | 欢迎页面 | ✅ 有 | ❌ 无（显示"暂无会话"） | **缺失** |
 
-**评估**：AICoder 有完整的 onboarding 流程，CodingTea 直接进入空状态。
+**评估**：AICoder 有完整的 onboarding 流程，TeaCoder 直接进入空状态。
 
 ---
 
 ### 2.2 首页布局
 
-| 功能 | AICoder | CodingTea | 状态 |
+| 功能 | AICoder | TeaCoder | 状态 |
 |------|---------|-----------|------|
 | 窗口控制按钮 | ✅ 有（最小化/最大化/关闭） | ❌ 无 | **缺失** |
 | 搜索框（顶部） | ✅ 有 | ❌ 无（仅在侧边栏） | **位置不同** |
@@ -83,7 +83,7 @@ CodingTea 首页：
 
 #### AICoder 设置（7 大类，20+ 页面）
 
-| 设置类别 | AICoder 页面数 | CodingTea 对应 | 状态 |
+| 设置类别 | AICoder 页面数 | TeaCoder 对应 | 状态 |
 |----------|---------------|----------------|------|
 | 通用设置 | 3 页 | ✅ GeneralSettingsPage（1 页） | ⚠️ 合并为 1 页 |
 | Claude 设置 | 4 页 | ✅ ClaudeSettingsPage（1 页） | ⚠️ 合并为 1 页 |
@@ -104,13 +104,13 @@ CodingTea 首页：
 | MCP 接入 | 2 页 | ❌ 无 | **缺失** |
 | 关于 | 1 页 | ✅ AboutPage（1 页） | ✅ 一致 |
 
-**评估**：AICoder 设置系统非常庞大（18+ 页面），CodingTea 目前仅实现 4 个实际页面（通用、终端、Claude、关于），其余为占位菜单。
+**评估**：AICoder 设置系统非常庞大（18+ 页面），TeaCoder 目前仅实现 4 个实际页面（通用、终端、Claude、关于），其余为占位菜单。
 
 ---
 
 ### 2.4 会话管理（Week 2 重点）
 
-| 功能 | AICoder | CodingTea | 状态 |
+| 功能 | AICoder | TeaCoder | 状态 |
 |------|---------|-----------|------|
 | 搜索会话 | ✅ 有 | ✅ 有（按标题/工作目录/工具类型过滤） | ✅ 一致 |
 | 排序会话 | ✅ 有（名称/时间/工具） | ✅ 有（名称/时间/工具） | ✅ 一致 |
@@ -124,26 +124,26 @@ CodingTea 首页：
 | 查看属性 | ✅ 有（弹窗显示详情） | ✅ 有（弹窗显示详情） | ✅ 一致 |
 | 新建会话弹窗 | ✅ 有（工具/Profile/工作目录/标题/颜色） | ✅ 有（+ 高级选项：环境变量/启动参数） | ✅ 更全 |
 
-**评估**：会话管理功能 CodingTea 已实现与 AICoder 持平，部分功能（高级选项）甚至更丰富。
+**评估**：会话管理功能 TeaCoder 已实现与 AICoder 持平，部分功能（高级选项）甚至更丰富。
 
 ---
 
 ### 2.5 主题系统
 
-| 功能 | AICoder | CodingTea | 状态 |
+| 功能 | AICoder | TeaCoder | 状态 |
 |------|---------|-----------|------|
 | 内置主题数量 | ✅ 10+ 套（深色/浅色/多种配色） | ⚠️ 2 套（dark/light + system） | **差距大** |
 | 主题切换 UI | ✅ 有（下拉选择，带预览） | ⚠️ 有（设置中选择，无预览） | **交互弱** |
 | 跟随系统 | ✅ 有 | ✅ 有 | ✅ 一致 |
 | 实时切换 | ✅ 有 | ✅ 有 | ✅ 一致 |
 
-**评估**：AICoder 主题系统非常丰富，CodingTea 仅实现了基础 dark/light 切换。
+**评估**：AICoder 主题系统非常丰富，TeaCoder 仅实现了基础 dark/light 切换。
 
 ---
 
 ### 2.6 底部面板
 
-| 功能 | AICoder | CodingTea | 状态 |
+| 功能 | AICoder | TeaCoder | 状态 |
 |------|---------|-----------|------|
 | 文件树 | ✅ 有 | ✅ 有（占位数据） | ✅ 一致 |
 | Git 面板 | ✅ 有（显示分支/更改） | ✅ 有（占位数据） | ✅ 一致 |
@@ -155,13 +155,13 @@ CodingTea 首页：
 | 输入框 | ✅ 有 | ✅ 有 | ✅ 一致 |
 | 仪表盘 | ✅ 有（Token 统计图表） | ❌ 无 | **缺失** |
 
-**评估**：底部面板功能基本一致，CodingTea 缺少仪表盘（Token 统计图表）。
+**评估**：底部面板功能基本一致，TeaCoder 缺少仪表盘（Token 统计图表）。
 
 ---
 
 ### 2.7 模型切换与思考强度
 
-| 功能 | AICoder | CodingTea | 状态 |
+| 功能 | AICoder | TeaCoder | 状态 |
 |------|---------|-----------|------|
 | 模型下拉选择 | ✅ 有（状态栏） | ✅ 有（状态栏） | ✅ 一致 |
 | 思考强度切换 | ✅ 有（低/中/高） | ✅ 有（低/中/高） | ✅ 一致 |
@@ -174,7 +174,7 @@ CodingTea 首页：
 
 ### 3.1 整体风格
 
-| 维度 | AICoder | CodingTea |
+| 维度 | AICoder | TeaCoder |
 |------|---------|-----------|
 | **UI 框架** | 自定义（类似 VS Code） | Ant Design 6 + TailwindCSS |
 | **色调** | 深色主题为主，高对比度 | 支持 dark/light，但对比度较低 |
@@ -185,7 +185,7 @@ CodingTea 首页：
 
 ### 3.2 具体组件差异
 
-| 组件 | AICoder | CodingTea |
+| 组件 | AICoder | TeaCoder |
 |------|---------|-----------|
 | **按钮** | 扁平，无阴影，hover 微亮 | Ant Design 默认样式（有阴影） |
 | **输入框** | 细边框，聚焦时高亮 | Ant Design 默认样式 |
@@ -279,49 +279,49 @@ CodingTea 首页：
 
 ### 6.1 首页对比
 
-| AICoder | CodingTea |
+| AICoder | TeaCoder |
 |---------|-----------|
-| ![AICoder](image/3.首页.png) | ![CodingTea](codingtea-main.png) |
+| ![AICoder](image/3.首页.png) | ![TeaCoder](teacoder-main.png) |
 
 **观察**：
-- AICoder 顶部有窗口控制按钮，CodingTea 没有
-- AICoder 侧边栏更紧凑，CodingTea 较宽松
-- AICoder 底部面板默认展开，CodingTea 也是
+- AICoder 顶部有窗口控制按钮，TeaCoder 没有
+- AICoder 侧边栏更紧凑，TeaCoder 较宽松
+- AICoder 底部面板默认展开，TeaCoder 也是
 - 整体布局结构相似（2:8 分栏）
 
 ### 6.2 新建会话对比
 
-| AICoder | CodingTea |
+| AICoder | TeaCoder |
 |---------|-----------|
-| ![AICoder](image/22.新建会话.png) | ![CodingTea](codingtea-new-session-modal.png) |
+| ![AICoder](image/22.新建会话.png) | ![TeaCoder](teacoder-new-session-modal.png) |
 
 **观察**：
-- AICoder 弹窗更紧凑，CodingTea 较宽松
-- CodingTea 多了"高级选项"折叠面板（环境变量/启动参数）
+- AICoder 弹窗更紧凑，TeaCoder 较宽松
+- TeaCoder 多了"高级选项"折叠面板（环境变量/启动参数）
 - AICoder 颜色选择更直观
 
 ### 6.3 设置页对比
 
-| AICoder Claude 设置 | CodingTea Claude 设置 |
+| AICoder Claude 设置 | TeaCoder Claude 设置 |
 |---------------------|----------------------|
-| ![AICoder](image/4.设置-Clude页1.png) | ![CodingTea](codingtea-claude-settings.png) |
+| ![AICoder](image/4.设置-Clude页1.png) | ![TeaCoder](teacoder-claude-settings.png) |
 
 **观察**：
 - AICoder 使用标签页组织多个设置页面
-- CodingTea 使用左侧菜单 + 右侧内容区
+- TeaCoder 使用左侧菜单 + 右侧内容区
 - AICoder 视觉更精致（自定义组件）
-- CodingTea 使用 Ant Design 默认样式
+- TeaCoder 使用 Ant Design 默认样式
 
 ### 6.4 终端设置对比
 
-| AICoder 终端设置 | CodingTea 终端设置 |
+| AICoder 终端设置 | TeaCoder 终端设置 |
 |------------------|-------------------|
-| ![AICoder](image/9.设置-终端1.png) | ![CodingTea](codingtea-terminal-settings.png) |
+| ![AICoder](image/9.设置-终端1.png) | ![TeaCoder](teacoder-terminal-settings.png) |
 
 **观察**：
 - 两者结构类似（Shell/字体/光标/缓冲区）
-- AICoder 使用卡片式布局，CodingTea 也是
-- AICoder 更紧凑，CodingTea 较宽松
+- AICoder 使用卡片式布局，TeaCoder 也是
+- AICoder 更紧凑，TeaCoder 较宽松
 
 ---
 

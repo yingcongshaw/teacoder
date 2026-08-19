@@ -129,14 +129,20 @@ export default function ProfileFormModal({
     claude: "将设置 CLAUDE_CONFIG_DIR 环境变量",
     codex: "将设置 CODEX_HOME 环境变量",
     gemini: "将设置 GEMINI_HOME 环境变量",
+    antigravity: "将设置 ANTIGRAVITY_HOME 环境变量",
     opencode: "将设置 OPENCODE_HOME 环境变量",
+    terminal: "不适用",
+    ssh: "不适用",
   };
 
   const credentialPlaceholder: Record<ToolType, string> = {
     claude: "sk-ant-...",
     codex: "sk-...",
     gemini: "AIza...",
+    antigravity: "输入 API Key",
     opencode: "输入 API Key",
+    terminal: "不适用",
+    ssh: "不适用",
   };
 
   return (
@@ -149,7 +155,8 @@ export default function ProfileFormModal({
       cancelText="取消"
       confirmLoading={loading}
       width={520}
-      destroyOnClose
+      destroyOnHidden
+      mask={{ closable: false }}
     >
       <Form
         form={form}

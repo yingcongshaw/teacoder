@@ -39,7 +39,7 @@ export default function AboutPage({ searchText = "" }: AboutPageProps) {
           茶
         </div>
         <Typography.Title level={4} style={{ margin: 0 }}>
-          茶码 CodingTea
+          茶码 TeaCoder
         </Typography.Title>
         <div style={{ marginTop: 4, color: "var(--ant-color-text-secondary)", fontSize: 13 }}>
           AI 编程 CLI 工具桌面管理客户端
@@ -55,7 +55,7 @@ export default function AboutPage({ searchText = "" }: AboutPageProps) {
       {/* 应用信息 */}
       <SectionHeader title="应用信息" />
       {matchesSearch("应用名称") && (
-        <SettingRow label="应用名称">茶码 CodingTea</SettingRow>
+        <SettingRow label="应用名称">茶码 TeaCoder</SettingRow>
       )}
       {matchesSearch("版本") && (
         <SettingRow label="版本">v0.1.0</SettingRow>
@@ -105,7 +105,7 @@ export default function AboutPage({ searchText = "" }: AboutPageProps) {
       <div style={{ padding: "12px 0" }}>
         <Space>
           <a
-            href="https://github.com/codingtea/codingtea"
+            href="https://github.com/teacoder/teacoder"
             target="_blank"
             rel="noopener noreferrer"
             style={{ display: "flex", alignItems: "center", gap: 4, color: "var(--ant-color-primary)" }}
@@ -121,7 +121,7 @@ export default function AboutPage({ searchText = "" }: AboutPageProps) {
       <div style={{ textAlign: "center", color: "var(--ant-color-text-tertiary)", fontSize: 12, padding: "8px 0" }}>
         <p style={{ margin: 0 }}>
           <HeartOutlined style={{ marginRight: 4 }} />
-          Made with love by the CodingTea Team
+          Made with love by the TeaCoder Team
         </p>
         <p style={{ margin: 0 }}>MIT License</p>
       </div>

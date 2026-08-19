@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=茶码TeaCoder
+Exec=@EXE@
+Icon=@ICON@
+Comment=TeaCoder 代码编辑器
+Categories=Development;IDE;Utility;
+Terminal=false
+StartupNotify=true

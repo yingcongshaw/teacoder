@@ -1,6 +1,6 @@
 use keyring::Entry;
 
-const SERVICE_NAME: &str = "com.codingtea.app";
+const SERVICE_NAME: &str = "com.teacoder.app";
 
 /// Store a secret in the system keychain for a given profile and key name.
 /// Key names: "api_key", "oauth_token", "oauth_refresh_token".

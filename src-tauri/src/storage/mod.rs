@@ -9,11 +9,10 @@ pub struct AppDatabase {
 }
 
 impl AppDatabase {
-    pub fn new(app: &tauri::AppHandle) -> Result<Self, String> {
-        let app_dir = app
-            .path()
-            .app_data_dir()
-            .map_err(|e| format!("Failed to resolve app data dir: {}", e))?;
+    pub fn new(_app: &tauri::AppHandle) -> Result<Self, String> {
+        let app_dir = dirs::home_dir()
+            .map(|h| h.join(".teacoder"))
+            .ok_or_else(|| "Failed to resolve home directory".to_string())?;
 
         std::fs::create_dir_all(&app_dir)
             .map_err(|e| format!("Failed to create app data dir: {}", e))?;

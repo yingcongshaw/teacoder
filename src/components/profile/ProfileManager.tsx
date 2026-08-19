@@ -25,7 +25,10 @@ const TOOL_COLORS: Record<ToolType, string> = {
   claude: "#d97706",
   codex: "#1677ff",
   gemini: "#52c41a",
+  antigravity: "#52c41a",
   opencode: "#722ed1",
+  terminal: "#52c41a",
+  ssh: "#1677ff",
 };
 
 export default function ProfileManager() {

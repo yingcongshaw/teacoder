@@ -1,4 +1,4 @@
-export type ToolType = "claude" | "codex" | "gemini" | "opencode";
+export type ToolType = "claude" | "codex" | "gemini" | "antigravity" | "opencode" | "terminal" | "ssh";
 export type AuthType = "api_key" | "oauth";
 
 export interface CliTool {
@@ -65,6 +65,16 @@ export interface Project {
   updatedAt: number;
 }
 
+export interface SessionCategory {
+  id: string;
+  projectId: string;
+  name: string;
+  color?: string;
+  sortOrder: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface Session {
   id: string;
   projectId: string;
@@ -81,6 +91,7 @@ export interface Session {
   updatedAt: number;
   closedAt?: number;
   cliSessionId?: string;
+  categoryId?: string;
 }
 
 export interface SessionTemplate {
@@ -132,14 +143,20 @@ export const TOOL_DISPLAY_NAMES: Record<ToolType, string> = {
   claude: "Claude Code",
   codex: "Codex CLI",
   gemini: "Gemini CLI",
+  antigravity: "Antigravity",
   opencode: "OpenCode",
+  terminal: "终端",
+  ssh: "SSH",
 };
 
 export const TOOL_EXECUTABLES: Record<ToolType, string> = {
   claude: "claude",
   codex: "codex",
   gemini: "gemini",
+  antigravity: "antigravity",
   opencode: "opencode",
+  terminal: "terminal",
+  ssh: "ssh",
 };
 
 export interface TerminalSettings {
@@ -274,7 +291,7 @@ export const TERMINAL_COLOR_THEMES: TerminalColorTheme[] = [
       brightBlue: "#3b78ff",
       brightMagenta: "#b4009e",
       brightCyan: "#61d6d6",
-      brightWhite: "#f2f2f2",
+      brightWhite: "#f6e7cb",
     },
   },
   {
@@ -356,68 +373,6 @@ export const TERMINAL_COLOR_THEMES: TerminalColorTheme[] = [
     },
   },
   {
-    name: "classic-white",
-    label: "经典白",
-    colors: {
-      background: "#ffffff",
-      foreground: "#333333",
-      cursor: "#333333",
-      selectionBackground: "#b3d7ff",
-      black: "#333333",
-      red: "#cc0000",
-      green: "#00a400",
-      yellow: "#a68a00",
-      blue: "#0000cc",
-      magenta: "#cc00cc",
-      cyan: "#00a4cc",
-      white: "#cccccc",
-      brightBlack: "#666666",
-      brightRed: "#e50000",
-      brightGreen: "#00d600",
-      brightYellow: "#d6d600",
-      brightBlue: "#3333ff",
-      brightMagenta: "#e500e5",
-      brightCyan: "#00d6d6",
-      brightWhite: "#ffffff",
-    },
-  },
-  {
-    name: "solarized-light",
-    label: "淡黄暖光",
-    colors: {
-      background: "#fdf6e3",
-      foreground: "#657b83",
-      cursor: "#586e75",
-      selectionBackground: "#eee8d5",
-      black: "#073642",
-      red: "#dc322f",
-      green: "#859900",
-      yellow: "#b58900",
-      blue: "#268bd2",
-      magenta: "#d33682",
-      cyan: "#2aa198",
-      white: "#eee8d5",
-      brightBlack: "#002b36",
-      brightRed: "#cb4b16",
-      brightGreen: "#586e75",
-      brightYellow: "#657b83",
-      brightBlue: "#839496",
-      brightMagenta: "#6c71c4",
-      brightCyan: "#93a1a1",
-      brightWhite: "#fdf6e3",
-    },
-  },
-  {
-    name: "green-on-black",
-    label: "黑底绿字",
-    colors: {
-      background: "#000000",
-      foreground: "#00ff00",
-      cursor: "#00ff00",
-      selectionBackground: "#003300",
-    },
-  },
-  {
     name: "gruvbox-dark",
     label: "Gruvbox Dark",
     colors: {
@@ -496,8 +451,112 @@ export const TERMINAL_COLOR_THEMES: TerminalColorTheme[] = [
     },
   },
   {
+    name: "gerry-storm",
+    label: "Gerry Storm",
+    colors: {
+      background: "#082450",
+      foreground: "#bbb7b0",
+      cursor: "#bbb7b0",
+      selectionBackground: "#4a4a4a",
+      black: "#3c3c3c",
+      red: "#c27e25",
+      green: "#587c38",
+      yellow: "#c8a033",
+      blue: "#4f6f8f",
+      magenta: "#a47569",
+      cyan: "#4e8c87",
+      white: "#bbb7b0",
+      brightBlack: "#5a5a5a",
+      brightRed: "#e6a339",
+      brightGreen: "#7eb84f",
+      brightYellow: "#e9c85f",
+      brightBlue: "#6c9bcf",
+      brightMagenta: "#c48d7e",
+      brightCyan: "#6cb4ad",
+      brightWhite: "#e0dbd3",
+    },
+  },
+  {
+    name: "green-on-black",
+    label: "黑底绿字",
+    colors: {
+      background: "#000000",
+      foreground: "#00ff00",
+      cursor: "#00ff00",
+      selectionBackground: "#003300",
+      black: "#003300",
+      red: "#00aa00",
+      green: "#00ff00",
+      yellow: "#00dd00",
+      blue: "#009900",
+      magenta: "#00bb00",
+      cyan: "#00ee00",
+      white: "#00ff00",
+      brightBlack: "#006600",
+      brightRed: "#00cc00",
+      brightGreen: "#33ff33",
+      brightYellow: "#22ff22",
+      brightBlue: "#00aa00",
+      brightMagenta: "#11ff11",
+      brightCyan: "#44ff44",
+      brightWhite: "#66ff66",
+    },
+  },
+  {
+    name: "classic-white",
+    label: "经典白",
+    colors: {
+      background: "#ffffff",
+      foreground: "#333333",
+      cursor: "#333333",
+      selectionBackground: "#b3d7ff",
+      black: "#333333",
+      red: "#cc0000",
+      green: "#00a400",
+      yellow: "#a68a00",
+      blue: "#0000cc",
+      magenta: "#cc00cc",
+      cyan: "#00a4cc",
+      white: "#cccccc",
+      brightBlack: "#666666",
+      brightRed: "#e50000",
+      brightGreen: "#00d600",
+      brightYellow: "#d6d600",
+      brightBlue: "#3333ff",
+      brightMagenta: "#e500e5",
+      brightCyan: "#00d6d6",
+      brightWhite: "#ffffff",
+    },
+  },
+  {
+    name: "solarized-light",
+    label: "暖光",
+    colors: {
+      background: "#fdf6e3",
+      foreground: "#657b83",
+      cursor: "#586e75",
+      selectionBackground: "#eee8d5",
+      black: "#073642",
+      red: "#dc322f",
+      green: "#859900",
+      yellow: "#b58900",
+      blue: "#268bd2",
+      magenta: "#d33682",
+      cyan: "#2aa198",
+      white: "#eee8d5",
+      brightBlack: "#002b36",
+      brightRed: "#cb4b16",
+      brightGreen: "#586e75",
+      brightYellow: "#657b83",
+      brightBlue: "#839496",
+      brightMagenta: "#6c71c4",
+      brightCyan: "#93a1a1",
+      brightWhite: "#fdf6e3",
+    },
+  },
+  {
     name: "paper",
-    label: "纸张白",
+    label: "旧纸张",
     colors: {
       background: "#f5f0e8",
       foreground: "#3c3836",
@@ -519,32 +578,6 @@ export const TERMINAL_COLOR_THEMES: TerminalColorTheme[] = [
       brightMagenta: "#b16286",
       brightCyan: "#689d6a",
       brightWhite: "#fbf1c7",
-    },
-  },
-  {
-    name: "gerry-storm",
-    label: "Gerry Storm",
-    colors: {
-      background: "#2b2b2b",
-      foreground: "#bbb7b0",
-      cursor: "#bbb7b0",
-      selectionBackground: "#4a4a4a",
-      black: "#3c3c3c",
-      red: "#c27e25",
-      green: "#587c38",
-      yellow: "#c8a033",
-      blue: "#4f6f8f",
-      magenta: "#a47569",
-      cyan: "#4e8c87",
-      white: "#bbb7b0",
-      brightBlack: "#5a5a5a",
-      brightRed: "#e6a339",
-      brightGreen: "#7eb84f",
-      brightYellow: "#e9c85f",
-      brightBlue: "#6c9bcf",
-      brightMagenta: "#c48d7e",
-      brightCyan: "#6cb4ad",
-      brightWhite: "#e0dbd3",
     },
   },
 ];

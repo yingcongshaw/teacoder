@@ -112,7 +112,7 @@ INSERT INTO schema_version (version, applied_at) VALUES (3, strftime('%s', 'now'
 
 - [ ] **Step 2: 验证迁移**
 
-运行: `cd /work/CodingTea/CondingTea/src && pnpm tauri dev`，启动后检查 SQLite 数据库中 projects 和 sessions 表是否存在。
+运行: `cd /work/TeaCoder/CondingTea/src && pnpm tauri dev`，启动后检查 SQLite 数据库中 projects 和 sessions 表是否存在。
 
 - [ ] **Step 3: 提交**
 
@@ -265,7 +265,7 @@ pub fn delete_project(db: &AppDatabase, id: &str) -> Result<(), String> {
 - [ ] **Step 3: 运行 cargo check**
 
 ```bash
-cd /work/CodingTea/CondingTea/src/src-tauri && cargo check
+cd /work/TeaCoder/CondingTea/src/src-tauri && cargo check
 ```
 
 - [ ] **Step 4: 提交**
@@ -482,7 +482,7 @@ pub fn reset_all_running(db: &AppDatabase) -> Result<(), String> {
 - [ ] **Step 3: 运行 cargo check**
 
 ```bash
-cd /work/CodingTea/CondingTea/src/src-tauri && cargo check
+cd /work/TeaCoder/CondingTea/src/src-tauri && cargo check
 ```
 
 - [ ] **Step 4: 提交**
@@ -634,7 +634,7 @@ let args: Vec<String> = if let Some(json) = cli_args {
 - [ ] **Step 6: 运行 cargo check**
 
 ```bash
-cd /work/CodingTea/CondingTea/src/src-tauri && cargo check
+cd /work/TeaCoder/CondingTea/src/src-tauri && cargo check
 ```
 
 - [ ] **Step 7: 提交**
@@ -800,7 +800,7 @@ export async function startSession(params: {
 - [ ] **Step 4: 运行 typecheck**
 
 ```bash
-cd /work/CodingTea/CondingTea/src && pnpm tsc --noEmit
+cd /work/TeaCoder/CondingTea/src && pnpm tsc --noEmit
 ```
 
 - [ ] **Step 5: 提交**
@@ -876,7 +876,7 @@ createSession: async (input) => {
 - [ ] **Step 2: 运行 typecheck**
 
 ```bash
-cd /work/CodingTea/CondingTea/src && pnpm tsc --noEmit
+cd /work/TeaCoder/CondingTea/src && pnpm tsc --noEmit
 ```
 
 - [ ] **Step 3: 提交**
@@ -1053,7 +1053,7 @@ git commit -m "feat: 适配 AppContent 和 TabBar 为项目/会话模型"
 - Modify: `src/stores/appStore.ts` 或新建 `src/utils/migration.ts`
 
 **Interfaces:**
-- Consumes: localStorage `codingtea_sessions` 中的旧 `TabState[]` 数据
+- Consumes: localStorage `teacoder_sessions` 中的旧 `TabState[]` 数据
 - Produces: 通过 IPC 创建 Project 和 Session 记录
 
 - [ ] **Step 1: 在 AppLayout.tsx 的初始化逻辑中添加迁移检查**
@@ -1062,7 +1062,7 @@ git commit -m "feat: 适配 AppContent 和 TabBar 为项目/会话模型"
 
 ```typescript
 // 迁移旧 localStorage 数据到后端
-const oldSessionsRaw = localStorage.getItem("codingtea_sessions");
+const oldSessionsRaw = localStorage.getItem("teacoder_sessions");
 if (oldSessionsRaw) {
   try {
     const oldSessions = JSON.parse(oldSessionsRaw);
@@ -1098,8 +1098,8 @@ if (oldSessionsRaw) {
           }
         }
         // 迁移完成，清除旧数据
-        localStorage.removeItem("codingtea_sessions");
-        localStorage.removeItem("codingtea_tabs");
+        localStorage.removeItem("teacoder_sessions");
+        localStorage.removeItem("teacoder_tabs");
       }
     }
   } catch {
@@ -1131,19 +1131,19 @@ git commit -m "feat: 添加前端数据迁移，从 localStorage 迁移到 SQLit
 - [ ] **Step 1: 运行后端检查**
 
 ```bash
-cd /work/CodingTea/CondingTea/src/src-tauri && cargo clippy && cargo test
+cd /work/TeaCoder/CondingTea/src/src-tauri && cargo clippy && cargo test
 ```
 
 - [ ] **Step 2: 运行前端检查**
 
 ```bash
-cd /work/CodingTea/CondingTea/src && pnpm tsc --noEmit
+cd /work/TeaCoder/CondingTea/src && pnpm tsc --noEmit
 ```
 
 - [ ] **Step 3: 启动应用手动验证**
 
 ```bash
-cd /work/CodingTea/CondingTea/src && pnpm tauri dev
+cd /work/TeaCoder/CondingTea/src && pnpm tauri dev
 ```
 
 验证点：

@@ -4,4 +4,6 @@ pub mod profile;
 pub mod project;
 pub mod pty;
 pub mod session;
+pub mod session_category;
+pub mod system;
 pub mod tool_settings;

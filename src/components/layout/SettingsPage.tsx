@@ -1,6 +1,19 @@
 import { useState } from "react";
 import { Menu, Input } from "antd";
-import { SearchOutlined } from "@ant-design/icons";
+import {
+  SearchOutlined,
+  SettingOutlined,
+  CodeOutlined,
+  RobotOutlined,
+  GlobalOutlined,
+  CloudServerOutlined,
+  KeyOutlined,
+  BellOutlined,
+  DatabaseOutlined,
+  SyncOutlined,
+  ApiOutlined,
+  InfoCircleOutlined,
+} from "@ant-design/icons";
 import GeneralSettingsPage from "../settings/GeneralSettingsPage";
 import TerminalSettingsPage from "../settings/TerminalSettingsPage";
 import ClaudeSettingsPage from "../settings/ClaudeSettingsPage";
@@ -20,28 +33,67 @@ import AboutPage from "../settings/AboutPage";
 
 const SIDEBAR_WIDTH = 180;
 
+const CLI_TOOL_ICONS: Record<string, { icon: string; color: string }> = {
+  claude: { icon: "/claude.png", color: "#722ed1" },
+  codex: { icon: "/codex.png", color: "#1890ff" },
+  gemini: { icon: "/gemini.png", color: "#1677ff" },
+  antigravity: { icon: "", color: "#52c41a" },
+  opencode: { icon: "/opencode.png", color: "#fa8c16" },
+};
+
+function CliToolIcon({ toolKey }: { toolKey: string }) {
+  const meta = CLI_TOOL_ICONS[toolKey];
+  if (!meta) return <CodeOutlined />;
+  if (meta.icon) {
+    return (
+      <span
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          width: 18,
+          height: 18,
+          borderRadius: 4,
+          background: `${meta.color}20`,
+        }}
+      >
+        <img src={meta.icon} alt="" style={{ width: 14, height: 14 }} />
+      </span>
+    );
+  }
+  return <CodeOutlined style={{ color: meta.color }} />;
+}
+
 const menuItems = [
-  { key: "general", label: "通用设置" },
-  { key: "claude", label: "Claude Code" },
-  { key: "codex", label: "Codex CLI" },
-  { key: "gemini", label: "Gemini CLI" },
-  { key: "antigravity", label: "Antigravity" },
-  { key: "opencode", label: "OpenCode" },
-  { key: "terminal", label: "终端设置" },
-  { key: "ai-assistant", label: "AI 辅助" },
-  { key: "network", label: "网络" },
-  { key: "remote", label: "远程访问" },
-  { key: "keybindings", label: "快捷键" },
-  { key: "notification", label: "通知" },
-  { key: "data-management", label: "数据管理" },
-  { key: "sync", label: "同步" },
-  { key: "mcp", label: "MCP 接入" },
-  { key: "about", label: "关于" },
+  { key: "general", label: "通用设置", icon: <SettingOutlined /> },
+  { key: "terminal", label: "终端设置", icon: <CodeOutlined /> },
+  {
+    key: "cli-tools-group",
+    label: "CLI 工具",
+    icon: <RobotOutlined />,
+    children: [
+      { key: "claude", label: "Claude Code", icon: <CliToolIcon toolKey="claude" /> },
+      { key: "codex", label: "Codex CLI", icon: <CliToolIcon toolKey="codex" /> },
+      { key: "gemini", label: "Gemini CLI", icon: <CliToolIcon toolKey="gemini" /> },
+      { key: "antigravity", label: "Antigravity", icon: <CliToolIcon toolKey="antigravity" /> },
+      { key: "opencode", label: "OpenCode", icon: <CliToolIcon toolKey="opencode" /> },
+    ],
+  },
+  { key: "ai-assistant", label: "AI 辅助", icon: <RobotOutlined /> },
+  { key: "network", label: "网络", icon: <GlobalOutlined /> },
+  { key: "remote", label: "远程访问", icon: <CloudServerOutlined /> },
+  { key: "keybindings", label: "快捷键", icon: <KeyOutlined /> },
+  { key: "notification", label: "通知", icon: <BellOutlined /> },
+  { key: "data-management", label: "数据管理", icon: <DatabaseOutlined /> },
+  { key: "sync", label: "同步", icon: <SyncOutlined /> },
+  { key: "mcp", label: "MCP 接入", icon: <ApiOutlined /> },
+  { key: "about", label: "关于", icon: <InfoCircleOutlined /> },
 ];
 
 const PAGE_TITLES: Record<string, string> = {
   general: "通用设置",
   terminal: "终端设置",
+  "cli-tools-group": "CLI 工具",
   claude: "Claude Code",
   codex: "Codex CLI",
   gemini: "Gemini CLI",
@@ -60,6 +112,7 @@ const PAGE_TITLES: Record<string, string> = {
 
 export default function SettingsPage() {
   const [activeKey, setActiveKey] = useState("general");
+  const [openKeys, setOpenKeys] = useState<string[]>(["cli-tools-group"]);
   const [searchText, setSearchText] = useState("");
 
   const renderContent = () => {
@@ -119,11 +172,30 @@ export default function SettingsPage() {
           <Menu
             mode="inline"
             selectedKeys={[activeKey]}
-            onClick={({ key }) => setActiveKey(key)}
-            items={menuItems.map((item) => ({
-              key: item.key,
-              label: item.label,
-            }))}
+            openKeys={openKeys}
+            onOpenChange={(keys) => setOpenKeys(keys)}
+            onClick={({ key }) => {
+              if (key !== "cli-tools-group") setActiveKey(key);
+            }}
+            items={menuItems.map((item) => {
+              if ("children" in item && item.children) {
+                return {
+                  key: item.key,
+                  icon: item.icon,
+                  label: item.label,
+                  children: item.children.map((child) => ({
+                    key: child.key,
+                    icon: child.icon,
+                    label: child.label,
+                  })),
+                };
+              }
+              return {
+                key: item.key,
+                icon: item.icon,
+                label: item.label,
+              };
+            })}
             style={{
               borderRight: 0,
               fontSize: 13,

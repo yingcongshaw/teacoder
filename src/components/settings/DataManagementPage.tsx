@@ -8,7 +8,7 @@ interface DataManagementSettings {
 }
 
 const DEFAULT_SETTINGS: DataManagementSettings = {
-  dataDirectory: "~/.codingtea",
+  dataDirectory: "~/.teacoder",
 };
 
 interface DataManagementPageProps {
@@ -20,7 +20,7 @@ export default function DataManagementPage({ searchText = "" }: DataManagementPa
 
   useEffect(() => {
     try {
-      const raw = localStorage.getItem("codingtea_datamanagement_settings");
+      const raw = localStorage.getItem("teacoder_datamanagement_settings");
       const saved = raw ? JSON.parse(raw) : {};
       setSettings({ ...DEFAULT_SETTINGS, ...saved });
     } catch {
@@ -34,7 +34,7 @@ export default function DataManagementPage({ searchText = "" }: DataManagementPa
   ) => {
     const next = { ...settings, [key]: value };
     setSettings(next);
-    localStorage.setItem("codingtea_datamanagement_settings", JSON.stringify(next));
+    localStorage.setItem("teacoder_datamanagement_settings", JSON.stringify(next));
     message.success("设置已保存");
   };
 

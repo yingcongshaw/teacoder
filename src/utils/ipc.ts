@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { CliTool, Profile, SessionCost, CostSummary, PricingConfig, ToolSettings, Project, Session } from "../types";
+import type { CliTool, Profile, SessionCost, CostSummary, PricingConfig, ToolSettings, Project, Session, SessionCategory } from "../types";
 
 export async function detectCliTools(): Promise<CliTool[]> {
   return invoke<CliTool[]>("detect_cli_tools");
@@ -12,6 +12,7 @@ export async function startSession(params: {
   tabId: string;
   envVars?: Record<string, string>;
   cliArgs?: string;
+  cliSessionId?: string;
 }): Promise<void> {
   return invoke("start_session", params);
 }
@@ -30,6 +31,16 @@ export async function resizePty(
   rows: number,
 ): Promise<void> {
   return invoke("resize_pty", { tabId, cols, rows });
+}
+
+export async function testSshConnection(params: {
+  hostname: string;
+  port?: number;
+  username?: string;
+  password?: string;
+  identity_file?: string;
+}): Promise<string> {
+  return invoke("test_ssh_connection", { params });
 }
 
 export async function listProfiles(toolType?: string): Promise<Profile[]> {
@@ -159,6 +170,8 @@ export async function sessionCreate(input: {
   templateId?: string;
   cliArgs?: string;
   envVars?: string;
+  cliSessionId?: string;
+  categoryId?: string;
 }): Promise<Session> {
   return invoke<Session>("session_create", { input });
 }
@@ -176,6 +189,8 @@ export async function sessionUpdate(
     isRunning?: boolean;
     closedAt?: number;
     projectId?: string;
+    cliSessionId?: string;
+    categoryId?: string;
   },
 ): Promise<Session> {
   return invoke<Session>("session_update", { id, input });
@@ -183,4 +198,54 @@ export async function sessionUpdate(
 
 export async function sessionDelete(id: string): Promise<void> {
   return invoke("session_delete", { id });
+}
+
+// Category IPC
+export async function categoryList(projectId?: string): Promise<SessionCategory[]> {
+  return invoke<SessionCategory[]>("category_list", { projectId });
+}
+
+export async function categoryCreate(input: {
+  projectId: string;
+  name: string;
+  color?: string;
+  sortOrder?: number;
+}): Promise<SessionCategory> {
+  return invoke<SessionCategory>("category_create", { input });
+}
+
+export async function categoryUpdate(
+  id: string,
+  input: {
+    name?: string;
+    color?: string;
+    sortOrder?: number;
+  },
+): Promise<SessionCategory> {
+  return invoke<SessionCategory>("category_update", { id, input });
+}
+
+export async function categoryDelete(id: string): Promise<void> {
+  return invoke("category_delete", { id });
+}
+
+// System IPC
+export async function isAutostartEnabled(): Promise<boolean> {
+  return invoke<boolean>("is_autostart_enabled");
+}
+
+export async function setAutostartEnabled(enabled: boolean): Promise<void> {
+  return invoke("set_autostart_enabled", { enabled });
+}
+
+export async function getCloseBehavior(): Promise<string> {
+  return invoke<string>("get_close_behavior");
+}
+
+export async function setCloseBehavior(behavior: string): Promise<void> {
+  return invoke("set_close_behavior", { behavior });
+}
+
+export async function setTrayVisible(visible: boolean): Promise<void> {
+  return invoke("set_tray_visible", { visible });
 }

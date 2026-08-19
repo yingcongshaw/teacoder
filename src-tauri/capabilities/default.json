@@ -17,6 +17,12 @@
     "core:window:allow-close",
     "core:window:allow-is-maximized",
     "core:window:allow-start-dragging",
-    "core:window:allow-set-title-bar-style"
+    "core:window:allow-set-title-bar-style",
+    "core:window:allow-show",
+    "core:window:allow-hide",
+    "core:window:allow-set-focus",
+    "autostart:allow-is-enabled",
+    "autostart:allow-enable",
+    "autostart:allow-disable"
   ]
 }

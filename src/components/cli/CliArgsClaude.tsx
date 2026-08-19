@@ -10,7 +10,7 @@ interface CliArgsClaudeProps {
 
 const LABEL_STYLE: React.CSSProperties = {
   fontSize: 11,
-  color: "#aaaaaa",
+  color: "var(--ant-color-text-secondary)",
   minWidth: 90,
   flexShrink: 0,
 };
@@ -23,9 +23,9 @@ const ROW_STYLE: React.CSSProperties = {
 };
 
 const INPUT_STYLE: React.CSSProperties = {
-  backgroundColor: "#252830",
-  borderColor: "#2a2d38",
-  color: "#cccccc",
+  backgroundColor: "var(--ant-color-bg-elevated)",
+  borderColor: "var(--ant-color-border)",
+  color: "var(--ant-color-text)",
   fontSize: 12,
 };
 
@@ -153,7 +153,7 @@ export default function CliArgsClaude({ value, onChange }: CliArgsClaudeProps) {
           onChange={(e) => update("mcpConfig", e.target.value || undefined)}
           suffix={
             <FolderOpenOutlined
-              style={{ color: "#888888", cursor: "pointer", fontSize: 12 }}
+              style={{ color: "var(--ant-color-text-tertiary)", cursor: "pointer", fontSize: 12 }}
               onClick={handleMcpConfigBrowse}
             />
           }

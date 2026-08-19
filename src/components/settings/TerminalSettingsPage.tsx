@@ -113,6 +113,80 @@ export default function TerminalSettingsPage({ searchText = "" }: TerminalSettin
 
       {/* 外观 */}
       <SectionHeader title="外观" />
+      {matchesSearch("跟随应用主题") && (
+        <SettingRow
+          label="跟随应用主题"
+          description="开启后终端配色随通用设置中的应用主题联动，关闭时使用下方独立配色"
+        >
+          <Switch
+            checked={settings.followAppTheme}
+            onChange={(v) => handleUpdate("followAppTheme", v)}
+          />
+        </SettingRow>
+      )}
+      {matchesSearch("配色主题") && (
+        <div style={{ padding: "6px 0", borderBottom: "1px solid var(--ant-color-border-secondary)" }}>
+          <div style={{ fontSize: 13, fontWeight: 500, color: "var(--ant-color-text)", lineHeight: "20px", marginBottom: 8 }}>
+            配色主题
+          </div>
+          <div
+            className="flex gap-2 flex-wrap"
+            style={{ maxWidth: 600 }}
+          >
+            {TERMINAL_COLOR_THEMES.map((t) => {
+              const isSelected = settings.colorTheme === t.name;
+              return (
+                <div
+                  key={t.name}
+                  onClick={() => !settings.followAppTheme && handleUpdate("colorTheme", t.name)}
+                  className="flex-shrink-0 cursor-pointer rounded-lg border-2 p-2 transition-all hover:border-[var(--ant-color-primary-border)]"
+                  style={{
+                    borderColor: isSelected ? "var(--ant-color-primary)" : "var(--ant-color-border-secondary)",
+                    backgroundColor: isSelected ? "var(--ant-color-primary-bg)" : "transparent",
+                    opacity: settings.followAppTheme ? 0.5 : 1,
+                    minWidth: 90,
+                  }}
+                >
+                  {/* Color preview row */}
+                  <div
+                    className="flex gap-0.5 rounded mb-1"
+                    style={{
+                      backgroundColor: t.colors.background,
+                      padding: "3px 4px",
+                      height: 24,
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    {["red", "green", "yellow", "blue", "magenta", "cyan", "foreground"].map((k) => (
+                      <span
+                        key={k}
+                        style={{
+                          display: "inline-block",
+                          width: 6,
+                          height: 6,
+                          borderRadius: 1,
+                          backgroundColor: t.colors[k as keyof typeof t.colors] || t.colors.foreground,
+                        }}
+                      />
+                    ))}
+                  </div>
+                  {/* Theme name */}
+                  <div
+                    className="text-center text-xs truncate"
+                    style={{
+                      color: isSelected ? "var(--ant-color-primary)" : "var(--ant-color-text-secondary)",
+                      fontWeight: isSelected ? 600 : 400,
+                    }}
+                  >
+                    {t.label}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
       {matchesSearch("字体") && (
         <SettingRow label="字体" description="终端使用的等宽字体，默认 Consolas">
           <Select
@@ -192,77 +266,6 @@ export default function TerminalSettingsPage({ searchText = "" }: TerminalSettin
             checked={settings.cursorBlink}
             onChange={(v) => handleUpdate("cursorBlink", v)}
           />
-        </SettingRow>
-      )}
-      {matchesSearch("跟随应用主题") && (
-        <SettingRow
-          label="跟随应用主题"
-          description="开启后终端配色随通用设置中的应用主题联动，关闭时使用下方独立配色"
-        >
-          <Switch
-            checked={settings.followAppTheme}
-            onChange={(v) => handleUpdate("followAppTheme", v)}
-          />
-        </SettingRow>
-      )}
-      {matchesSearch("配色主题") && (
-        <SettingRow label="配色主题" description="终端配色方案">
-          <div
-            className="flex gap-2 overflow-x-auto pb-2"
-            style={{ maxWidth: 600 }}
-          >
-            {TERMINAL_COLOR_THEMES.map((t) => {
-              const isSelected = settings.colorTheme === t.name;
-              return (
-                <div
-                  key={t.name}
-                  onClick={() => !settings.followAppTheme && handleUpdate("colorTheme", t.name)}
-                  className="flex-shrink-0 cursor-pointer rounded-lg border-2 p-2 transition-all hover:border-[var(--ant-color-primary-border)]"
-                  style={{
-                    borderColor: isSelected ? "var(--ant-color-primary)" : "var(--ant-color-border-secondary)",
-                    backgroundColor: isSelected ? "var(--ant-color-primary-bg)" : "transparent",
-                    opacity: settings.followAppTheme ? 0.5 : 1,
-                    minWidth: 90,
-                  }}
-                >
-                  {/* Color preview row */}
-                  <div
-                    className="flex gap-0.5 rounded mb-1"
-                    style={{
-                      backgroundColor: t.colors.background,
-                      padding: "3px 4px",
-                      height: 24,
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
-                  >
-                    {["red", "green", "yellow", "blue", "magenta", "cyan", "foreground"].map((k) => (
-                      <span
-                        key={k}
-                        style={{
-                          display: "inline-block",
-                          width: 6,
-                          height: 6,
-                          borderRadius: 1,
-                          backgroundColor: t.colors[k as keyof typeof t.colors] || t.colors.foreground,
-                        }}
-                      />
-                    ))}
-                  </div>
-                  {/* Theme name */}
-                  <div
-                    className="text-center text-xs truncate"
-                    style={{
-                      color: isSelected ? "var(--ant-color-primary)" : "var(--ant-color-text-secondary)",
-                      fontWeight: isSelected ? 600 : 400,
-                    }}
-                  >
-                    {t.label}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
         </SettingRow>
       )}
 

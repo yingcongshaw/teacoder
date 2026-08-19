@@ -38,7 +38,7 @@ export default function GeminiSettingsPage({ searchText = "" }: GeminiSettingsPa
 
   useEffect(() => {
     try {
-      const raw = localStorage.getItem("codingtea_gemini_settings");
+      const raw = localStorage.getItem("teacoder_gemini_settings");
       const saved = raw ? JSON.parse(raw) : {};
       setSettings({ ...DEFAULT_SETTINGS, ...saved });
     } catch {
@@ -52,7 +52,7 @@ export default function GeminiSettingsPage({ searchText = "" }: GeminiSettingsPa
   ) => {
     const next = { ...settings, [key]: value };
     setSettings(next);
-    localStorage.setItem("codingtea_gemini_settings", JSON.stringify(next));
+    localStorage.setItem("teacoder_gemini_settings", JSON.stringify(next));
     message.success("设置已保存");
   };
 

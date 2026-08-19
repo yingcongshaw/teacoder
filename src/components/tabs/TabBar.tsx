@@ -17,7 +17,7 @@ export default function TabBar() {
   const duplicateSession = useAppStore((s) => s.duplicateSession);
   const closeOtherTabs = useAppStore((s) => s.closeOtherTabs);
   const closeTabsToRight = useAppStore((s) => s.closeTabsToRight);
-  const { message } = App.useApp();
+  const { message, modal } = App.useApp();
 
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
@@ -39,7 +39,7 @@ export default function TabBar() {
 
   const handleClose = (tabId: string, isRunning: boolean) => {
     if (isRunning) {
-      Modal.confirm({
+      modal.confirm({
         title: "关闭标签",
         content: "关闭将终止 CLI 进程，会话记录将保留在左侧列表中。",
         okText: "关闭标签",
@@ -53,7 +53,7 @@ export default function TabBar() {
   };
 
   const handleDelete = (tab: Session) => {
-    Modal.confirm({
+    modal.confirm({
       title: "删除会话",
       content: "确认删除此会话记录？此操作不可恢复。",
       okText: "删除",
@@ -149,8 +149,8 @@ export default function TabBar() {
         className="flex items-center overflow-x-auto"
         style={{
           height: 32,
-          backgroundColor: "#1e2229",
-          borderBottom: "1px solid #2a2d38",
+          backgroundColor: "var(--ant-color-bg-container)",
+          borderBottom: "1px solid var(--ant-color-border-secondary)",
         }}
       >
         {openTabs.map((tab) => {
@@ -167,14 +167,14 @@ export default function TabBar() {
                 className="flex items-center gap-1 px-3 h-full cursor-pointer whitespace-nowrap"
                 style={{
                   fontSize: 12,
-                  color: isActive ? "#e0e0e0" : "#cccccc",
-                  borderRight: "1px solid #2a2d38",
-                  backgroundColor: isActive ? "#0a0a0a" : undefined,
-                  borderBottom: isActive ? "2px solid #3b82f6" : "2px solid transparent",
+                  color: isActive ? "var(--ant-color-text)" : "var(--ant-color-text-secondary)",
+                  borderRight: "1px solid var(--ant-color-border-secondary)",
+                  backgroundColor: isActive ? "var(--ant-color-bg-layout)" : undefined,
+                  borderBottom: isActive ? "2px solid var(--ant-color-primary)" : "2px solid transparent",
                   transition: "background-color 0.15s",
                 }}
                 onMouseEnter={(e) => {
-                  if (!isActive) e.currentTarget.style.backgroundColor = "#252830";
+                  if (!isActive) e.currentTarget.style.backgroundColor = "var(--ant-color-bg-elevated)";
                 }}
                 onMouseLeave={(e) => {
                   if (!isActive) e.currentTarget.style.backgroundColor = "";
@@ -211,7 +211,7 @@ export default function TabBar() {
                   style={{
                     background: "none",
                     border: "none",
-                    color: "#666666",
+                    color: "var(--ant-color-text-quaternary)",
                     cursor: "pointer",
                     fontSize: 14,
                     lineHeight: 1,
@@ -220,11 +220,11 @@ export default function TabBar() {
                     transition: "color 0.15s, background-color 0.15s",
                   }}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.color = "#e0e0e0";
-                    e.currentTarget.style.backgroundColor = "#3a3d48";
+                    e.currentTarget.style.color = "var(--ant-color-text)";
+                    e.currentTarget.style.backgroundColor = "var(--ant-color-bg-elevated)";
                   }}
                   onMouseLeave={(e) => {
-                    e.currentTarget.style.color = "#666666";
+                    e.currentTarget.style.color = "var(--ant-color-text-quaternary)";
                     e.currentTarget.style.backgroundColor = "transparent";
                   }}
                 >
@@ -246,34 +246,34 @@ export default function TabBar() {
         {propertiesTab && (
           <div className="space-y-2 text-sm">
             <div className="flex justify-between">
-              <span className="text-gray-500">标题</span>
+              <span className="text-[var(--ant-color-text-secondary)]">标题</span>
               <span>{propertiesTab.title || "(未命名)"}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-gray-500">工具</span>
+              <span className="text-[var(--ant-color-text-secondary)]">工具</span>
               <span>{TOOL_DISPLAY_NAMES[propertiesTab.toolType]}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-gray-500">项目</span>
+              <span className="text-[var(--ant-color-text-secondary)]">项目</span>
               <span>{getProjectName(propertiesTab.projectId)}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-gray-500">Profile ID</span>
+              <span className="text-[var(--ant-color-text-secondary)]">Profile ID</span>
               <span className="text-xs">{propertiesTab.profileId || "(无)"}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-gray-500">思考强度</span>
+              <span className="text-[var(--ant-color-text-secondary)]">思考强度</span>
               <span>{propertiesTab.thinkingIntensity}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-gray-500">状态</span>
-              <span style={{ color: propertiesTab.isRunning ? "#52c41a" : "#888888" }}>
+              <span className="text-[var(--ant-color-text-secondary)]">状态</span>
+              <span style={{ color: propertiesTab.isRunning ? "var(--ant-color-success)" : "var(--ant-color-text-tertiary)" }}>
                 {propertiesTab.isRunning ? "运行中" : "已停止"}
               </span>
             </div>
             {propertiesTab.envVars && (
               <div>
-                <span className="text-gray-500">环境变量</span>
+                <span className="text-[var(--ant-color-text-secondary)]">环境变量</span>
                 <pre className="mt-1 p-2 bg-gray-50 dark:bg-gray-800 rounded text-xs whitespace-pre-wrap">
                   {propertiesTab.envVars}
                 </pre>
@@ -281,7 +281,7 @@ export default function TabBar() {
             )}
             {propertiesTab.cliArgs && (
               <div>
-                <span className="text-gray-500">启动参数</span>
+                <span className="text-[var(--ant-color-text-secondary)]">启动参数</span>
                 <pre className="mt-1 p-2 bg-gray-50 dark:bg-gray-800 rounded text-xs whitespace-pre-wrap">
                   {propertiesTab.cliArgs}
                 </pre>
@@ -300,7 +300,7 @@ export default function TabBar() {
         cancelText="取消"
       >
         <div className="space-y-2">
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-[var(--ant-color-text-secondary)]">
             选择目标项目，会话将移动到该项目下。
           </p>
           <Select
@@ -317,7 +317,7 @@ export default function TabBar() {
                 </Select.Option>
               ))}
           </Select>
-          <p className="text-xs text-gray-400">
+          <p className="text-xs text-[var(--ant-color-text-tertiary)]">
             注意：此操作仅改变会话的项目分组，不会重新启动 CLI 进程。
           </p>
         </div>

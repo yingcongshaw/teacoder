@@ -6,18 +6,47 @@ mod profile;
 mod project;
 mod pty;
 mod session;
+mod session_category;
 mod storage;
 mod tool_settings;
+mod tray;
 
 use pty::manager::PtyManager;
+use serde::{Deserialize, Serialize};
 use storage::AppDatabase;
-use tauri::Manager;
+use tauri::{Manager, WindowEvent};
+use tauri_plugin_autostart::MacosLauncher;
+
+use std::sync::Mutex;
+use once_cell::sync::Lazy;
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum CloseBehavior {
+    MinimizeToTray,
+    Exit,
+}
+
+impl Default for CloseBehavior {
+    fn default() -> Self {
+        CloseBehavior::Exit
+    }
+}
+
+static CLOSE_BEHAVIOR: Lazy<Mutex<CloseBehavior>> = Lazy::new(|| Mutex::new(CloseBehavior::default()));
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, Some(vec!["--hidden"])))
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            // 当通过自启动唤醒时，显示窗口
+            if let Some(window) = app.get_webview_window("main") {
+                window.show().ok();
+                window.set_focus().ok();
+            }
+        }))
         .setup(|app| {
             let db = AppDatabase::new(app.handle())?;
             app.manage(db);
@@ -37,12 +66,40 @@ pub fn run() {
                 window.set_title_bar_style(TitleBarStyle::Overlay).ok();
             }
 
+            // 非 macOS: 设置窗口透明以支持圆角
+            #[cfg(not(target_os = "macos"))]
+            {
+                let window = app.get_webview_window("main").expect("no main window");
+                window.set_decorations(false).ok();
+            }
+
             #[cfg(debug_assertions)]
             {
                 let window = app.get_webview_window("main").expect("no main window");
                 window.open_devtools();
             }
+
+            // 创建系统托盘
+            tray::create_tray(app.handle())?;
+
             Ok(())
+        })
+        .on_window_event(|window, event| {
+            if let WindowEvent::CloseRequested { api, .. } = event {
+                // 读取关闭行为设置
+                let behavior = CLOSE_BEHAVIOR.lock().unwrap().clone();
+
+                match behavior {
+                    CloseBehavior::MinimizeToTray => {
+                        // 隐藏到托盘而不是关闭
+                        window.hide().ok();
+                        api.prevent_close();
+                    }
+                    CloseBehavior::Exit => {
+                        // 允许关闭，程序退出
+                    }
+                }
+            }
         })
         .manage(PtyManager::new())
         .invoke_handler(tauri::generate_handler![
@@ -51,6 +108,7 @@ pub fn run() {
             commands::pty::stop_session,
             commands::pty::write_to_pty,
             commands::pty::resize_pty,
+            commands::pty::test_ssh_connection,
             commands::profile::list_profiles,
             commands::profile::create_profile,
             commands::profile::update_profile,
@@ -65,6 +123,10 @@ pub fn run() {
             commands::session::session_create,
             commands::session::session_update,
             commands::session::session_delete,
+            commands::session_category::category_list,
+            commands::session_category::category_create,
+            commands::session_category::category_update,
+            commands::session_category::category_delete,
             commands::cost::get_session_cost,
             commands::cost::get_profile_cost,
             commands::cost::get_global_cost,
@@ -75,6 +137,11 @@ pub fn run() {
             commands::tool_settings::get_tool_settings,
             commands::tool_settings::upsert_tool_settings,
             commands::tool_settings::delete_tool_settings,
+            commands::system::is_autostart_enabled,
+            commands::system::set_autostart_enabled,
+            commands::system::set_close_behavior,
+            commands::system::get_close_behavior,
+            commands::system::set_tray_visible,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

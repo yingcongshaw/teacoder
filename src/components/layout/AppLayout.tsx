@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { ConfigProvider, theme as antdTheme, App as AntdApp } from "antd";
 import zhCN from "antd/locale/zh_CN";
 import { listen } from "@tauri-apps/api/event";
@@ -16,6 +16,8 @@ import { AgreementModal, OnboardingGuide, useOnboarding } from "../onboarding/On
 
 export default function AppLayout() {
   const appTheme = useAppStore((s) => s.theme);
+  const fontSize = useAppStore((s) => s.fontSize);
+  const uiZoom = useAppStore((s) => s.uiZoom);
   const compactMode = useAppStore((s) => s.compactMode);
   const setCliTools = useAppStore((s) => s.setCliTools);
   const setProfiles = useAppStore((s) => s.setProfiles);
@@ -26,11 +28,49 @@ export default function AppLayout() {
   const setNewProjectModalOpen = useAppStore((s) => s.setNewProjectModalOpen);
   const loadProjects = useAppStore((s) => s.loadProjects);
   const loadSessions = useAppStore((s) => s.loadSessions);
+  const loadCategories = useAppStore((s) => s.loadCategories);
+  const restoreTabs = useAppStore((s) => s.restoreTabs);
   const sessions = useAppStore((s) => s.sessions);
   const setCostTick = useAppStore((s) => s.setCostTick);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [systemDark, setSystemDark] = useState(() => window.matchMedia("(prefers-color-scheme: dark)").matches);
   const { ready, showAgreement, showGuide, completeAgreement, completeGuide, skipGuide } = useOnboarding();
+
+  // 左侧栏目宽度拖拽调整
+  const [sidebarWidth, setSidebarWidth] = useState(240);
+  const [isDragging, setIsDragging] = useState(false);
+  const sidebarRef = useRef<HTMLDivElement>(null);
+
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  }, []);
+
+  useEffect(() => {
+    if (!isDragging) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      // 计算新的宽度，考虑父容器边界
+      const containerRect = sidebarRef.current?.parentElement?.getBoundingClientRect();
+      if (!containerRect) return;
+
+      // 使用鼠标位置计算新宽度，限制范围 180-500
+      const newWidth = Math.min(500, Math.max(180, e.clientX - containerRect.left));
+      setSidebarWidth(newWidth);
+    };
+
+    const handleMouseUp = () => {
+      setIsDragging(false);
+    };
+
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
+
+    return () => {
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [isDragging]);
 
   useKeyboardShortcuts();
 
@@ -50,10 +90,12 @@ export default function AppLayout() {
     listProfiles()
       .then(setProfiles)
       .catch(() => {});
-    loadProjects()
-      .then(async () => {
+
+    // 迁移旧数据并加载会话
+    const initApp = async () => {
+      try {
         // 迁移旧 localStorage 数据到后端
-        const oldSessionsRaw = localStorage.getItem("codingtea_sessions");
+        const oldSessionsRaw = localStorage.getItem("teacoder_sessions");
         if (oldSessionsRaw) {
           try {
             const oldSessions = JSON.parse(oldSessionsRaw);
@@ -83,19 +125,39 @@ export default function AppLayout() {
                   }
                 }
               }
-              localStorage.removeItem("codingtea_sessions");
-              localStorage.removeItem("codingtea_tabs");
+              localStorage.removeItem("teacoder_sessions");
+              localStorage.removeItem("teacoder_tabs");
             }
           } catch {
             // 迁移失败不影响启动
           }
         }
-        loadSessions().catch(() => {});
-      })
-      .catch(() => {
-        loadSessions().catch(() => {});
-      });
-  }, [setCliTools, setProfiles, loadProjects, loadSessions]);
+      } catch {
+        // 项目加载失败不影响后续
+      }
+
+      // 加载项目和会话
+      await loadProjects();
+      await loadSessions();
+      await loadCategories();
+
+      // 检查"启动时恢复上次会话"设置
+      try {
+        const raw = localStorage.getItem("teacoder_general_settings");
+        const settings = raw ? JSON.parse(raw) : {};
+        if (settings.restoreOnStartup !== false) {
+          restoreTabs();
+        } else {
+          // 设置为不恢复时，清空已加载的 Tab 状态
+          useAppStore.getState().closeAllTabs();
+        }
+      } catch {
+        restoreTabs();
+      }
+    };
+
+    initApp().catch(() => {});
+  }, [setCliTools, setProfiles, loadProjects, loadSessions, loadCategories, restoreTabs]);
 
   // 30s cost polling when sessions are running
   useEffect(() => {
@@ -163,6 +225,13 @@ export default function AppLayout() {
     }
   }, [themeConfig.tailwindClass]);
 
+  // Apply font size and UI zoom CSS variables
+  useEffect(() => {
+    const html = document.documentElement;
+    html.style.setProperty("--ui-font-size", `${fontSize}px`);
+    html.style.setProperty("--ui-zoom", `${uiZoom / 100}`);
+  }, [fontSize, uiZoom]);
+
   return (
     <ConfigProvider
       locale={zhCN}
@@ -170,17 +239,32 @@ export default function AppLayout() {
         algorithm,
         token: compactToken,
       }}
+      getPopupContainer={() => document.getElementById("root") || document.body}
     >
       <AntdApp>
-        <div className="flex flex-col h-screen overflow-hidden bg-[#202023] text-[#e0e0e0]">
+        <div className="flex flex-col h-screen overflow-hidden bg-[var(--ant-color-bg-container)] text-[var(--ant-color-text)] rounded-[10px]">
           {/* Top header */}
           <AppHeader />
 
           {/* Main area: sidebar + content side by side */}
           <div className="flex flex-1 min-h-0 overflow-hidden" style={{ flexDirection: "row" }}>
-            {/* Left sidebar - fixed width */}
-            <div className="flex-shrink-0 flex flex-col overflow-hidden border-r border-[#2a2d38] bg-[#202023]" style={{ width: 240 }}>
+            {/* Left sidebar - resizable width */}
+            <div
+              ref={sidebarRef}
+              className="flex-shrink-0 flex flex-col overflow-hidden bg-[var(--ant-color-bg-container)]"
+              style={{ width: sidebarWidth }}
+            >
               <AppSidebar />
+            </div>
+
+            {/* Resizable divider */}
+            <div
+              className={`w-1 flex-shrink-0 cursor-col-resize relative group ${isDragging ? "bg-[var(--ant-color-primary)]" : "bg-[var(--ant-color-border-secondary)] hover:bg-[var(--ant-color-primary)]"}`}
+              style={{ cursor: isDragging ? "col-resize" : "col-resize" }}
+              onMouseDown={handleMouseDown}
+            >
+              {/* 拖动提示线 */}
+              <div className="absolute inset-y-0 left-1/2 w-0.5 -translate-x-1/2 bg-transparent group-hover:bg-[var(--ant-color-primary)] transition-colors" />
             </div>
 
             {/* Right content area */}

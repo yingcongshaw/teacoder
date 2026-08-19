@@ -19,6 +19,8 @@ pub struct Session {
     pub created_at: i64,
     pub updated_at: i64,
     pub closed_at: Option<i64>,
+    pub cli_session_id: Option<String>,
+    pub category_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -33,6 +35,8 @@ pub struct CreateSessionInput {
     pub template_id: Option<String>,
     pub cli_args: Option<String>,
     pub env_vars: Option<String>,
+    pub cli_session_id: Option<String>,
+    pub category_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -48,6 +52,8 @@ pub struct UpdateSessionInput {
     pub is_running: Option<bool>,
     pub closed_at: Option<i64>,
     pub project_id: Option<String>,
+    pub cli_session_id: Option<String>,
+    pub category_id: Option<String>,
 }
 
 fn row_to_session(row: &rusqlite::Row) -> Result<Session, rusqlite::Error> {
@@ -67,10 +73,12 @@ fn row_to_session(row: &rusqlite::Row) -> Result<Session, rusqlite::Error> {
         created_at: row.get(11)?,
         updated_at: row.get(12)?,
         closed_at: row.get(13)?,
+        cli_session_id: row.get(14)?,
+        category_id: row.get(15)?,
     })
 }
 
-const SESSION_COLUMNS: &str = "id, project_id, title, tool_type, profile_id, color, thinking_intensity, template_id, cli_args, env_vars, is_running, created_at, updated_at, closed_at";
+const SESSION_COLUMNS: &str = "id, project_id, title, tool_type, profile_id, color, thinking_intensity, template_id, cli_args, env_vars, is_running, created_at, updated_at, closed_at, cli_session_id, category_id";
 
 pub fn list_sessions(
     db: &AppDatabase,
@@ -120,7 +128,7 @@ pub fn create_session(db: &AppDatabase, input: CreateSessionInput) -> Result<Ses
     let is_running: i64 = 1;
 
     conn.execute(
-        "INSERT INTO sessions (id, project_id, title, tool_type, profile_id, color, thinking_intensity, template_id, cli_args, env_vars, is_running, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+        "INSERT INTO sessions (id, project_id, title, tool_type, profile_id, color, thinking_intensity, template_id, cli_args, env_vars, is_running, created_at, updated_at, cli_session_id, category_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
         rusqlite::params![
             id,
             input.project_id,
@@ -135,6 +143,8 @@ pub fn create_session(db: &AppDatabase, input: CreateSessionInput) -> Result<Ses
             is_running,
             now,
             now,
+            input.cli_session_id,
+            input.category_id,
         ],
     )
     .map_err(|e| format!("Failed to insert session: {}", e))?;
@@ -154,6 +164,8 @@ pub fn create_session(db: &AppDatabase, input: CreateSessionInput) -> Result<Ses
         created_at: now,
         updated_at: now,
         closed_at: None,
+        cli_session_id: input.cli_session_id,
+        category_id: input.category_id,
     })
 }
 
@@ -210,13 +222,31 @@ pub fn update_session(
     }
 
     if let Some(closed_at) = input.closed_at {
-        set_clauses.push("closed_at = ?".to_string());
-        params.push(Box::new(closed_at));
+        if closed_at == 0 {
+            set_clauses.push("closed_at = NULL".to_string());
+        } else {
+            set_clauses.push("closed_at = ?".to_string());
+            params.push(Box::new(closed_at));
+        }
     }
 
     if let Some(ref project_id) = input.project_id {
         set_clauses.push("project_id = ?".to_string());
         params.push(Box::new(project_id.clone()));
+    }
+
+    if let Some(ref cli_session_id) = input.cli_session_id {
+        set_clauses.push("cli_session_id = ?".to_string());
+        params.push(Box::new(cli_session_id.clone()));
+    }
+
+    if let Some(ref category_id) = input.category_id {
+        if category_id.is_empty() {
+            set_clauses.push("category_id = NULL".to_string());
+        } else {
+            set_clauses.push("category_id = ?".to_string());
+            params.push(Box::new(category_id.clone()));
+        }
     }
 
     let sql = format!(
@@ -253,9 +283,13 @@ pub fn delete_session(db: &AppDatabase, id: &str) -> Result<(), String> {
 
 pub fn reset_all_running(db: &AppDatabase) -> Result<(), String> {
     let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let now = chrono::Utc::now().timestamp_millis();
 
-    conn.execute("UPDATE sessions SET is_running = 0 WHERE is_running = 1", [])
-        .map_err(|e| format!("Failed to reset running sessions: {}", e))?;
+    conn.execute(
+        "UPDATE sessions SET is_running = 0, closed_at = ?1 WHERE is_running = 1",
+        [now],
+    )
+    .map_err(|e| format!("Failed to reset running sessions: {}", e))?;
 
     Ok(())
 }

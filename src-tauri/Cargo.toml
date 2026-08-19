@@ -1,22 +1,25 @@
 [package]
-name = "codingtea"
+name = "teacoder"
 version = "0.1.0"
-description = "茶码 CodingTea — AI 编程 CLI 工具桌面管理客户端"
-authors = ["苦鼎茶 <codingtea@codingtea.com>"] 
+description = "茶码 TeaCoder — AI 编程 CLI 工具桌面管理客户端"
+authors = ["苦鼎茶 <teacoder@codingtea.com>"]
 edition = "2021"
 license = ""
+default-run = "teacoder"
 
 [lib]
-name = "codingtea_lib"
+name = "teacoder_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = [] }
+tauri = { version = "2", features = ["tray-icon"] }
 tauri-plugin-opener = "2"
 tauri-plugin-dialog = "2"
+tauri-plugin-autostart = "2"
+tauri-plugin-single-instance = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["full"] }
@@ -30,3 +33,7 @@ chrono = "0.4"
 walkdir = "2"
 dirs = "6"
 async-trait = "0.1"
+once_cell = "1"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"

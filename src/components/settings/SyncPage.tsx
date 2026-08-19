@@ -36,7 +36,7 @@ export default function SyncPage({ searchText = "" }: SyncPageProps) {
 
   useEffect(() => {
     try {
-      const raw = localStorage.getItem("codingtea_sync_settings");
+      const raw = localStorage.getItem("teacoder_sync_settings");
       const saved = raw ? JSON.parse(raw) : {};
       setSettings({ ...DEFAULT_SETTINGS, ...saved });
     } catch {
@@ -50,7 +50,7 @@ export default function SyncPage({ searchText = "" }: SyncPageProps) {
   ) => {
     const next = { ...settings, [key]: value };
     setSettings(next);
-    localStorage.setItem("codingtea_sync_settings", JSON.stringify(next));
+    localStorage.setItem("teacoder_sync_settings", JSON.stringify(next));
     message.success("设置已保存");
   };
 
@@ -90,7 +90,7 @@ export default function SyncPage({ searchText = "" }: SyncPageProps) {
           <Input
             value={settings.syncAddress}
             onChange={(e) => updateSetting("syncAddress", e.target.value)}
-            placeholder={settings.syncMethod === "webdav" ? "https://dav.example.com/codingtea" : settings.syncMethod === "git" ? "https://github.com/user/repo" : "/path/to/sync/dir"}
+            placeholder={settings.syncMethod === "webdav" ? "https://dav.example.com/teacoder" : settings.syncMethod === "git" ? "https://github.com/user/repo" : "/path/to/sync/dir"}
             style={{ width: 280 }}
           />
         </SettingRow>

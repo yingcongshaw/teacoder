@@ -52,7 +52,7 @@ export default function SearchPanel() {
       width={480}
       styles={{ body: { padding: 0 } }}
     >
-      <div className="p-3 border-b border-gray-200 dark:border-gray-700">
+      <div className="p-3 border-b border-[var(--ant-color-border-secondary)]">
         <Input
           ref={inputRef}
           placeholder="搜索会话..."
@@ -66,7 +66,7 @@ export default function SearchPanel() {
         dataSource={filtered}
         renderItem={(tab) => (
           <List.Item
-            className="cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 px-3"
+            className="cursor-pointer hover:bg-[var(--ant-color-bg-elevated)] px-3"
             onClick={() => handleSelect(tab.id)}
           >
             <List.Item.Meta

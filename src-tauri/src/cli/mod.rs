@@ -9,6 +9,8 @@ pub enum ToolType {
     Codex,
     Gemini,
     OpenCode,
+    Terminal,
+    Ssh,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

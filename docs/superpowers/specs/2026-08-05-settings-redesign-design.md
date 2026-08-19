@@ -6,7 +6,7 @@
 
 ## 1. Overview
 
-Redesign the CodingTea settings page to match the Cursor/VS Code-style settings UI from reference screenshots. This includes:
+Redesign the TeaCoder settings page to match the Cursor/VS Code-style settings UI from reference screenshots. This includes:
 
 - Restructured sidebar with grouped categories
 - Flat row-based content layout (replacing Card-wrapped groups)
@@ -476,7 +476,7 @@ Source: screenshot 21.设置-关于
 **Section: 应用信息**
 | Label | Type | Options/Default |
 |-------|------|-----------------|
-| 应用名称 | Text | 茶码 CodingTea |
+| 应用名称 | Text | 茶码 TeaCoder |
 | 版本 | Text | v0.1.0 |
 | 检查更新 | Button | → check |
 | 更新通道 | Select | 稳定/Beta/Alpha |
@@ -538,7 +538,7 @@ All colors use Ant Design CSS variables for theme compatibility:
 
 ## 7. Persistence Strategy
 
-- App-level settings (通用, 终端, 快捷键, 通知, AI辅助): `localStorage` with key `codingtea_<page>_settings`
+- App-level settings (通用, 终端, 快捷键, 通知, AI辅助): `localStorage` with key `teacoder_<page>_settings`
 - Tool settings (Claude, Codex, Gemini, etc.): Tauri IPC → SQLite `tool_settings` table (profile-scoped)
 - MCP servers: Tauri IPC → SQLite (new `mcp_servers` table if needed, or JSONL)
 - Remote SSH hosts: Tauri IPC → SQLite (new `ssh_hosts` table)

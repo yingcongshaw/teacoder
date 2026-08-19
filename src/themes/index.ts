@@ -139,13 +139,13 @@ export const BUILT_IN_THEMES: ThemeConfig[] = [
     previewColors: ["#268bd2", "#fdf6e3", "#657b83"],
   },
   {
-    key: "github-dark",
-    label: "GitHub Dark",
-    description: "GitHub 暗色主题",
+    key: "github-storm",
+    label: "GitHub Storm",
+    description: "GitHub 蓝色主题",
     algorithm: "dark",
     token: {
-      colorBgBase: "#0d1117",
-      colorTextBase: "#c9d1d9",
+      colorBgBase: "#031733",
+      colorTextBase: "#ffffff",
       colorPrimary: "#58a6ff",
       colorBorder: "#30363d",
       colorSuccess: "#3fb950",
@@ -153,7 +153,7 @@ export const BUILT_IN_THEMES: ThemeConfig[] = [
       colorError: "#f85149",
     },
     tailwindClass: "dark",
-    previewColors: ["#58a6ff", "#0d1117", "#c9d1d9"],
+    previewColors: ["#58a6ff", "#0d1117", "#ffffff"], //#c9d1d9
   },
   {
     key: "high-contrast",
@@ -174,22 +174,43 @@ export const BUILT_IN_THEMES: ThemeConfig[] = [
     previewColors: ["#ffff00", "#000000", "#ffffff"],
   },
   {
-    key: "warm-light",
-    label: "暖阳",
-    description: "暖色调浅色主题，配合淡黄暖光终端配色",
+    key: "white-light",
+    label: "夏日烈阳",
+    description: "暖色调浅色主题，配合白色终端配色",
     algorithm: "light",
     token: {
       colorBgBase: "#fef6e4",
-      colorTextBase: "#5c4f3d",
-      colorPrimary: "#c07c2e",
+      colorTextBase: "#000000",
+      colorPrimary: "#aa5500",
       colorBorder: "#e8dfd0",
       colorSuccess: "#6b8c42",
       colorWarning: "#b8860b",
       colorError: "#c44b4b",
     },
     tailwindClass: "",
-    previewColors: ["#c07c2e", "#fef6e4", "#5c4f3d"],
+    previewColors: ["#ffd997", "#ffeac5", "#fdf6e3"],
   },
+  {
+    key: "warm-light",
+    label: "秋高气爽",
+    description: "暖色调浅色主题，配合淡黄暖光终端配色",
+    algorithm: "light",
+    token: {
+      colorBgBase: "#ffeac5",
+      colorTextBase: "#000000",
+      colorPrimary: "#aa5500",
+      colorBorder: "#e8dfd0",
+      colorSuccess: "#6b8c42",
+      colorWarning: "#b8860b",
+      colorError: "#c44b4b",
+    },
+    tailwindClass: "",
+    previewColors: ["#ffd997", "#ffeac5", "#fdf6e3"],
+  },
+
+
+
+  
 ];
 
 export function getThemeConfig(key: string): ThemeConfig {

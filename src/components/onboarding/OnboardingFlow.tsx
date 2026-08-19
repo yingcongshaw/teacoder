@@ -7,8 +7,8 @@ import {
   PlusCircleOutlined,
 } from "@ant-design/icons";
 
-const ONBOARDING_KEY = "codingtea_onboarding_completed";
-const AGREEMENT_KEY = "codingtea_agreement_accepted";
+const ONBOARDING_KEY = "teacoder_onboarding_completed";
+const AGREEMENT_KEY = "teacoder_agreement_accepted";
 
 export function useOnboarding() {
   const [showAgreement, setShowAgreement] = useState(false);
@@ -66,7 +66,7 @@ export function AgreementModal({
       title="用户协议"
       open={open}
       closable={false}
-      maskClosable={false}
+      mask={{ closable: false }}
       footer={
         <div className="flex justify-end gap-2">
           <Button disabled={!checked} type="primary" onClick={onAccept}>
@@ -77,9 +77,9 @@ export function AgreementModal({
       width={600}
     >
       <div className="max-h-80 overflow-y-auto pr-2 text-sm space-y-3">
-        <Typography.Title level={5}>茶码 CodingTea 用户协议</Typography.Title>
+        <Typography.Title level={5}>茶码 TeaCoder 用户协议</Typography.Title>
         <p>
-          欢迎使用茶码 CodingTea（以下简称"本软件"）。在使用本软件之前，请您仔细阅读以下协议内容。
+          欢迎使用茶码 TeaCoder（以下简称"本软件"）。在使用本软件之前，请您仔细阅读以下协议内容。
         </p>
         <Typography.Title level={5}>1. 软件许可</Typography.Title>
         <p>
@@ -141,12 +141,12 @@ export function OnboardingGuide({
       title={
         <div className="flex items-center gap-2">
           <CheckCircleOutlined className="text-green-500" />
-          <span>欢迎使用茶码 CodingTea</span>
+          <span>欢迎使用茶码 TeaCoder</span>
         </div>
       }
       open={open}
       closable={false}
-      maskClosable={false}
+      mask={{ closable: false }}
       footer={
         <div className="flex justify-between items-center">
           <Button type="text" onClick={onSkip}>

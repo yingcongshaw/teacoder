@@ -45,7 +45,7 @@ export default function RemoteAccessPage({ searchText = "" }: RemoteAccessPagePr
 
   useEffect(() => {
     try {
-      const raw = localStorage.getItem("codingtea_remoteaccess_settings");
+      const raw = localStorage.getItem("teacoder_remoteaccess_settings");
       const saved = raw ? JSON.parse(raw) : {};
       setSettings({ ...DEFAULT_SETTINGS, ...saved });
     } catch {
@@ -55,7 +55,7 @@ export default function RemoteAccessPage({ searchText = "" }: RemoteAccessPagePr
 
   const saveSettings = (next: RemoteAccessSettings) => {
     setSettings(next);
-    localStorage.setItem("codingtea_remoteaccess_settings", JSON.stringify(next));
+    localStorage.setItem("teacoder_remoteaccess_settings", JSON.stringify(next));
     message.success("设置已保存");
   };
 

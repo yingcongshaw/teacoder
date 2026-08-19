@@ -40,7 +40,7 @@ export default function OpenCodeSettingsPage({ searchText = "" }: OpenCodeSettin
 
   useEffect(() => {
     try {
-      const raw = localStorage.getItem("codingtea_opencode_settings");
+      const raw = localStorage.getItem("teacoder_opencode_settings");
       const saved = raw ? JSON.parse(raw) : {};
       setSettings({ ...DEFAULT_SETTINGS, ...saved });
     } catch {
@@ -54,7 +54,7 @@ export default function OpenCodeSettingsPage({ searchText = "" }: OpenCodeSettin
   ) => {
     const next = { ...settings, [key]: value };
     setSettings(next);
-    localStorage.setItem("codingtea_opencode_settings", JSON.stringify(next));
+    localStorage.setItem("teacoder_opencode_settings", JSON.stringify(next));
     message.success("设置已保存");
   };
 
