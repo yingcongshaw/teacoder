@@ -4,6 +4,7 @@ import { BUILT_IN_THEMES } from "../../themes";
 import { useAppStore } from "../../stores/appStore";
 import SettingRow from "./components/SettingRow";
 import SectionHeader from "./components/SectionHeader";
+import { isAutostartEnabled, setAutostartEnabled, getCloseBehavior, setCloseBehavior, setTrayVisible } from "../../utils/ipc";
 
 interface GeneralSettings {
   language: string;
@@ -23,7 +24,7 @@ interface GeneralSettings {
 const DEFAULT_SETTINGS: GeneralSettings = {
   language: "zh",
   theme: "system",
-  fontSize: 14,
+  fontSize: 18,
   uiZoom: 100,
   restoreOnStartup: true,
   closeBehavior: "minimize",
@@ -41,11 +42,18 @@ interface GeneralSettingsPageProps {
 
 export default function GeneralSettingsPage({ searchText = "" }: GeneralSettingsPageProps) {
   const [settings, setSettings] = useState<GeneralSettings>(DEFAULT_SETTINGS);
+  const [systemAutoStart, setSystemAutoStart] = useState(false);
+  const [systemCloseBehavior, setSystemCloseBehavior] = useState("exit");
   const compactMode = useAppStore((s) => s.compactMode);
   const toggleCompactMode = useAppStore((s) => s.toggleCompactMode);
   const appTheme = useAppStore((s) => s.theme);
   const setTheme = useAppStore((s) => s.setTheme);
+  const fontSize = useAppStore((s) => s.fontSize);
+  const setFontSize = useAppStore((s) => s.setFontSize);
+  const uiZoom = useAppStore((s) => s.uiZoom);
+  const setUiZoom = useAppStore((s) => s.setUiZoom);
 
+  // 加载本地设置
   useEffect(() => {
     try {
       const raw = localStorage.getItem("teacoder_general_settings");
@@ -54,6 +62,16 @@ export default function GeneralSettingsPage({ searchText = "" }: GeneralSettings
     } catch {
       setSettings(DEFAULT_SETTINGS);
     }
+  }, []);
+
+  // 加载系统级设置
+  useEffect(() => {
+    isAutostartEnabled()
+      .then(setSystemAutoStart)
+      .catch(() => {});
+    getCloseBehavior()
+      .then(setSystemCloseBehavior)
+      .catch(() => {});
   }, []);
 
   const updateSetting = <K extends keyof GeneralSettings>(
@@ -68,6 +86,23 @@ export default function GeneralSettingsPage({ searchText = "" }: GeneralSettings
     }
     if (key === "theme") {
       setTheme(value as string);
+    }
+    if (key === "fontSize") {
+      setFontSize(value as number);
+    }
+    if (key === "uiZoom") {
+      setUiZoom(value as number);
+    }
+    if (key === "autoStart") {
+      setSystemAutoStart(value as boolean);
+      setAutostartEnabled(value as boolean).catch(() => {});
+    }
+    if (key === "closeBehavior") {
+      setSystemCloseBehavior(value as string);
+      setCloseBehavior(value as string).catch(() => {});
+    }
+    if (key === "showTrayIcon") {
+      setTrayVisible(value as boolean).catch(() => {});
     }
     message.success("设置已保存");
   };
@@ -95,9 +130,12 @@ export default function GeneralSettingsPage({ searchText = "" }: GeneralSettings
         </SettingRow>
       )}
       {matchesSearch("主题", "深色/浅色/跟随系统") && (
-        <SettingRow label="主题" description="选择应用主题外观">
+        <div style={{ padding: "6px 0", borderBottom: "1px solid var(--ant-color-border-secondary)" }}>
+          <div style={{ fontSize: 13, fontWeight: 500, color: "var(--ant-color-text)", lineHeight: "20px", marginBottom: 8 }}>
+            主题
+          </div>
           <div
-            className="flex gap-2 overflow-x-auto pb-2"
+            className="flex gap-2 flex-wrap"
             style={{ maxWidth: 600 }}
           >
             {BUILT_IN_THEMES.map((t) => {
@@ -147,21 +185,21 @@ export default function GeneralSettingsPage({ searchText = "" }: GeneralSettings
               );
             })}
           </div>
-        </SettingRow>
+        </div>
       )}
       {matchesSearch("字体大小") && (
         <SettingRow label="字体大小" description="调整界面字体大小">
           <div style={{ width: 200, display: "flex", alignItems: "center", gap: 8 }}>
             <Slider
-              min={10}
-              max={20}
+              min={12}
+              max={24}
               step={1}
-              value={settings.fontSize}
+              value={fontSize}
               onChange={(v) => updateSetting("fontSize", v)}
               style={{ flex: 1, margin: 0 }}
             />
             <span style={{ fontSize: 12, color: "var(--ant-color-text-secondary)", minWidth: 24, textAlign: "right" }}>
-              {settings.fontSize}
+              {fontSize}
             </span>
           </div>
         </SettingRow>
@@ -173,12 +211,12 @@ export default function GeneralSettingsPage({ searchText = "" }: GeneralSettings
               min={80}
               max={200}
               step={10}
-              value={settings.uiZoom}
+              value={uiZoom}
               onChange={(v) => updateSetting("uiZoom", v)}
               style={{ flex: 1, margin: 0 }}
             />
             <span style={{ fontSize: 12, color: "var(--ant-color-text-secondary)", minWidth: 32, textAlign: "right" }}>
-              {settings.uiZoom}%
+              {uiZoom}%
             </span>
           </div>
         </SettingRow>
@@ -197,7 +235,7 @@ export default function GeneralSettingsPage({ searchText = "" }: GeneralSettings
       {matchesSearch("关闭窗口行为") && (
         <SettingRow label="关闭窗口行为" description="点击关闭按钮时的行为">
           <Select
-            value={settings.closeBehavior}
+            value={systemCloseBehavior}
             onChange={(v) => updateSetting("closeBehavior", v)}
             style={{ width: 160 }}
           >
@@ -217,7 +255,7 @@ export default function GeneralSettingsPage({ searchText = "" }: GeneralSettings
       {matchesSearch("开机自启动") && (
         <SettingRow label="开机自启动" description="系统启动时自动运行应用">
           <Switch
-            checked={settings.autoStart}
+            checked={systemAutoStart}
             onChange={(v) => updateSetting("autoStart", v)}
           />
         </SettingRow>

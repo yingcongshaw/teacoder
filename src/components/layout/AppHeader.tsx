@@ -13,7 +13,6 @@ import WindowControls, { isMac } from "../common/WindowControls";
 export default function AppHeader() {
   const cliTools = useAppStore((s) => s.cliTools);
   const setCliTools = useAppStore((s) => s.setCliTools);
-  const setNewSessionModalOpen = useAppStore((s) => s.setNewSessionModalOpen);
   const setSearchOpen = useAppStore((s) => s.setSearchOpen);
   const settingsPage = useAppStore((s) => s.settingsPage);
   const setSettingsPage = useAppStore((s) => s.setSettingsPage);
@@ -31,7 +30,7 @@ export default function AppHeader() {
   return (
     <div className="flex-shrink-0">
       <div
-        className="flex items-center h-9 bg-[#212123] text-[#e0e0e0] select-none"
+        className="flex items-center h-9 bg-[var(--ant-color-bg-container)] text-[var(--ant-color-text)] select-none"
         data-tauri-drag-region
       >
         {/* Left: title */}
@@ -40,25 +39,25 @@ export default function AppHeader() {
           style={{ width: isMac ? 200 : 160, paddingLeft: isMac ? 76 : 12 }}
           data-tauri-drag-region
         >
-          <span className="text-[13px] font-medium text-[#cccccc]" data-tauri-drag-region>
-            茶码 CodingTea
+          <span className="text-[13px] font-medium text-[var(--ant-color-text-secondary)]" data-tauri-drag-region>
+            茶码 TeaCoder
           </span>
         </div>
 
         {/* Center: info bar */}
         <div className="flex-1 flex justify-center items-center" data-tauri-drag-region>
           {activeTab && (
-            <div className="flex items-center gap-3 text-xs text-[#888888]">
+            <div className="flex items-center gap-3 text-xs text-[var(--ant-color-text-tertiary)]">
               <span className="flex items-center gap-1">
                 <span
                   className="inline-block w-2 h-2 rounded-full"
-                  style={{ backgroundColor: activeTab.color || "#888" }}
+                  style={{ backgroundColor: activeTab.color || "var(--ant-color-text-tertiary)" }}
                 />
-                <span className="text-[#e0e0e0] font-medium">
+                <span className="text-[var(--ant-color-text)] font-medium">
                   {TOOL_DISPLAY_NAMES[activeTab.toolType]}
                 </span>
               </span>
-              <span className="text-[#333333]">|</span>
+              <span className="text-[var(--ant-color-text-quaternary)]">|</span>
               <span className="truncate max-w-xs">{projects.find((p) => p.id === activeTab.projectId)?.name || activeTab.projectId}</span>
             </div>
           )}
@@ -80,7 +79,6 @@ export default function AppHeader() {
                     <ToolOutlined style={{ fontSize: 13 }} />
                   </Badge>
                 }
-                onClick={() => setNewSessionModalOpen(true)}
               />
             </Tooltip>
 
@@ -108,7 +106,7 @@ export default function AppHeader() {
                 size="small"
                 icon={<SettingOutlined style={{ fontSize: 13 }} />}
                 onClick={() => setSettingsPage(!settingsPage)}
-                className={settingsPage ? "text-[#3b82f6]" : ""}
+                className={settingsPage ? "text-[var(--ant-color-primary)]" : ""}
               />
             </Tooltip>
           </div>

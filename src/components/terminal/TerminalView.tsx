@@ -40,6 +40,9 @@ function getThemeColors(themeName: string) {
     brightMagenta: base.brightMagenta ?? DEFAULT_ANSI_COLORS.brightMagenta,
     brightCyan: base.brightCyan ?? DEFAULT_ANSI_COLORS.brightCyan,
     brightWhite: base.brightWhite ?? DEFAULT_ANSI_COLORS.brightWhite,
+    scrollbarSliderBackground: base.foreground + "33",
+    scrollbarSliderHoverBackground: base.foreground + "66",
+    scrollbarSliderActiveBackground: base.foreground + "99",
   };
 }
 
@@ -188,6 +191,7 @@ export default function TerminalView({ tabId, visible = true }: TerminalViewProp
     term.open(termRef.current);
 
     fitAddon.fit();
+
 
     xtermRef.current = term;
     fitAddonRef.current = fitAddon;
