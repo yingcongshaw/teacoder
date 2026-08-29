@@ -63,6 +63,7 @@ pub fn destroy_tray(app: &AppHandle) {
     let _ = app.remove_tray_by_id(TRAY_ID);
 }
 
+#[allow(dead_code)]
 pub fn is_tray_visible(app: &AppHandle) -> bool {
     app.tray_by_id(TRAY_ID).is_some()
 }

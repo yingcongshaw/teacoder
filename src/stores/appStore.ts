@@ -156,7 +156,16 @@ interface AppState {
   setNewProjectModalOpen: (open: boolean) => void;
   newSessionModalOpen: boolean;
   newSessionProjectId: string | null;
-  setNewSessionModalOpen: (open: boolean, projectId?: string | null) => void;
+  newSessionCategoryId: string | null;
+  setNewSessionModalOpen: (open: boolean, projectId?: string | null, categoryId?: string | null) => void;
+  newCategoryModalOpen: boolean;
+  newCategoryProjectId: string | null;
+  setNewCategoryModalOpen: (open: boolean, projectId?: string | null) => void;
+
+  // 编辑会话弹窗
+  editSessionModalOpen: boolean;
+  editingSessionId: string | null;
+  setEditSessionModalOpen: (open: boolean, sessionId?: string | null) => void;
 
   sessionTemplates: SessionTemplate[];
   globalThinkingIntensity: string;
@@ -173,6 +182,9 @@ interface AppState {
 
   fontSize: number;
   setFontSize: (size: number) => void;
+
+  uiFontFamily: string;
+  setUiFontFamily: (font: string) => void;
 
   uiZoom: number;
   setUiZoom: (zoom: number) => void;
@@ -302,8 +314,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     const cliSessionId = input.toolType === "claude" ? crypto.randomUUID() : undefined;
     let title = input.title;
     if (input.toolType === "terminal" && !title) {
-      const terminalCount = get().sessions.filter((s) => s.toolType === "terminal").length + 1;
-      title = `终端${terminalCount}`;
+      const terminalCount = get().sessions.filter(
+        (s) => s.toolType === "terminal" && s.projectId === input.projectId,
+      ).length + 1;
+      title = `终端 ${terminalCount}`;
     }
     const session = await sessionCreate({ ...input, title, cliSessionId });
     const project = get().projects.find((p) => p.id === input.projectId);
@@ -452,15 +466,18 @@ export const useAppStore = create<AppState>((set, get) => ({
     const hasResume = args.some((a) => a === "--resume" || a === "-r");
     const hasContinue = args.some((a) => a === "--continue" || a === "-c");
     let willResumeSessionId: string | undefined;
-    if (session.cliSessionId && !hasResume && !hasContinue) {
-      // 有 cliSessionId：精确恢复到特定对话
-      args = ["--resume", session.cliSessionId, ...args];
-      cliArgs = JSON.stringify(args);
-      willResumeSessionId = session.cliSessionId;
-    } else if (!session.cliSessionId && !hasResume && !hasContinue) {
-      // 旧会话无 cliSessionId：回退到恢复当前目录最近对话
-      args = ["--continue", ...args];
-      cliArgs = JSON.stringify(args);
+    // Terminal 类型不支持 --resume/--continue，保持原样启动
+    if (session.toolType !== "terminal") {
+      if (session.cliSessionId && !hasResume && !hasContinue) {
+        // 有 cliSessionId：精确恢复到特定对话
+        args = ["--resume", session.cliSessionId, ...args];
+        cliArgs = JSON.stringify(args);
+        willResumeSessionId = session.cliSessionId;
+      } else if (!session.cliSessionId && !hasResume && !hasContinue) {
+        // 旧会话无 cliSessionId：回退到恢复当前目录最近对话
+        args = ["--continue", ...args];
+        cliArgs = JSON.stringify(args);
+      }
     }
     // 启动会话，失败时回退到新会话
     startSession({
@@ -622,8 +639,22 @@ export const useAppStore = create<AppState>((set, get) => ({
   setNewProjectModalOpen: (open) => set({ newProjectModalOpen: open }),
   newSessionModalOpen: false,
   newSessionProjectId: null,
-  setNewSessionModalOpen: (open, projectId) =>
-    set({ newSessionModalOpen: open, newSessionProjectId: open ? (projectId ?? null) : null }),
+  newSessionCategoryId: null,
+  setNewSessionModalOpen: (open, projectId, categoryId) =>
+    set({
+      newSessionModalOpen: open,
+      newSessionProjectId: open ? (projectId ?? null) : null,
+      newSessionCategoryId: open ? (categoryId ?? null) : null,
+    }),
+  newCategoryModalOpen: false,
+  newCategoryProjectId: null,
+  setNewCategoryModalOpen: (open, projectId) =>
+    set({ newCategoryModalOpen: open, newCategoryProjectId: open ? (projectId ?? null) : null }),
+
+  editSessionModalOpen: false,
+  editingSessionId: null,
+  setEditSessionModalOpen: (open, sessionId) =>
+    set({ editSessionModalOpen: open, editingSessionId: open ? (sessionId ?? null) : null }),
 
   sessionTemplates: BUILTIN_SESSION_TEMPLATES,
   globalThinkingIntensity: "medium",
@@ -652,6 +683,20 @@ export const useAppStore = create<AppState>((set, get) => ({
   setFontSize: (size: number) => {
     set({ fontSize: size });
     persistGeneralSetting("fontSize", size);
+  },
+
+  uiFontFamily: (() => {
+    try {
+      const raw = localStorage.getItem(GENERAL_SETTINGS_KEY);
+      const saved = raw ? JSON.parse(raw) : {};
+      return typeof saved.uiFontFamily === "string" && saved.uiFontFamily
+        ? saved.uiFontFamily
+        : "system-ui";
+    } catch { return "system-ui"; }
+  })(),
+  setUiFontFamily: (font: string) => {
+    set({ uiFontFamily: font });
+    persistGeneralSetting("uiFontFamily", font);
   },
 
   uiZoom: (() => {

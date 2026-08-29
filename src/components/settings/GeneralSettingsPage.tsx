@@ -1,15 +1,17 @@
-import { useState, useEffect } from "react";
-import { Select, Switch, Slider, message } from "antd";
+import { useState, useEffect, useMemo } from "react";
+import { Select, Switch, Slider, Typography, message } from "antd";
 import { BUILT_IN_THEMES } from "../../themes";
 import { useAppStore } from "../../stores/appStore";
 import SettingRow from "./components/SettingRow";
 import SectionHeader from "./components/SectionHeader";
-import { isAutostartEnabled, setAutostartEnabled, getCloseBehavior, setCloseBehavior, setTrayVisible } from "../../utils/ipc";
+import { isAutostartEnabled, setAutostartEnabled, getCloseBehavior, setCloseBehavior, setTrayVisible, listSystemFonts } from "../../utils/ipc";
+import { RECOMMENDED_UI_FONTS } from "../../utils/font";
 
 interface GeneralSettings {
   language: string;
   theme: string;
   fontSize: number;
+  uiFontFamily: string;
   uiZoom: number;
   restoreOnStartup: boolean;
   closeBehavior: string;
@@ -25,6 +27,7 @@ const DEFAULT_SETTINGS: GeneralSettings = {
   language: "zh",
   theme: "system",
   fontSize: 18,
+  uiFontFamily: "system-ui",
   uiZoom: 100,
   restoreOnStartup: true,
   closeBehavior: "minimize",
@@ -50,8 +53,42 @@ export default function GeneralSettingsPage({ searchText = "" }: GeneralSettings
   const setTheme = useAppStore((s) => s.setTheme);
   const fontSize = useAppStore((s) => s.fontSize);
   const setFontSize = useAppStore((s) => s.setFontSize);
+  const uiFontFamily = useAppStore((s) => s.uiFontFamily);
+  const setUiFontFamily = useAppStore((s) => s.setUiFontFamily);
   const uiZoom = useAppStore((s) => s.uiZoom);
   const setUiZoom = useAppStore((s) => s.setUiZoom);
+  const [systemFonts, setSystemFonts] = useState<string[]>([]);
+  const [fontSearch, setFontSearch] = useState("");
+
+  useEffect(() => {
+    listSystemFonts().then(setSystemFonts).catch(() => {});
+  }, []);
+
+  const fontOptions = useMemo(() => {
+    const recommended = RECOMMENDED_UI_FONTS.map((f) => ({
+      value: f.value,
+      label: f.label,
+    }));
+    const system = systemFonts.map((f) => ({ value: f, label: f }));
+    const merged = [...recommended];
+    const seen = new Set(recommended.map((f) => f.value));
+    for (const f of system) {
+      if (!seen.has(f.value)) {
+        merged.push(f);
+        seen.add(f.value);
+      }
+    }
+    return merged;
+  }, [systemFonts]);
+
+  const filteredFontOptions = useMemo(() => {
+    if (!fontSearch) return fontOptions;
+    const q = fontSearch.toLowerCase();
+    return fontOptions.filter(
+      (f) =>
+        f.value.toLowerCase().includes(q) || f.label.toLowerCase().includes(q),
+    );
+  }, [fontOptions, fontSearch]);
 
   // 加载本地设置
   useEffect(() => {
@@ -92,6 +129,9 @@ export default function GeneralSettingsPage({ searchText = "" }: GeneralSettings
     }
     if (key === "uiZoom") {
       setUiZoom(value as number);
+    }
+    if (key === "uiFontFamily") {
+      setUiFontFamily(value as string);
     }
     if (key === "autoStart") {
       setSystemAutoStart(value as boolean);
@@ -186,6 +226,40 @@ export default function GeneralSettingsPage({ searchText = "" }: GeneralSettings
             })}
           </div>
         </div>
+      )}
+      {matchesSearch("界面字体") && (
+        <SettingRow
+          label="界面字体"
+          description="选择界面使用的字体（终端字体在 终端-字体 中设置）"
+        >
+          <Select
+            value={uiFontFamily}
+            onChange={(v) => updateSetting("uiFontFamily", v)}
+            style={{ width: 280 }}
+            showSearch
+            searchValue={fontSearch}
+            onSearch={setFontSearch}
+            filterOption={false}
+            dropdownRender={(menu) => (
+              <>
+                {menu}
+                <div
+                  style={{
+                    padding: "4px 8px",
+                    borderTop: "1px solid var(--ant-color-border)",
+                  }}
+                >
+                  <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+                    {systemFonts.length > 0
+                      ? `已加载 ${systemFonts.length} 个系统字体`
+                      : "使用推荐字体列表"}
+                  </Typography.Text>
+                </div>
+              </>
+            )}
+            options={filteredFontOptions}
+          />
+        </SettingRow>
       )}
       {matchesSearch("字体大小") && (
         <SettingRow label="字体大小" description="调整界面字体大小">

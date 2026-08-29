@@ -11,10 +11,12 @@ import {
   DesktopOutlined,
   CloudOutlined,
   FolderOpenOutlined,
+  RightSquareOutlined,
 } from "@ant-design/icons";
 import { useAppStore } from "../../stores/appStore";
 import { TOOL_DISPLAY_NAMES } from "../../types";
 import type { Project, Session, ToolType, SessionCategory } from "../../types";
+import { openPathInFileManager, openTerminal } from "../../utils/ipc";
 
 const TOOL_COLORS: Record<string, string> = {
   claude: "#722ed1",
@@ -42,6 +44,7 @@ interface ProjectNodeProps {
 }
 
 export default function ProjectNode({ project, sessions, categories }: ProjectNodeProps) {
+  const projects = useAppStore((s) => s.projects);
   const openTabIds = useAppStore((s) => s.openTabIds);
   const activeTabId = useAppStore((s) => s.activeTabId);
   const setActiveTab = useAppStore((s) => s.setActiveTab);
@@ -55,14 +58,14 @@ export default function ProjectNode({ project, sessions, categories }: ProjectNo
   const toggleProjectCollapsed = useAppStore((s) => s.toggleProjectCollapsed);
   const collapsedCategoryIds = useAppStore((s) => s.collapsedCategoryIds);
   const toggleCategoryCollapsed = useAppStore((s) => s.toggleCategoryCollapsed);
-  const createCategory = useAppStore((s) => s.createCategory);
+  const setNewCategoryModalOpen = useAppStore((s) => s.setNewCategoryModalOpen);
+  const setEditSessionModalOpen = useAppStore((s) => s.setEditSessionModalOpen);
   const updateCategory = useAppStore((s) => s.updateCategory);
   const deleteCategory = useAppStore((s) => s.deleteCategory);
   const { message } = App.useApp();
 
   const [renaming, setRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState("");
-  const [newCategoryName, setNewCategoryName] = useState("");
   const [hoveredSessionId, setHoveredSessionId] = useState<string | null>(null);
   const [renamingSessionId, setRenamingSessionId] = useState<string | null>(null);
   const [renamingSessionValue, setRenamingSessionValue] = useState("");
@@ -109,27 +112,7 @@ export default function ProjectNode({ project, sessions, categories }: ProjectNo
   };
 
   const handleNewCategory = () => {
-    setNewCategoryName("");
-    Modal.confirm({
-      title: "新建分类",
-      content: (
-        <Input
-          placeholder="输入分类名称"
-          value={newCategoryName}
-          onChange={(e) => setNewCategoryName(e.target.value)}
-          autoFocus
-        />
-      ),
-      okText: "创建",
-      cancelText: "取消",
-      onOk: async () => {
-        if (newCategoryName.trim()) {
-          await createCategory({ projectId: project.id, name: newCategoryName.trim() });
-          message.success("已创建分类");
-        }
-        setNewCategoryName("");
-      },
-    });
+    setNewCategoryModalOpen(true, project.id);
   };
 
   const handleRenameCategory = (category: SessionCategory) => {
@@ -143,7 +126,7 @@ export default function ProjectNode({ project, sessions, categories }: ProjectNo
       const category = projectCategories.find((c) => c.id === renamingCategoryId);
       if (trimmed && trimmed !== category?.name) {
         updateCategory(renamingCategoryId, { name: trimmed });
-        message.success("已重命名分类");
+        message.success("已重命名会话分类");
       }
       setRenamingCategoryId(null);
     }
@@ -151,8 +134,8 @@ export default function ProjectNode({ project, sessions, categories }: ProjectNo
 
   const handleDeleteCategory = (category: SessionCategory) => {
     Modal.confirm({
-      title: "删除分类",
-      content: `确认删除分类「${category.name}」？该分类下的会话将移至项目根目录。`,
+      title: "删除会话分类",
+      content: `确认删除会话分类「${category.name}」？该分类下的会话将移至项目根目录。`,
       okText: "删除",
       cancelText: "取消",
       okButtonProps: { danger: true },
@@ -183,11 +166,12 @@ export default function ProjectNode({ project, sessions, categories }: ProjectNo
 
   const handleDrop = async (e: React.DragEvent, categoryId: string) => {
     e.preventDefault();
+    e.stopPropagation(); // 阻止冒泡到项目根目录
     const sessionId = e.dataTransfer.getData("sessionId");
     if (sessionId) {
       // 更新会话的分类
       await updateSession(sessionId, { categoryId });
-      message.success("已将会话移至分类");
+      message.success("已将会话移至会话分类");
     }
     setDraggingSessionId(null);
   };
@@ -230,7 +214,7 @@ export default function ProjectNode({ project, sessions, categories }: ProjectNo
     },
     {
       key: "newCategory",
-      label: "新建分类",
+      label: "新建会话分类",
       icon: <FolderOpenOutlined />,
       onClick: handleNewCategory,
     },
@@ -240,6 +224,18 @@ export default function ProjectNode({ project, sessions, categories }: ProjectNo
       label: "重命名",
       icon: <EditOutlined />,
       onClick: handleRename,
+    },
+    {
+      key: "openInFileManager",
+      label: "打开文件浏览器",
+      icon: <FolderOutlined />,
+      onClick: () => openPathInFileManager(project.path),
+    },
+    {
+      key: "openTerminal",
+      label: "打开终端",
+      icon: <RightSquareOutlined />,
+      onClick: () => openTerminal(project.path),
     },
     { type: "divider" },
     {
@@ -257,19 +253,32 @@ export default function ProjectNode({ project, sessions, categories }: ProjectNo
       label: "新建会话",
       icon: <PlusOutlined />,
       onClick: () => {
-        setNewSessionModalOpen(true, project.id);
+        setNewSessionModalOpen(true, project.id, category.id);
       },
     },
     { type: "divider" },
     {
       key: "rename",
-      label: "重命名分类",
+      label: "重命名会话分类",
       icon: <EditOutlined />,
       onClick: () => handleRenameCategory(category),
     },
     {
+      key: "openInFileManager",
+      label: "打开文件浏览器",
+      icon: <FolderOutlined />,
+      onClick: () => openPathInFileManager(project.path),
+    },
+    {
+      key: "openTerminal",
+      label: "打开终端",
+      icon: <RightSquareOutlined />,
+      onClick: () => openTerminal(project.path),
+    },
+    { type: "divider" },
+    {
       key: "delete",
-      label: "删除分类",
+      label: "删除会话分类",
       icon: <DeleteOutlined />,
       danger: true,
       onClick: () => handleDeleteCategory(category),
@@ -278,10 +287,39 @@ export default function ProjectNode({ project, sessions, categories }: ProjectNo
 
   const getSessionContextMenu = (session: Session): MenuProps["items"] => [
     {
+      key: "edit",
+      label: "编辑会话",
+      icon: <EditOutlined />,
+      onClick: () => setEditSessionModalOpen(true, session.id),
+    },
+    {
       key: "rename",
       label: "重命名会话",
       icon: <EditOutlined />,
       onClick: () => handleRenameSession(session),
+    },
+    { type: "divider" as const },
+    {
+      key: "openInFileManager",
+      label: "打开文件浏览器",
+      icon: <FolderOutlined />,
+      onClick: () => {
+        const proj = projects.find((p) => p.id === session.projectId);
+        if (proj) {
+          openPathInFileManager(proj.path);
+        }
+      },
+    },
+    {
+      key: "openTerminal",
+      label: "打开终端",
+      icon: <RightSquareOutlined />,
+      onClick: () => {
+        const proj = projects.find((p) => p.id === session.projectId);
+        if (proj) {
+          openTerminal(proj.path);
+        }
+      },
     },
     { type: "divider" as const },
     {
@@ -346,26 +384,27 @@ export default function ProjectNode({ project, sessions, categories }: ProjectNo
           }}
           onMouseEnter={() => setHoveredSessionId(session.id)}
           onMouseLeave={() => setHoveredSessionId(null)}
-          className={`relative flex items-center min-w-0 ${indentLeft} py-1.5 text-xs cursor-pointer transition-colors ${isDragging ? "opacity-50" : ""}`}
+          className={`relative flex items-center min-w-0 ${indentLeft} px-3 py-1.5 text-xs cursor-pointer transition-colors ${isDragging ? "opacity-50" : ""}`}
           style={{
             color: textColor,
             borderLeft: borderStyle,
             backgroundColor: isHovered && !isActive ? "var(--ant-color-bg-elevated)" : bgColor,
           }}
         >
-          {TOOL_ICONS[session.toolType as ToolType] ? (
-            <span
-              className="mr-2 flex-shrink-0"
-              style={{ color: session.color || toolColor }}
-            >
-              {TOOL_ICONS[session.toolType as ToolType]}
-            </span>
-          ) : (
-            <span
-              className="inline-block w-1.5 h-1.5 rounded-full mr-2 flex-shrink-0"
-              style={{ backgroundColor: session.color || toolColor }}
-            />
-          )}
+          <span className="w-3 flex-shrink-0 flex items-center gap-1.5">
+            {TOOL_ICONS[session.toolType as ToolType] ? (
+              <span
+                style={{ color: session.color || toolColor }}
+              >
+                {TOOL_ICONS[session.toolType as ToolType]}
+              </span>
+            ) : (
+              <span
+                className="inline-block w-1.5 h-1.5 rounded-full flex-shrink-0"
+                style={{ backgroundColor: session.color || toolColor }}
+              />
+            )}
+          </span>
           {isRenaming ? (
             <Input
               size="small"
@@ -383,23 +422,14 @@ export default function ProjectNode({ project, sessions, categories }: ProjectNo
               {session.title || TOOL_DISPLAY_NAMES[session.toolType]}
             </span>
           )}
-          {/* 图标区域：固定在右侧 */}
+          {/* 图标区域：固定在右侧，与三角图标右对齐 */}
           {!isRenaming && (
-            <span className="flex items-center gap-1.5 flex-shrink-0 ml-auto pl-2">
-              {isOpen && (
-                <>
-                  {isActive && (
-                    <FireOutlined style={{ fontSize: 10, color: "#f5222d" }} />
-                  )}
-                  <EyeOutlined style={{ fontSize: 10, color: "#1890ff" }} />
-                </>
-              )}
-              {session.isRunning && (
-                <span
-                  className="inline-block w-1.5 h-1.5 rounded-full bg-[#52c41a]"
-                  style={{ animation: "pulse-dot 2s ease-in-out infinite" }}
-                />
-              )}
+            <span className="flex items-center gap-1 flex-shrink-0">
+              {isActive ? (
+                <FireOutlined style={{ fontSize: 10, color: "#f5222d" }} />
+              ) : isOpen ? (
+                <EyeOutlined style={{ fontSize: 10, color: "#1890ff" }} />
+              ) : null}
             </span>
           )}
         </div>
@@ -454,7 +484,7 @@ export default function ProjectNode({ project, sessions, categories }: ProjectNo
               style={{ fontSize: 10 }}
               onClick={(e) => {
                 e.stopPropagation();
-                setNewSessionModalOpen(true, project.id);
+                setNewSessionModalOpen(true, project.id, category.id);
               }}
             >
               <PlusOutlined />
@@ -477,7 +507,7 @@ export default function ProjectNode({ project, sessions, categories }: ProjectNo
 
   return (
     <div
-      className="mb-0.5 w-full min-w-0"
+      className="mb-0.5 w-full min-w-0 border-t border-[var(--ant-color-border-secondary)]"
       onDragOver={handleDragOverProject}
       onDrop={handleDropToProject}
     >
@@ -501,25 +531,25 @@ export default function ProjectNode({ project, sessions, categories }: ProjectNo
           ) : (
             <span className="truncate flex-1 font-medium">{project.name}</span>
           )}
-          {/* 新建分类图标 - 带边框 */}
+          {/* 新建会话分类图标 */}
+          <PlusOutlined
+            className="opacity-0 group-hover:opacity-100 text-[10px] hover:text-[var(--ant-color-primary)] transition-opacity flex-shrink-0"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleNewCategory();
+            }}
+          />
+          {/* 新建会话图标 - 带边框 */}
           <div
             className="opacity-0 group-hover:opacity-100 flex items-center justify-center w-4 h-4 rounded border border-[var(--ant-color-border)] hover:border-[var(--ant-color-primary)] hover:text-[var(--ant-color-primary)] transition-all flex-shrink-0"
             style={{ fontSize: 10 }}
             onClick={(e) => {
               e.stopPropagation();
-              handleNewCategory();
+              handleNewSession();
             }}
           >
             <PlusOutlined />
           </div>
-          {/* 新建会话图标 */}
-          <PlusOutlined
-            className="opacity-0 group-hover:opacity-100 text-[10px] hover:text-[var(--ant-color-primary)] transition-opacity flex-shrink-0"
-            onClick={(e) => {
-              e.stopPropagation();
-              handleNewSession();
-            }}
-          />
           <span
             style={{
               fontSize: 10,

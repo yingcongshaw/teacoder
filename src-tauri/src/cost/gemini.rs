@@ -6,6 +6,7 @@ use super::provider::{CostProvider, SessionFile, ToolType};
 use super::SessionCost;
 use crate::profile::Profile;
 
+#[allow(dead_code)]
 pub struct GeminiProvider;
 
 #[async_trait]

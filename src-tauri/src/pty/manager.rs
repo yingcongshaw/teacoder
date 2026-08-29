@@ -148,6 +148,25 @@ impl PtyManager {
         // 设置 TERM 环境变量，支持 256 色 ANSI 颜色输出
         cmd.env("TERM", "xterm-256color");
 
+        // 通过登录 shell 获取完整 PATH，解决 nvm/fnm 等用户级安装的工具找不到的问题
+        #[cfg(unix)]
+        if matches!(
+            tool_type,
+            ToolType::Claude | ToolType::Codex | ToolType::Gemini | ToolType::OpenCode | ToolType::Ssh
+        ) {
+            if let Ok(output) = std::process::Command::new("bash")
+                .args(["-lc", "echo $PATH"])
+                .output()
+            {
+                if output.status.success() {
+                    let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                    if !path.is_empty() {
+                        cmd.env("PATH", path);
+                    }
+                }
+            }
+        }
+
         for (key, value) in env_vars {
             cmd.env(key, value);
         }

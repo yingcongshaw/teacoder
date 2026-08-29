@@ -229,6 +229,31 @@ export async function categoryDelete(id: string): Promise<void> {
   return invoke("category_delete", { id });
 }
 
+// Session Message IPC
+export interface SessionMessage {
+  id: string;
+  sessionId: string;
+  content: string;
+  lineIndex: number;
+  createdAt: number;
+}
+
+export async function sessionMessageList(sessionId: string): Promise<SessionMessage[]> {
+  return invoke<SessionMessage[]>("session_message_list", { sessionId });
+}
+
+export async function sessionMessageCreate(input: {
+  sessionId: string;
+  content: string;
+  lineIndex: number;
+}): Promise<SessionMessage> {
+  return invoke<SessionMessage>("session_message_create", { input });
+}
+
+export async function sessionMessageDelete(sessionId: string): Promise<void> {
+  return invoke("session_message_delete", { sessionId });
+}
+
 // System IPC
 export async function isAutostartEnabled(): Promise<boolean> {
   return invoke<boolean>("is_autostart_enabled");
@@ -248,4 +273,16 @@ export async function setCloseBehavior(behavior: string): Promise<void> {
 
 export async function setTrayVisible(visible: boolean): Promise<void> {
   return invoke("set_tray_visible", { visible });
+}
+
+export async function openPathInFileManager(path: string): Promise<void> {
+  return invoke("open_path_in_file_manager", { path });
+}
+
+export async function openTerminal(path: string): Promise<void> {
+  return invoke("open_terminal", { path });
+}
+
+export async function listSystemFonts(): Promise<string[]> {
+  return invoke<string[]>("list_system_fonts");
 }

@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from "react";
-import { Button, Tooltip, Modal } from "antd";
+import { Button, Tooltip, Modal, Dropdown } from "antd";
+import type { MenuProps } from "antd";
 import {
   FolderOutlined,
   PlusOutlined,
@@ -8,14 +9,17 @@ import {
   ClockCircleOutlined,
   CloseOutlined,
   DollarOutlined,
+  ThunderboltOutlined,
+  RightSquareOutlined,
 } from "@ant-design/icons";
 import { useAppStore } from "../../stores/appStore";
 import TerminalView from "../terminal/TerminalView";
 import TabBar from "../tabs/TabBar";
 import SettingsPage from "./SettingsPage";
 import CostDashboard from "../cost/CostDashboard";
+import QuickCommands from "../quick-commands/QuickCommands";
 import { TOOL_DISPLAY_NAMES } from "../../types";
-import { getGlobalCost } from "../../utils/ipc";
+import { getGlobalCost, openPathInFileManager, openTerminal } from "../../utils/ipc";
 import type { CostSummary } from "../../types";
 
 const TOOL_COLORS: Record<string, string> = {
@@ -43,10 +47,23 @@ export default function AppContent() {
   const [costModalOpen, setCostModalOpen] = useState(false);
   const [globalCost, setGlobalCost] = useState<CostSummary | null>(null);
   const costTick = useAppStore((s) => s.costTick);
+  const [quickCommandsVisible, setQuickCommandsVisible] = useState(false);
+  const quickCommandsBtnRef = useRef<HTMLSpanElement>(null);
 
   useEffect(() => {
     getGlobalCost().then(setGlobalCost).catch(() => {});
   }, [costTick]);
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "F2") {
+        e.preventDefault();
+        setQuickCommandsVisible((v) => !v);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
 
   const formatCost = (usd: number): string => {
     if (usd >= 1) return `$${usd.toFixed(2)}`;
@@ -65,17 +82,42 @@ export default function AppContent() {
             {openTabIds.map((tabId) => {
               const session = sessions.find((s) => s.id === tabId);
               if (!session) return null;
+              const project = projects.find((p) => p.id === session.projectId);
+              const projectPath = project?.path;
+
+              const terminalContextMenu: MenuProps["items"] = projectPath
+                ? [
+                    {
+                      key: "openInFileManager",
+                      label: "打开文件浏览器",
+                      icon: <FolderOutlined />,
+                      onClick: () => openPathInFileManager(projectPath),
+                    },
+                    {
+                      key: "openTerminal",
+                      label: "打开终端",
+                      icon: <RightSquareOutlined />,
+                      onClick: () => openTerminal(projectPath),
+                    },
+                  ]
+                : [];
+
               return (
-                <div
+                <Dropdown
                   key={tabId}
-                  className="absolute inset-0"
-                  style={{
-                    visibility: tabId === activeTabId ? "visible" : "hidden",
-                    zIndex: tabId === activeTabId ? 1 : 0,
-                  }}
+                  menu={{ items: terminalContextMenu }}
+                  trigger={["contextMenu"]}
                 >
-                  <TerminalView tabId={tabId} visible={tabId === activeTabId} />
-                </div>
+                  <div
+                    className="absolute inset-0"
+                    style={{
+                      visibility: tabId === activeTabId ? "visible" : "hidden",
+                      zIndex: tabId === activeTabId ? 1 : 0,
+                    }}
+                  >
+                    <TerminalView tabId={tabId} visible={tabId === activeTabId} />
+                  </div>
+                </Dropdown>
               );
             })}
           </div>
@@ -263,20 +305,47 @@ export default function AppContent() {
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {mainContent}
         {/* Bottom cost bar */}
-        <div className="flex-shrink-0 border-t border-[var(--ant-color-border)] bg-[var(--ant-color-bg-container)]">
+        <div className="flex-shrink-0 relative border-t border-[var(--ant-color-border)] bg-[var(--ant-color-bg-container)]">
           <div
-            className="flex items-center justify-between px-3 py-1.5 cursor-pointer transition-colors"
+            className="flex items-center justify-between px-3 py-1.5 transition-colors"
             style={{ backgroundColor: "var(--ant-color-bg-container)" }}
-            onClick={() => setCostModalOpen(true)}
           >
-            <div className="flex items-center gap-2 text-xs" style={{ color: "var(--ant-color-text-secondary)" }}>
+            <div
+              className="flex items-center gap-2 text-xs cursor-pointer"
+              style={{ color: "var(--ant-color-text-secondary)" }}
+              onClick={() => setCostModalOpen(true)}
+            >
               <DollarOutlined style={{ fontSize: 12 }} />
               <span>费用统计</span>
               {globalCost && globalCost.costUsd > 0 && (
                 <span style={{ color: "var(--ant-color-text)" }}>{formatCost(globalCost.costUsd)}</span>
               )}
             </div>
+            <div className="flex items-center gap-2">
+              <span
+                ref={quickCommandsBtnRef}
+                className="flex items-center gap-1 text-xs cursor-pointer px-2 py-1 rounded transition-colors"
+                style={{ color: "var(--ant-color-text-secondary)" }}
+                onClick={() => setQuickCommandsVisible((v) => !v)}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.color = "var(--ant-color-text)";
+                  e.currentTarget.style.backgroundColor = "var(--ant-color-bg-elevated)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.color = "var(--ant-color-text-secondary)";
+                  e.currentTarget.style.backgroundColor = "transparent";
+                }}
+              >
+                <ThunderboltOutlined style={{ fontSize: 12 }} />
+                <span>快捷命令</span>
+              </span>
+            </div>
           </div>
+          <QuickCommands
+            visible={quickCommandsVisible}
+            onClose={() => setQuickCommandsVisible(false)}
+            anchorRef={quickCommandsBtnRef}
+          />
         </div>
       </div>
       <DraggableModal

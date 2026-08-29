@@ -3,14 +3,16 @@
 @import "tailwindcss/theme.css" layer(theme);
 @import "tailwindcss/utilities.css" layer(utilities);
 
-/* UI font size and zoom variables - applied to root */
+/* UI font family, size and zoom variables - applied to root */
 :root {
+  --ui-font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", "Sarasa Sans SC", sans-serif;
   --ui-font-size: 14px;
   --ui-zoom: 1;
 }
 
-/* Apply font size to body (base font for Ant Design components) */
+/* Apply font family and size to body (base font for Ant Design components) */
 html {
+  font-family: var(--ui-font-family);
   font-size: var(--ui-font-size);
 }
 

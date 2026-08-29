@@ -1,9 +1,11 @@
 import { useState, useRef, useEffect } from "react";
 import { Modal, Dropdown, Input, Select, App } from "antd";
 import type { MenuProps, InputRef } from "antd";
+import { FolderOutlined, RightSquareOutlined } from "@ant-design/icons";
 import { useAppStore } from "../../stores/appStore";
 import { TOOL_DISPLAY_NAMES } from "../../types";
 import type { Session } from "../../types";
+import { openPathInFileManager, openTerminal } from "../../utils/ipc";
 
 export default function TabBar() {
   const sessions = useAppStore((s) => s.sessions);
@@ -94,6 +96,9 @@ export default function TabBar() {
   const getProjectName = (projectId: string) =>
     projects.find((p) => p.id === projectId)?.name || "未知项目";
 
+  const getProjectPath = (projectId: string) =>
+    projects.find((p) => p.id === projectId)?.path;
+
   const buildContextMenu = (tab: Session): MenuProps["items"] => [
     {
       key: "rename",
@@ -112,6 +117,28 @@ export default function TabBar() {
       key: "move",
       label: "移动到其他项目",
       onClick: () => handleMoveToProject(tab),
+    },
+    {
+      key: "openInFileManager",
+      label: "打开文件浏览器",
+      icon: <FolderOutlined />,
+      onClick: () => {
+        const projectPath = getProjectPath(tab.projectId);
+        if (projectPath) {
+          openPathInFileManager(projectPath);
+        }
+      },
+    },
+    {
+      key: "openTerminal",
+      label: "打开终端",
+      icon: <RightSquareOutlined />,
+      onClick: () => {
+        const projectPath = getProjectPath(tab.projectId);
+        if (projectPath) {
+          openTerminal(projectPath);
+        }
+      },
     },
     {
       key: "properties",
@@ -184,9 +211,6 @@ export default function TabBar() {
                   className="inline-block w-1.5 h-1.5 rounded-full flex-shrink-0"
                   style={{ backgroundColor: tab.color || "#888" }}
                 />
-                {tab.isRunning && (
-                  <span className="inline-block w-1 h-1 rounded-full bg-[#52c41a] flex-shrink-0" style={{ animation: "pulse-dot 2s ease-in-out infinite" }} />
-                )}
                 {renamingId === tab.id ? (
                   <Input
                     ref={renameInputRef}

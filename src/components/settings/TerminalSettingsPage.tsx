@@ -5,6 +5,7 @@ import SectionHeader from "./components/SectionHeader";
 import { useAppStore } from "../../stores/appStore";
 import { TERMINAL_COLOR_THEMES } from "../../types";
 import type { TerminalSettings } from "../../types";
+import { listSystemFonts } from "../../utils/ipc";
 
 const SHELL_OPTIONS = [
   { value: "default", label: "默认 Shell" },
@@ -32,6 +33,17 @@ interface LocalFont {
 }
 
 async function querySystemFonts(): Promise<string[]> {
+  // 优先使用 Rust 端读取的系统字体（跨平台支持）
+  try {
+    const rustFonts = await listSystemFonts();
+    if (rustFonts.length > 0) {
+      return rustFonts;
+    }
+  } catch {
+    // Rust 调用失败，回退到浏览器 API
+  }
+
+  // 回退方案：使用浏览器的 queryLocalFonts API（仅 Chromium）
   try {
     if ("queryLocalFonts" in window) {
       const fonts = await (window as unknown as { queryLocalFonts: () => Promise<LocalFont[]> }).queryLocalFonts();

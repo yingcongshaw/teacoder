@@ -2,7 +2,6 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 
 use rusqlite::Connection;
-use tauri::Manager;
 
 pub struct AppDatabase {
     pub conn: Mutex<Connection>,

@@ -13,6 +13,7 @@ import CliArgsClaude from "../cli/CliArgsClaude";
 interface NewSessionModalProps {
   open: boolean;
   projectId: string | null;
+  categoryId?: string | null;
   onClose: () => void;
 }
 
@@ -61,7 +62,7 @@ function buildCliArgs(toolType: ToolType, params: Record<string, unknown>): stri
   return args.length > 0 ? JSON.stringify(args) : "";
 }
 
-export default function NewSessionModal({ open: isOpen, projectId, onClose }: NewSessionModalProps) {
+export default function NewSessionModal({ open: isOpen, projectId, categoryId, onClose }: NewSessionModalProps) {
   const { message } = App.useApp();
   const createSession = useAppStore((s) => s.createSession);
   const cliTools = useAppStore((s) => s.cliTools);
@@ -69,6 +70,7 @@ export default function NewSessionModal({ open: isOpen, projectId, onClose }: Ne
   const profiles = useAppStore((s) => s.profiles);
   const globalThinkingIntensity = useAppStore((s) => s.globalThinkingIntensity);
   const projects = useAppStore((s) => s.projects);
+  const categories = useAppStore((s) => s.categories);
 
   const [selectedTool, setSelectedTool] = useState<ToolType | null>(null);
   const [selectedColor, setSelectedColor] = useState<string>(COLOR_PRESETS[0]);
@@ -78,6 +80,7 @@ export default function NewSessionModal({ open: isOpen, projectId, onClose }: Ne
   const [templateId, setTemplateId] = useState<string | undefined>();
   const [envVars, setEnvVars] = useState("");
   const [cliParams, setCliParams] = useState<Record<string, unknown>>({});
+  const [sessionCategoryId, setSessionCategoryId] = useState<string | undefined>(undefined);
 
   // SSH 连接参数
   const [sshHostname, setSshHostname] = useState("");
@@ -152,14 +155,19 @@ export default function NewSessionModal({ open: isOpen, projectId, onClose }: Ne
       setSshUsername("root");
       setSshPassword("");
       setSshIdentityFile("");
+      setSessionCategoryId(categoryId || undefined);
     }
-  }, [isOpen, globalThinkingIntensity]);
+  }, [isOpen, globalThinkingIntensity, categoryId]);
 
   const project = projects.find((p) => p.id === projectId);
 
   const filteredProfiles = profiles.filter((p) =>
     selectedTool ? p.toolType === selectedTool : true,
   );
+
+  const filteredCategories = projectId
+    ? categories.filter((c) => c.projectId === projectId)
+    : [];
 
   const getToolInfo = (toolType: ToolType): CliTool | undefined =>
     cliTools.find((t) => t.toolType === toolType);
@@ -236,6 +244,7 @@ export default function NewSessionModal({ open: isOpen, projectId, onClose }: Ne
         templateId,
         cliArgs: finalCliArgs,
         envVars: envVars.trim() || undefined,
+        categoryId: sessionCategoryId,
       });
       onClose();
     } catch (err) {
@@ -292,6 +301,25 @@ export default function NewSessionModal({ open: isOpen, projectId, onClose }: Ne
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto px-5 py-4">
+          {/* 所属分类 */}
+          <div style={{ marginBottom: 12 }}>
+            <label style={{ display: "block", fontSize: 12, color: "var(--ant-color-text-secondary)", marginBottom: 4 }}>所属分类</label>
+            <Select
+              size="small"
+              placeholder="选择分类（可选）"
+              allowClear
+              value={sessionCategoryId}
+              onChange={setSessionCategoryId}
+              style={{ width: "100%" }}
+            >
+              {filteredCategories.map((c) => (
+                <Select.Option key={c.id} value={c.id}>
+                  {c.name}
+                </Select.Option>
+              ))}
+            </Select>
+          </div>
+
           {/* 会话名称 */}
           <div style={{ marginBottom: 12 }}>
             <label style={{ display: "block", fontSize: 12, color: "var(--ant-color-text-secondary)", marginBottom: 4 }}>会话名称</label>

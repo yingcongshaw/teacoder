@@ -5,18 +5,22 @@ import { listen } from "@tauri-apps/api/event";
 import { useAppStore } from "../../stores/appStore";
 import { detectCliTools, listProfiles, pollCosts, projectList, projectCreate, sessionCreate } from "../../utils/ipc";
 import { resolveTheme } from "../../themes";
+import { buildUiFontStack } from "../../utils/font";
 import useKeyboardShortcuts from "../../hooks/useKeyboardShortcuts";
 import AppHeader from "./AppHeader";
 import AppSidebar from "./AppSidebar";
 import AppContent from "./AppContent";
 import NewSessionModal from "../tabs/NewSessionModal";
+import EditSessionModal from "../tabs/EditSessionModal";
 import NewProjectModal from "../project/NewProjectModal";
+import NewCategoryModal from "../project/NewCategoryModal";
 import SearchPanel from "../tabs/SearchPanel";
 import { AgreementModal, OnboardingGuide, useOnboarding } from "../onboarding/OnboardingFlow";
 
 export default function AppLayout() {
   const appTheme = useAppStore((s) => s.theme);
   const fontSize = useAppStore((s) => s.fontSize);
+  const uiFontFamily = useAppStore((s) => s.uiFontFamily);
   const uiZoom = useAppStore((s) => s.uiZoom);
   const compactMode = useAppStore((s) => s.compactMode);
   const setCliTools = useAppStore((s) => s.setCliTools);
@@ -24,8 +28,15 @@ export default function AppLayout() {
   const newSessionModalOpen = useAppStore((s) => s.newSessionModalOpen);
   const setNewSessionModalOpen = useAppStore((s) => s.setNewSessionModalOpen);
   const newSessionProjectId = useAppStore((s) => s.newSessionProjectId);
+  const newSessionCategoryId = useAppStore((s) => s.newSessionCategoryId);
   const newProjectModalOpen = useAppStore((s) => s.newProjectModalOpen);
   const setNewProjectModalOpen = useAppStore((s) => s.setNewProjectModalOpen);
+  const newCategoryModalOpen = useAppStore((s) => s.newCategoryModalOpen);
+  const setNewCategoryModalOpen = useAppStore((s) => s.setNewCategoryModalOpen);
+  const newCategoryProjectId = useAppStore((s) => s.newCategoryProjectId);
+  const editSessionModalOpen = useAppStore((s) => s.editSessionModalOpen);
+  const setEditSessionModalOpen = useAppStore((s) => s.setEditSessionModalOpen);
+  const editingSessionId = useAppStore((s) => s.editingSessionId);
   const loadProjects = useAppStore((s) => s.loadProjects);
   const loadSessions = useAppStore((s) => s.loadSessions);
   const loadCategories = useAppStore((s) => s.loadCategories);
@@ -215,6 +226,9 @@ export default function AppLayout() {
       }
     : themeConfig.token;
 
+  // Ant Design 主题使用与全局一致的字体栈
+  const themeFontFamily = `var(--ui-font-family)`;
+
   // Apply tailwind dark class
   useEffect(() => {
     const html = document.documentElement;
@@ -225,19 +239,26 @@ export default function AppLayout() {
     }
   }, [themeConfig.tailwindClass]);
 
-  // Apply font size and UI zoom CSS variables
+  // Apply font size, font family and UI zoom CSS variables
   useEffect(() => {
     const html = document.documentElement;
     html.style.setProperty("--ui-font-size", `${fontSize}px`);
+    html.style.setProperty(
+      "--ui-font-family",
+      buildUiFontStack(uiFontFamily),
+    );
     html.style.setProperty("--ui-zoom", `${uiZoom / 100}`);
-  }, [fontSize, uiZoom]);
+  }, [fontSize, uiFontFamily, uiZoom]);
 
   return (
     <ConfigProvider
       locale={zhCN}
       theme={{
         algorithm,
-        token: compactToken,
+        token: {
+          fontFamily: themeFontFamily,
+          ...compactToken,
+        },
       }}
       getPopupContainer={() => document.getElementById("root") || document.body}
     >
@@ -280,7 +301,18 @@ export default function AppLayout() {
         <NewSessionModal
           open={newSessionModalOpen}
           projectId={newSessionProjectId}
+          categoryId={newSessionCategoryId}
           onClose={() => setNewSessionModalOpen(false)}
+        />
+        <EditSessionModal
+          open={editSessionModalOpen}
+          sessionId={editingSessionId}
+          onClose={() => setEditSessionModalOpen(false)}
+        />
+        <NewCategoryModal
+          open={newCategoryModalOpen}
+          projectId={newCategoryProjectId}
+          onClose={() => setNewCategoryModalOpen(false)}
         />
         <SearchPanel />
         {ready && (

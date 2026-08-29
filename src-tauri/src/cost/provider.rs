@@ -6,6 +6,7 @@ use super::SessionCost;
 use crate::profile::Profile;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[allow(dead_code)]
 pub enum ToolType {
     Claude,
     Codex,
@@ -16,6 +17,7 @@ pub enum ToolType {
 /// Trait for reading token usage data from CLI tool local files.
 /// Each CLI tool implements this trait to provide cost tracking.
 #[async_trait]
+#[allow(dead_code)]
 pub trait CostProvider: Send + Sync {
     fn tool_type(&self) -> ToolType;
     fn data_dir(&self, profile: &Profile) -> PathBuf;
@@ -24,6 +26,7 @@ pub trait CostProvider: Send + Sync {
     async fn get_live_usage(&self, profile: &Profile, session_id: &str) -> Result<SessionCost, String>;
 }
 
+#[allow(dead_code)]
 pub struct SessionFile {
     pub path: PathBuf,
     pub session_id: String,

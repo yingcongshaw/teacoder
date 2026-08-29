@@ -7,6 +7,7 @@ mod project;
 mod pty;
 mod session;
 mod session_category;
+mod session_message;
 mod storage;
 mod tool_settings;
 mod tray;
@@ -55,6 +56,24 @@ pub fn run() {
                 use crate::session;
                 let db_state = app.state::<AppDatabase>();
                 session::reset_all_running(&db_state).ok();
+            }
+
+            // 从数据库加载 close_behavior 设置
+            {
+                let db_state = app.state::<AppDatabase>();
+                let conn = db_state.conn.lock().unwrap();
+                if let Ok(value) = conn.query_row(
+                    "SELECT value FROM app_settings WHERE key = 'close_behavior'",
+                    [],
+                    |row| row.get::<_, String>(0),
+                ) {
+                    let behavior = match value.as_str() {
+                        "minimize" => CloseBehavior::MinimizeToTray,
+                        "exit" => CloseBehavior::Exit,
+                        _ => CloseBehavior::Exit,
+                    };
+                    *CLOSE_BEHAVIOR.lock().unwrap() = behavior;
+                }
             }
 
             // macOS: 保留原生信号灯按钮，使用 Overlay 标题栏
@@ -127,6 +146,9 @@ pub fn run() {
             commands::session_category::category_create,
             commands::session_category::category_update,
             commands::session_category::category_delete,
+            commands::session_message::session_message_list,
+            commands::session_message::session_message_create,
+            commands::session_message::session_message_delete,
             commands::cost::get_session_cost,
             commands::cost::get_profile_cost,
             commands::cost::get_global_cost,
@@ -142,6 +164,9 @@ pub fn run() {
             commands::system::set_close_behavior,
             commands::system::get_close_behavior,
             commands::system::set_tray_visible,
+            commands::system::open_path_in_file_manager,
+            commands::system::open_terminal,
+            commands::system_fonts::list_system_fonts,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

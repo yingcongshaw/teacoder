@@ -1,6 +1,5 @@
 use crate::storage::AppDatabase;
 use crate::tool_settings;
-use tauri::Emitter;
 
 #[tauri::command]
 pub fn get_tool_settings(

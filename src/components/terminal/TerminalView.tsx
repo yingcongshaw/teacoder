@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback, useState } from "react";
+import { useEffect, useRef, useCallback, useState, forwardRef, useImperativeHandle } from "react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
@@ -8,11 +8,17 @@ import { useAppStore } from "../../stores/appStore";
 import { TERMINAL_COLOR_THEMES, DEFAULT_ANSI_COLORS } from "../../types";
 import { terminalThemeForAppTheme } from "../../themes";
 import { clipboardImageToProtocol, fileToProtocol } from "../../utils/image";
+import UserMessageTracker from "./UserMessageTracker";
 import "@xterm/xterm/css/xterm.css";
 
 interface TerminalViewProps {
   tabId: string;
   visible?: boolean;
+}
+
+export interface TerminalViewHandle {
+  scrollToLine: (lineIndex: number) => void;
+  getCurrentLineIndex: () => number;
 }
 
 function getThemeColors(themeName: string) {
@@ -139,10 +145,24 @@ function detectImageExtension(mimeType: string): string {
   return map[mimeType] || "png";
 }
 
-export default function TerminalView({ tabId, visible = true }: TerminalViewProps) {
+const TerminalView = forwardRef<TerminalViewHandle, TerminalViewProps>(function TerminalView({ tabId, visible = true }, ref) {
   const termRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
+  const trackerRef = useRef<{ captureInput: (text: string) => void; flushInput: () => void; handleEnter: () => void } | null>(null);
+
+  useImperativeHandle(ref, () => ({
+    scrollToLine: (lineIndex: number) => {
+      const term = xtermRef.current;
+      if (term && lineIndex >= 0 && lineIndex < term.buffer.active.length) {
+        term.scrollToLine(lineIndex);
+      }
+    },
+    getCurrentLineIndex: () => {
+      const term = xtermRef.current;
+      return term ? term.buffer.active.length - 1 : 0;
+    },
+  }), []);
 
   const terminalSettings = useAppStore((s) => s.terminalSettings);
   const appTheme = useAppStore((s) => s.theme);
@@ -177,7 +197,7 @@ export default function TerminalView({ tabId, visible = true }: TerminalViewProp
       cursorBlink: terminalSettings.cursorBlink,
       cursorStyle: sanitizeCursorStyle(terminalSettings.cursorStyle),
       fontSize: terminalSettings.fontSize,
-      fontFamily: `'${terminalSettings.fontFamily}', monospace`,
+      fontFamily: `'${terminalSettings.fontFamily}', 'Sarasa Mono SC', 'Noto Sans Mono CJK SC', 'Microsoft YaHei', 'PingFang SC', monospace`,
       lineHeight: Math.max(1, terminalSettings.lineHeight),
       scrollback: terminalSettings.scrollback,
       theme: getThemeColors(effectiveThemeName),
@@ -237,6 +257,12 @@ export default function TerminalView({ tabId, visible = true }: TerminalViewProp
     termRef.current.addEventListener("paste", handlePaste);
 
     term.onData((data) => {
+      // Track user input for message tracking
+      trackerRef.current?.captureInput(data);
+      // Detect Enter key (CR = carriage return, LF = line feed)
+      if (data === "\r" || data === "\n") {
+        trackerRef.current?.handleEnter();
+      }
       writeToPty(tabId, data).catch(() => {});
     });
 
@@ -276,13 +302,22 @@ export default function TerminalView({ tabId, visible = true }: TerminalViewProp
     const term = xtermRef.current;
     if (!term) return;
 
+    const cursorStyleChanged =
+      term.options.cursorStyle !== sanitizeCursorStyle(terminalSettings.cursorStyle);
+    const cursorBlinkChanged = term.options.cursorBlink !== terminalSettings.cursorBlink;
+
     term.options.cursorBlink = terminalSettings.cursorBlink;
     term.options.cursorStyle = sanitizeCursorStyle(terminalSettings.cursorStyle);
     term.options.fontSize = terminalSettings.fontSize;
-    term.options.fontFamily = `'${terminalSettings.fontFamily}', monospace`;
+    term.options.fontFamily = `'${terminalSettings.fontFamily}', 'Sarasa Mono SC', 'Noto Sans Mono CJK SC', 'Microsoft YaHei', 'PingFang SC', monospace`;
     term.options.lineHeight = Math.max(1, terminalSettings.lineHeight);
     term.options.scrollback = terminalSettings.scrollback;
     term.options.theme = getThemeColors(effectiveThemeName);
+
+    // cursor 样式/闪烁变化后需要刷新终端以使变更立即生效
+    if (cursorStyleChanged || cursorBlinkChanged) {
+      term.refresh(0, term.rows - 1);
+    }
 
     // 字体/字号/行高变更后需要重新 fit
     if (fitAddonRef.current) {
@@ -308,10 +343,25 @@ export default function TerminalView({ tabId, visible = true }: TerminalViewProp
   const themeColors = getThemeColors(effectiveThemeName);
 
   return (
-    <div
-      ref={termRef}
-      className="w-full h-full"
-      style={{ padding: "4px 8px", backgroundColor: themeColors.background }}
-    />
+    <div className="w-full h-full relative" style={{ backgroundColor: themeColors.background }}>
+      <div
+        ref={termRef}
+        className="w-full h-full"
+        style={{ padding: "4px 8px" }}
+      />
+      {/* 用户消息追踪器 - 悬浮在右上角 */}
+      <div
+        className="absolute top-2 right-2 z-10"
+        style={{ padding: "4px 8px" }}
+      >
+        <UserMessageTracker
+          tabId={tabId}
+          xtermRef={xtermRef}
+          trackerRef={trackerRef}
+        />
+      </div>
+    </div>
   );
-}
+});
+
+export default TerminalView;
