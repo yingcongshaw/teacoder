@@ -1,7 +1,19 @@
 import { useState, useRef, useEffect } from "react";
 import { Modal, Dropdown, Input, Select, App } from "antd";
 import type { MenuProps, InputRef } from "antd";
-import { FolderOutlined, RightSquareOutlined } from "@ant-design/icons";
+import {
+  FolderOutlined,
+  RightSquareOutlined,
+  AimOutlined,
+  EditOutlined,
+  CopyOutlined,
+  SwapOutlined,
+  InfoCircleOutlined,
+  CloseOutlined,
+  CloseCircleOutlined,
+  VerticalRightOutlined,
+  DeleteOutlined,
+} from "@ant-design/icons";
 import { useAppStore } from "../../stores/appStore";
 import { TOOL_DISPLAY_NAMES } from "../../types";
 import type { Session } from "../../types";
@@ -19,6 +31,7 @@ export default function TabBar() {
   const duplicateSession = useAppStore((s) => s.duplicateSession);
   const closeOtherTabs = useAppStore((s) => s.closeOtherTabs);
   const closeTabsToRight = useAppStore((s) => s.closeTabsToRight);
+  const locateSession = useAppStore((s) => s.locateSession);
   const { message, modal } = App.useApp();
 
   const [renamingId, setRenamingId] = useState<string | null>(null);
@@ -103,11 +116,13 @@ export default function TabBar() {
     {
       key: "rename",
       label: "重命名",
+      icon: <EditOutlined />,
       onClick: () => handleRename(tab),
     },
     {
       key: "duplicate",
       label: "复制会话",
+      icon: <CopyOutlined />,
       onClick: () => {
         duplicateSession(tab.id);
         message.success("已复制会话");
@@ -116,6 +131,7 @@ export default function TabBar() {
     {
       key: "move",
       label: "移动到其他项目",
+      icon: <SwapOutlined />,
       onClick: () => handleMoveToProject(tab),
     },
     {
@@ -143,28 +159,40 @@ export default function TabBar() {
     {
       key: "properties",
       label: "查看属性",
+      icon: <InfoCircleOutlined />,
       onClick: () => setPropertiesTab(tab),
+    },
+    { type: "divider" },
+    {
+      key: "locate",
+      label: "定位到项目",
+      icon: <AimOutlined />,
+      onClick: () => locateSession(tab.id),
     },
     { type: "divider" },
     {
       key: "close",
       label: "关闭标签",
+      icon: <CloseOutlined />,
       onClick: () => handleClose(tab.id, tab.isRunning),
     },
     {
       key: "closeOthers",
       label: "关闭其他标签",
+      icon: <CloseCircleOutlined />,
       onClick: () => closeOtherTabs(tab.id),
     },
     {
       key: "closeRight",
       label: "关闭右侧标签",
+      icon: <VerticalRightOutlined />,
       onClick: () => closeTabsToRight(tab.id),
     },
     { type: "divider" },
     {
       key: "delete",
       label: "删除会话",
+      icon: <DeleteOutlined />,
       danger: true,
       onClick: () => handleDelete(tab),
     },
@@ -189,7 +217,10 @@ export default function TabBar() {
               trigger={["contextMenu"]}
             >
               <div
-                onClick={() => setActiveTab(tab.id)}
+                onClick={() => {
+                  setActiveTab(tab.id);
+                  locateSession(tab.id);
+                }}
                 onDoubleClick={() => handleRename(tab)}
                 className="flex items-center gap-1 px-3 h-full cursor-pointer whitespace-nowrap"
                 style={{
@@ -197,7 +228,7 @@ export default function TabBar() {
                   color: isActive ? "var(--ant-color-text)" : "var(--ant-color-text-secondary)",
                   borderRight: "1px solid var(--ant-color-border-secondary)",
                   backgroundColor: isActive ? "var(--ant-color-bg-layout)" : undefined,
-                  borderBottom: isActive ? "2px solid var(--ant-color-primary)" : "2px solid transparent",
+                  borderBottom: isActive ? "4px solid var(--ant-color-primary)" : "4px solid transparent",
                   transition: "background-color 0.15s",
                 }}
                 onMouseEnter={(e) => {

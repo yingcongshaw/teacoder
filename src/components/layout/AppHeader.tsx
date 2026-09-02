@@ -33,13 +33,20 @@ export default function AppHeader() {
         className="flex items-center h-9 bg-[var(--ant-color-bg-container)] text-[var(--ant-color-text)] select-none"
         data-tauri-drag-region
       >
-        {/* Left: title */}
+        {/* Left: logo + title */}
         <div
           className="flex items-center gap-2 flex-shrink-0"
           style={{ width: isMac ? 200 : 160, paddingLeft: isMac ? 76 : 12 }}
           data-tauri-drag-region
         >
-          <span className="text-[13px] font-medium text-[var(--ant-color-text-secondary)]" data-tauri-drag-region>
+          <img
+            src="/logo.png"
+            alt="茶码 TeaCoder"
+            className="h-5 w-5 flex-shrink-0"
+            draggable={false}
+            data-tauri-drag-region
+          />
+          <span className="text-[13px] font-medium text-[var(--ant-color-text-secondary)] truncate" data-tauri-drag-region>
             茶码 TeaCoder
           </span>
         </div>

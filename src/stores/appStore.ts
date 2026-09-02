@@ -67,9 +67,9 @@ function loadAppTheme(): string {
   try {
     const raw = localStorage.getItem(GENERAL_SETTINGS_KEY);
     const saved = raw ? JSON.parse(raw) : {};
-    return typeof saved.theme === "string" ? saved.theme : "dark";
+    return typeof saved.theme === "string" ? saved.theme : "warm-light";
   } catch {
-    return "dark";
+    return "warm-light";
   }
 }
 
@@ -151,6 +151,9 @@ interface AppState {
 
   collapsedProjectIds: string[];
   toggleProjectCollapsed: (id: string) => void;
+
+  // 定位到会话所属的项目：展开项目与分类，遵循手风琴模式
+  locateSession: (sessionId: string) => void;
 
   newProjectModalOpen: boolean;
   setNewProjectModalOpen: (open: boolean) => void;
@@ -618,12 +621,49 @@ export const useAppStore = create<AppState>((set, get) => ({
   collapsedProjectIds: loadCollapsed(),
   toggleProjectCollapsed: (id) =>
     set((state) => {
-      const collapsed = state.collapsedProjectIds.includes(id)
-        ? state.collapsedProjectIds.filter((d) => d !== id)
+      const isCurrentlyCollapsed = state.collapsedProjectIds.includes(id);
+      // 手风琴模式：展开某个项目时，自动折叠其他所有已展开的项目
+      const collapsed = isCurrentlyCollapsed
+        ? Array.from(
+            new Set([
+              ...state.collapsedProjectIds.filter((d) => d !== id),
+              ...state.projects
+                .filter((p) => p.id !== id && !state.collapsedProjectIds.includes(p.id))
+                .map((p) => p.id),
+            ]),
+          )
         : [...state.collapsedProjectIds, id];
       saveCollapsed(collapsed);
       return { collapsedProjectIds: collapsed };
     }),
+
+  // 定位到会话所属的项目与分类（手风琴模式：只展开该项目）
+  locateSession: (sessionId) => {
+    const state = get();
+    const session = state.sessions.find((s) => s.id === sessionId);
+    if (!session) return;
+    const projectId = session.projectId;
+    const categoryId = session.categoryId;
+    if (!state.projects.some((p) => p.id === projectId)) return;
+
+    const collapsedProjects = state.projects
+      .filter((p) => p.id !== projectId)
+      .map((p) => p.id);
+    const collapsedCategories = categoryId
+      ? state.collapsedCategoryIds.filter((id) => id !== categoryId)
+      : state.collapsedCategoryIds;
+
+    const projectsChanged =
+      collapsedProjects.length !== state.collapsedProjectIds.length ||
+      !collapsedProjects.every((id, i) => state.collapsedProjectIds[i] === id);
+    const categoriesChanged =
+      collapsedCategories.length !== state.collapsedCategoryIds.length;
+    if (!projectsChanged && !categoriesChanged) return;
+
+    saveCollapsed(collapsedProjects);
+    if (categoriesChanged) saveCollapsedCategories(collapsedCategories);
+    set({ collapsedProjectIds: collapsedProjects, collapsedCategoryIds: collapsedCategories });
+  },
 
   collapsedCategoryIds: loadCollapsedCategories(),
   toggleCategoryCollapsed: (id) =>

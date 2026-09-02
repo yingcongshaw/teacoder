@@ -286,3 +286,18 @@ export async function openTerminal(path: string): Promise<void> {
 export async function listSystemFonts(): Promise<string[]> {
   return invoke<string[]>("list_system_fonts");
 }
+
+/**
+ * 通过 tauri-plugin-clipboard-manager 读/写剪贴板。
+ *
+ * 为什么不用 navigator.clipboard：Tauri 2 + WebKitGTK (Linux) 下 webview 默认
+ * 不授予 navigator.clipboard 读写权限，会抛 NotAllowedError。这里走 Rust 插件
+ * 直接读 X11/Wayland 剪贴板，绕过 webview 沙箱限制。
+ */
+export async function readClipboardText(): Promise<string> {
+  return invoke<string>("plugin:clipboard-manager|read_text");
+}
+
+export async function writeClipboardText(text: string): Promise<void> {
+  return invoke("plugin:clipboard-manager|write_text", { label: null, text });
+}

@@ -74,6 +74,6 @@ html, body, #root {
 /* xterm.js 滚动条优化 - 增大滚动条尺寸（覆盖内联样式） */
 .xterm .xterm-scrollable-element .scrollbar,
 .xterm .xterm-scrollable-element .scrollbar .slider {
-  width: 16px !important;
-  min-width: 16px !important;
+  width: 20px !important;
+  min-width: 20px !important;
 }

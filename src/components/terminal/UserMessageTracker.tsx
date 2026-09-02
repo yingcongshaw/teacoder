@@ -332,7 +332,7 @@ export default function UserMessageTracker({ tabId, xtermRef, trackerRef }: User
         open={popupVisible}
         onOpenChange={handlePopupVisibleChange}
         placement="bottomRight"
-        overlayClassName="user-message-dropdown"
+        classNames={{ root: "user-message-dropdown" }}
       >
         <button
           title="用户对话"

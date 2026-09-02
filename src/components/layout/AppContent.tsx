@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from "react";
-import { Button, Tooltip, Modal, Dropdown } from "antd";
+import { Button, Tooltip, Modal, Dropdown, App } from "antd";
 import type { MenuProps } from "antd";
 import {
   FolderOutlined,
@@ -11,15 +11,17 @@ import {
   DollarOutlined,
   ThunderboltOutlined,
   RightSquareOutlined,
+  CopyOutlined,
+  SnippetsOutlined,
 } from "@ant-design/icons";
 import { useAppStore } from "../../stores/appStore";
-import TerminalView from "../terminal/TerminalView";
+import TerminalView, { type TerminalViewHandle } from "../terminal/TerminalView";
 import TabBar from "../tabs/TabBar";
 import SettingsPage from "./SettingsPage";
 import CostDashboard from "../cost/CostDashboard";
 import QuickCommands from "../quick-commands/QuickCommands";
 import { TOOL_DISPLAY_NAMES } from "../../types";
-import { getGlobalCost, openPathInFileManager, openTerminal } from "../../utils/ipc";
+import { openPathInFileManager, openTerminal } from "../../utils/ipc";
 import type { CostSummary } from "../../types";
 
 const TOOL_COLORS: Record<string, string> = {
@@ -30,6 +32,7 @@ const TOOL_COLORS: Record<string, string> = {
 };
 
 export default function AppContent() {
+  const { message } = App.useApp();
   const sessions = useAppStore((s) => s.sessions);
   const projects = useAppStore((s) => s.projects);
   const openTabIds = useAppStore((s) => s.openTabIds);
@@ -45,25 +48,69 @@ export default function AppContent() {
 
   const [hoveredCardId, setHoveredCardId] = useState<string | null>(null);
   const [costModalOpen, setCostModalOpen] = useState(false);
-  const [globalCost, setGlobalCost] = useState<CostSummary | null>(null);
-  const costTick = useAppStore((s) => s.costTick);
+  const [globalCost] = useState<CostSummary | null>(null);
   const [quickCommandsVisible, setQuickCommandsVisible] = useState(false);
   const quickCommandsBtnRef = useRef<HTMLSpanElement>(null);
+  const terminalRefs = useRef<Map<string, TerminalViewHandle>>(new Map());
 
-  useEffect(() => {
-    getGlobalCost().then(setGlobalCost).catch(() => {});
-  }, [costTick]);
+  const copyTerminalSelection = useCallback(async (tabId: string) => {
+    const handle = terminalRefs.current.get(tabId);
+    if (!handle) return;
+    const ok = await handle.copySelection();
+    if (ok) {
+      message.success("已复制到剪贴板");
+    } else {
+      message.warning("终端中没有选中内容");
+    }
+  }, []);
+
+  const pasteIntoTerminal = useCallback(async (tabId: string) => {
+    const handle = terminalRefs.current.get(tabId);
+    if (!handle) return;
+    const ok = await handle.pasteFromClipboard();
+    if (!ok) {
+      message.warning("剪贴板为空或无法访问");
+    }
+  }, []);
+
+  const copyActiveTerminal = useCallback(async () => {
+    if (!activeTabId) return;
+    return copyTerminalSelection(activeTabId);
+  }, [activeTabId, copyTerminalSelection]);
+
+  const pasteToActiveTerminal = useCallback(async () => {
+    if (!activeTabId) return;
+    return pasteIntoTerminal(activeTabId);
+  }, [activeTabId, pasteIntoTerminal]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === "F2") {
         e.preventDefault();
         setQuickCommandsVisible((v) => !v);
+        return;
+      }
+      // Shift+Alt+C 复制终端选中内容
+      if (e.shiftKey && e.altKey && (e.key === "C" || e.key === "c")) {
+        if (!activeTabId) return;
+        e.preventDefault();
+        copyActiveTerminal();
+        return;
+      }
+      // Shift+Alt+V 或 Shift+Insert 粘贴到终端
+      if (
+        (e.shiftKey && e.altKey && (e.key === "V" || e.key === "v")) ||
+        (e.shiftKey && e.key === "Insert")
+      ) {
+        if (!activeTabId) return;
+        e.preventDefault();
+        pasteToActiveTerminal();
+        return;
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, []);
+  }, [activeTabId, copyActiveTerminal, pasteToActiveTerminal]);
 
   const formatCost = (usd: number): string => {
     if (usd >= 1) return `$${usd.toFixed(2)}`;
@@ -85,22 +132,47 @@ export default function AppContent() {
               const project = projects.find((p) => p.id === session.projectId);
               const projectPath = project?.path;
 
-              const terminalContextMenu: MenuProps["items"] = projectPath
-                ? [
-                    {
-                      key: "openInFileManager",
-                      label: "打开文件浏览器",
-                      icon: <FolderOutlined />,
-                      onClick: () => openPathInFileManager(projectPath),
-                    },
-                    {
-                      key: "openTerminal",
-                      label: "打开终端",
-                      icon: <RightSquareOutlined />,
-                      onClick: () => openTerminal(projectPath),
-                    },
-                  ]
-                : [];
+              const terminalContextMenu: MenuProps["items"] = [
+                {
+                  key: "copy",
+                  label: (
+                    <span className="flex items-center justify-between gap-4">
+                      <span>复制</span>
+                      <span style={{ color: "var(--ant-color-text-tertiary)", fontSize: 11 }}>Shift+Alt+C</span>
+                    </span>
+                  ),
+                  icon: <CopyOutlined />,
+                  onClick: () => copyTerminalSelection(tabId),
+                },
+                {
+                  key: "paste",
+                  label: (
+                    <span className="flex items-center justify-between gap-4">
+                      <span>粘贴</span>
+                      <span style={{ color: "var(--ant-color-text-tertiary)", fontSize: 11 }}>Shift+Alt+V</span>
+                    </span>
+                  ),
+                  icon: <SnippetsOutlined />,
+                  onClick: () => pasteIntoTerminal(tabId),
+                },
+                { type: "divider" as const },
+                ...(projectPath
+                  ? [
+                      {
+                        key: "openInFileManager",
+                        label: "打开文件浏览器",
+                        icon: <FolderOutlined />,
+                        onClick: () => openPathInFileManager(projectPath),
+                      },
+                      {
+                        key: "openTerminal",
+                        label: "打开终端",
+                        icon: <RightSquareOutlined />,
+                        onClick: () => openTerminal(projectPath),
+                      },
+                    ]
+                  : []),
+              ];
 
               return (
                 <Dropdown
@@ -115,7 +187,17 @@ export default function AppContent() {
                       zIndex: tabId === activeTabId ? 1 : 0,
                     }}
                   >
-                    <TerminalView tabId={tabId} visible={tabId === activeTabId} />
+                    <TerminalView
+                      tabId={tabId}
+                      visible={tabId === activeTabId}
+                      ref={(handle) => {
+                        if (handle) {
+                          terminalRefs.current.set(tabId, handle);
+                        } else {
+                          terminalRefs.current.delete(tabId);
+                        }
+                      }}
+                    />
                   </div>
                 </Dropdown>
               );

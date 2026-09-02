@@ -1,9 +1,9 @@
 import { useEffect, useRef, useCallback, useState, forwardRef, useImperativeHandle } from "react";
-import { Terminal } from "@xterm/xterm";
+import { Terminal, type IBufferRange } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { listen } from "@tauri-apps/api/event";
-import { writeToPty, resizePty } from "../../utils/ipc";
+import { writeToPty, resizePty, readClipboardText, writeClipboardText } from "../../utils/ipc";
 import { useAppStore } from "../../stores/appStore";
 import { TERMINAL_COLOR_THEMES, DEFAULT_ANSI_COLORS } from "../../types";
 import { terminalThemeForAppTheme } from "../../themes";
@@ -19,6 +19,8 @@ interface TerminalViewProps {
 export interface TerminalViewHandle {
   scrollToLine: (lineIndex: number) => void;
   getCurrentLineIndex: () => number;
+  copySelection: () => Promise<boolean>;
+  pasteFromClipboard: () => Promise<boolean>;
 }
 
 function getThemeColors(themeName: string) {
@@ -145,11 +147,72 @@ function detectImageExtension(mimeType: string): string {
   return map[mimeType] || "png";
 }
 
+/**
+ * 从 xterm buffer 直接读取选区文本，作为 getSelection() 返回空时的兜底。
+ *
+ * 为什么需要这个兜底：
+ * xterm.js 的 SelectionService.selectionText 是个 getter，每次调用时根据
+ * 当前 buffer 状态用 translateBufferLineToString 重新计算文本。
+ * 但 SelectionService 内部用 finalSelectionStart/finalSelectionEnd 坐标。
+ * 在 Claude Code 高频刷屏场景下，连续写入可能让这些坐标在 getSelection
+ * 被调用时处于"无效"状态（例如 start/end 被清空），导致 getter 返回 ""。
+ *
+ * 直接读 buffer：坐标一旦由 getSelectionPosition 返回就是稳定的 buffer 索引；
+ * 用 buffer.getLine(y).translateToString(startCol, endCol) 读这些行/列
+ * 范围内的字符，不依赖 SelectionService 内部的 selectionText getter 状态。
+ *
+ * 坐标语义：IBufferCellPosition 的 x/y 虽然文档标 1-based，实测（以及
+ * xterm 内部 selectionText 的实现）都是直接当 0-based buffer 索引使用的，
+ * 与 translateToString 的 startColumn/endColumn（0-based，endColumn 独占）
+ * 语义一致，所以这里不做偏移换算。
+ */
+function readSelectionFromBuffer(term: Terminal, range: IBufferRange): string {
+  const buffer = term.buffer.active;
+  const startX = Math.min(range.start.x, range.end.x);
+  const endX = Math.max(range.start.x, range.end.x);
+  const startY = Math.min(range.start.y, range.end.y);
+  const endY = Math.max(range.start.y, range.end.y);
+
+  const lines: string[] = [];
+  for (let y = startY; y <= endY; y++) {
+    const line = buffer.getLine(y);
+    if (!line) continue;
+    if (startY === endY) {
+      lines.push(line.translateToString(true, startX, endX));
+    } else if (y === startY) {
+      lines.push(line.translateToString(true, startX));
+    } else if (y === endY) {
+      lines.push(line.translateToString(true, 0, endX));
+    } else {
+      lines.push(line.translateToString(true));
+    }
+  }
+  return lines.join("\n");
+}
+
+/**
+ * 从当前 xterm 状态抓取选中文本。三级回退：
+ * 1. term.getSelection() —— SelectionService 缓存的文本
+ * 2. readSelectionFromBuffer —— 用 getSelectionPosition 从 buffer 直接读
+ * 3. 都空就返回空串
+ */
+function captureSelectionText(term: Terminal): string {
+  const direct = term.getSelection();
+  if (direct) return direct;
+  if (!term.hasSelection()) return "";
+  const range = term.getSelectionPosition();
+  if (!range) return "";
+  return readSelectionFromBuffer(term, range);
+}
+
 const TerminalView = forwardRef<TerminalViewHandle, TerminalViewProps>(function TerminalView({ tabId, visible = true }, ref) {
   const termRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const trackerRef = useRef<{ captureInput: (text: string) => void; flushInput: () => void; handleEnter: () => void } | null>(null);
+  // 缓存最近一次的有效选中内容。xterm.js 在右键打开自定义菜单后偶发会清空内部选中状态，
+  // 这里用 onSelectionChange 持续记录，可作为 getSelection() 失效时的回退值。
+  const cachedSelectionRef = useRef<string>("");
 
   useImperativeHandle(ref, () => ({
     scrollToLine: (lineIndex: number) => {
@@ -162,7 +225,52 @@ const TerminalView = forwardRef<TerminalViewHandle, TerminalViewProps>(function 
       const term = xtermRef.current;
       return term ? term.buffer.active.length - 1 : 0;
     },
-  }), []);
+    copySelection: async () => {
+      const term = xtermRef.current;
+      if (!term) return false;
+      // 优先从 xterm 当前状态抓（getSelection 或 buffer 兜底），失败时回退到事件监听器缓存的最近一次有效选中
+      let text = captureSelectionText(term);
+      const fromCurrent = !!text;
+      if (!text) text = cachedSelectionRef.current;
+      const fromCache = !!text && !fromCurrent;
+      if (!text) {
+        console.debug(
+          `[TerminalView.copySelection] no text: live(empty), cache(${cachedSelectionRef.current.length}B, hasSelection=${term.hasSelection()})`,
+        );
+        return false;
+      }
+      try {
+        await writeClipboardText(text);
+        console.debug(
+          `[TerminalView.copySelection] OK (${text.length}B, fromCurrent=${fromCurrent}, fromCache=${fromCache})`,
+        );
+        return true;
+      } catch (e) {
+        console.debug(`[TerminalView.copySelection] clipboard.writeText failed:`, e);
+        return false;
+      }
+    },
+    pasteFromClipboard: async () => {
+      // Tauri 2 + WebKitGTK (Linux) 下 navigator.clipboard.readText() 在 webview
+      // 沙箱里会被拒（NotAllowedError）。改走 tauri-plugin-clipboard-manager 的
+      // Rust 端命令直接读系统剪贴板，绕过 webview 权限限制。
+      try {
+        const text = await readClipboardText();
+        if (text) {
+          writeToPty(tabId, text).catch(() => {});
+          console.debug(`[TerminalView.paste] OK (${text.length}B)`);
+          return true;
+        }
+        console.debug("[TerminalView.paste] readClipboardText returned empty string");
+      } catch (e) {
+        const err = e as Error;
+        console.debug(
+          `[TerminalView.paste] readClipboardText threw: ${err?.name || "?"} ${err?.message || String(e)}`,
+        );
+      }
+      return false;
+    },
+  }), [tabId]);
 
   const terminalSettings = useAppStore((s) => s.terminalSettings);
   const appTheme = useAppStore((s) => s.theme);
@@ -216,6 +324,14 @@ const TerminalView = forwardRef<TerminalViewHandle, TerminalViewProps>(function 
     xtermRef.current = term;
     fitAddonRef.current = fitAddon;
 
+    // 仅在 test-terminal 调试入口中暴露实例与缓存，便于在浏览器中验证复制逻辑
+    if (typeof window !== "undefined" && (window as unknown as { __TEST_TERMINAL__?: boolean }).__TEST_TERMINAL__) {
+      (window as unknown as { __XTERM_REF__?: unknown }).__XTERM_REF__ = {
+        term,
+        getCachedSelection: () => cachedSelectionRef.current,
+      };
+    }
+
     // 修复 WebKitGTK IME composition 重复输入
     const unpatchIme = patchWebKitGtkIme(term);
 
@@ -266,6 +382,52 @@ const TerminalView = forwardRef<TerminalViewHandle, TerminalViewProps>(function 
       writeToPty(tabId, data).catch(() => {});
     });
 
+    // 持续记录终端选中内容，作为右键菜单复制时的回退值。
+    // 右键打开 Dropdown 时，Ant Design 接管 contextmenu，xterm 的 textarea 失焦
+    // 会清空 SelectionService 状态并触发 onSelectionChange(text="")。此时绝不能
+    // 清空缓存——否则恰好在用户准备点 Copy 的瞬间失去了回退值。
+    // 策略：仅在有非空内容时刷新缓存，空选中视为 "保持上次有效选中"。
+    const refreshSelectionCache = (source: string) => {
+      const text = captureSelectionText(term);
+      if (text && text !== cachedSelectionRef.current) {
+        cachedSelectionRef.current = text;
+        console.debug(
+          `[TerminalView.select] captured via ${source} (${text.length}B)`,
+        );
+      }
+    };
+
+    const selectionDisposable = term.onSelectionChange(() => {
+      refreshSelectionCache("onSelectionChange");
+    });
+
+    // 在 mouseup 时再抓一次，作为更可靠的快照。
+    // 某些场景（Claude Code 的高频 buffer 刷新）下 onSelectionChange 可能在 mousedown/mousemove
+    // 期间被空字符串覆盖，但 mouseup 瞬间 selection 尚未被 buffer 更新影响，是用户真实的意图。
+    const onMouseUpCaptureSelection = () => refreshSelectionCache("mouseup");
+    term.element?.addEventListener("mouseup", onMouseUpCaptureSelection);
+
+    // mousedown 时也抓一次，防止 onSelectionChange 还没触发就被 contextmenu 打断。
+    const onMouseDownCaptureSelection = () => refreshSelectionCache("mousedown");
+    term.element?.addEventListener("mousedown", onMouseDownCaptureSelection);
+
+    // contextmenu 是右击开菜单的瞬间，是复制之前的最后机会。
+    const onContextMenuCaptureSelection = () => refreshSelectionCache("contextmenu");
+    term.element?.addEventListener("contextmenu", onContextMenuCaptureSelection);
+
+    // mousemove 在拖拽过程中持续抓，用 rAF 节流避免每像素都跑一次 buffer 读取。
+    // 高频 PTY 输出场景下，每次 mousemove 都可能让选区文本变化，这里保留最近一次
+    // 非空快照即可，用户释放鼠标前最近一次抓到的内容最接近视觉所见。
+    let moveRafId: number | null = null;
+    const onMouseMoveCaptureSelection = () => {
+      if (moveRafId !== null) return;
+      moveRafId = requestAnimationFrame(() => {
+        moveRafId = null;
+        refreshSelectionCache("mousemove");
+      });
+    };
+    term.element?.addEventListener("mousemove", onMouseMoveCaptureSelection);
+
     const unlisten_output = listen<{ tabId: string; data: string }>(
       "pty:output",
       (event) => {
@@ -290,7 +452,13 @@ const TerminalView = forwardRef<TerminalViewHandle, TerminalViewProps>(function 
     return () => {
       unpatchIme?.();
       termRef.current?.removeEventListener("paste", handlePaste);
+      term.element?.removeEventListener("mouseup", onMouseUpCaptureSelection);
+      term.element?.removeEventListener("mousedown", onMouseDownCaptureSelection);
+      term.element?.removeEventListener("contextmenu", onContextMenuCaptureSelection);
+      term.element?.removeEventListener("mousemove", onMouseMoveCaptureSelection);
+      if (moveRafId !== null) cancelAnimationFrame(moveRafId);
       resizeObserver.disconnect();
+      selectionDisposable.dispose();
       term.dispose();
       unlisten_output.then((fn) => fn());
       unlisten_exit.then((fn) => fn());

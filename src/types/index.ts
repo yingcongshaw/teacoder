@@ -186,7 +186,7 @@ export const DEFAULT_TERMINAL_SETTINGS: TerminalSettings = {
   cursorStyle: "block",
   cursorBlink: true,
   followAppTheme: false,
-  colorTheme: "tokyo-night",
+  colorTheme: "paper",
   scrollback: 10000,
   scrollOnOutput: true,
   bell: false,
