@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Switch, InputNumber, message } from "antd";
+import { Switch, InputNumber, App } from "antd";
 import SettingRow from "./components/SettingRow";
 import SectionHeader from "./components/SectionHeader";
 
@@ -28,6 +28,7 @@ interface NotificationPageProps {
 }
 
 export default function NotificationPage({ searchText = "" }: NotificationPageProps) {
+  const { message } = App.useApp();
   const [settings, setSettings] = useState<NotificationSettings>(DEFAULT_SETTINGS);
 
   useEffect(() => {

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Select, Switch, Input, message } from "antd";
+import { Select, Switch, Input, App } from "antd";
 import SettingRow from "./components/SettingRow";
 import SectionHeader from "./components/SectionHeader";
 
@@ -36,6 +36,7 @@ interface CodexSettingsPageProps {
 }
 
 export default function CodexSettingsPage({ searchText = "" }: CodexSettingsPageProps) {
+  const { message } = App.useApp();
   const [settings, setSettings] = useState<CodexSettings>(DEFAULT_SETTINGS);
 
   useEffect(() => {

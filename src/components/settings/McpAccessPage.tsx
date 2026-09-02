@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Switch, Input, Button, message } from "antd";
+import { Switch, Input, Button, App } from "antd";
 import { DeleteOutlined, EditOutlined } from "@ant-design/icons";
 import SectionHeader from "./components/SectionHeader";
 
@@ -30,6 +30,7 @@ interface McpAccessPageProps {
 }
 
 export default function McpAccessPage({ searchText = "" }: McpAccessPageProps) {
+  const { message } = App.useApp();
   const [settings, setSettings] = useState<McpAccessSettings>(DEFAULT_SETTINGS);
   const [showAddForm, setShowAddForm] = useState(false);
   const [serverForm, setServerForm] = useState<McpServer>(DEFAULT_SERVER_FORM);

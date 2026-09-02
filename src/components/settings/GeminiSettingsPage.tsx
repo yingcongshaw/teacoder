@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Select, Switch, Input, message } from "antd";
+import { Select, Switch, Input, App } from "antd";
 import SettingRow from "./components/SettingRow";
 import SectionHeader from "./components/SectionHeader";
 
@@ -34,6 +34,7 @@ interface GeminiSettingsPageProps {
 }
 
 export default function GeminiSettingsPage({ searchText = "" }: GeminiSettingsPageProps) {
+  const { message } = App.useApp();
   const [settings, setSettings] = useState<GeminiSettings>(DEFAULT_SETTINGS);
 
   useEffect(() => {

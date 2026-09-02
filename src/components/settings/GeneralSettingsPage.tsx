@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { Select, Switch, Slider, Typography, message } from "antd";
+import { Select, Switch, Slider, Typography, App } from "antd";
 import { BUILT_IN_THEMES } from "../../themes";
 import { useAppStore } from "../../stores/appStore";
 import SettingRow from "./components/SettingRow";
@@ -25,7 +25,7 @@ interface GeneralSettings {
 
 const DEFAULT_SETTINGS: GeneralSettings = {
   language: "zh",
-  theme: "system",
+  theme: "warm-light",
   fontSize: 18,
   uiFontFamily: "system-ui",
   uiZoom: 100,
@@ -44,6 +44,7 @@ interface GeneralSettingsPageProps {
 }
 
 export default function GeneralSettingsPage({ searchText = "" }: GeneralSettingsPageProps) {
+  const { message } = App.useApp();
   const [settings, setSettings] = useState<GeneralSettings>(DEFAULT_SETTINGS);
   const [systemAutoStart, setSystemAutoStart] = useState(false);
   const [systemCloseBehavior, setSystemCloseBehavior] = useState("exit");

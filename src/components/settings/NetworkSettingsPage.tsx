@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Select, Switch, Input, InputNumber, message } from "antd";
+import { Select, Switch, Input, InputNumber, App } from "antd";
 import SettingRow from "./components/SettingRow";
 import SectionHeader from "./components/SectionHeader";
 
@@ -32,6 +32,7 @@ interface NetworkSettingsPageProps {
 }
 
 export default function NetworkSettingsPage({ searchText = "" }: NetworkSettingsPageProps) {
+  const { message } = App.useApp();
   const [settings, setSettings] = useState<NetworkSettings>(DEFAULT_SETTINGS);
 
   useEffect(() => {

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { message } from "antd";
+import { App } from "antd";
 import KeyBindingInput from "./components/KeyBindingInput";
 import SettingRow from "./components/SettingRow";
 import SectionHeader from "./components/SectionHeader";
@@ -33,6 +33,7 @@ interface KeybindingsPageProps {
 }
 
 export default function KeybindingsPage({ searchText = "" }: KeybindingsPageProps) {
+  const { message } = App.useApp();
   const [settings, setSettings] = useState<KeybindingsSettings>(DEFAULT_SETTINGS);
 
   useEffect(() => {

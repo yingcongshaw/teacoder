@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Select, Switch, Input, message } from "antd";
+import { Select, Switch, Input, App } from "antd";
 import SettingRow from "./components/SettingRow";
 import SectionHeader from "./components/SectionHeader";
 
@@ -36,6 +36,7 @@ interface OpenCodeSettingsPageProps {
 }
 
 export default function OpenCodeSettingsPage({ searchText = "" }: OpenCodeSettingsPageProps) {
+  const { message } = App.useApp();
   const [settings, setSettings] = useState<OpenCodeSettings>(DEFAULT_SETTINGS);
 
   useEffect(() => {

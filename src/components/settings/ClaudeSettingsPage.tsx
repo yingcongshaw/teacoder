@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Switch, Input, InputNumber, Tag, Button, message } from "antd";
+import { Switch, Input, InputNumber, Tag, Button, App } from "antd";
 import { CheckCircleOutlined } from "@ant-design/icons";
 import { useAppStore } from "../../stores/appStore";
 import { getToolSettings, upsertToolSettings } from "../../utils/ipc";
@@ -52,6 +52,7 @@ interface ClaudeSettingsPageProps {
 }
 
 export default function ClaudeSettingsPage({ searchText = "" }: ClaudeSettingsPageProps) {
+  const { message } = App.useApp();
   const [settings, setSettings] = useState<ClaudeSettings>(DEFAULT_SETTINGS);
   const [loading, setLoading] = useState(false);
   const [verifying, setVerifying] = useState(false);

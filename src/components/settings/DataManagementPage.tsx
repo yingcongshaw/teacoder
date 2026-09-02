@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Input, Button, Popconfirm, message } from "antd";
+import { Input, Button, Popconfirm, App } from "antd";
 import SettingRow from "./components/SettingRow";
 import SectionHeader from "./components/SectionHeader";
 
@@ -16,6 +16,7 @@ interface DataManagementPageProps {
 }
 
 export default function DataManagementPage({ searchText = "" }: DataManagementPageProps) {
+  const { message } = App.useApp();
   const [settings, setSettings] = useState<DataManagementSettings>(DEFAULT_SETTINGS);
 
   useEffect(() => {

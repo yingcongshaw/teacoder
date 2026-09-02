@@ -8,7 +8,7 @@ import {
   Input,
   Select,
   Tag,
-  message,
+  App,
   Space,
   Popconfirm,
   ColorPicker,
@@ -46,6 +46,7 @@ const COLOR_PRESETS = [
 ];
 
 export default function ProfileManagementPage() {
+  const { message } = App.useApp();
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [loading, setLoading] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);

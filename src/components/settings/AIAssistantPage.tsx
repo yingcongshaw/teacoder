@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Select, Switch, Slider, message } from "antd";
+import { Select, Switch, Slider, App } from "antd";
 import SettingRow from "./components/SettingRow";
 import SectionHeader from "./components/SectionHeader";
 
@@ -34,6 +34,7 @@ interface AIAssistantPageProps {
 }
 
 export default function AIAssistantPage({ searchText = "" }: AIAssistantPageProps) {
+  const { message } = App.useApp();
   const [settings, setSettings] = useState<AIAssistantSettings>(DEFAULT_SETTINGS);
 
   useEffect(() => {

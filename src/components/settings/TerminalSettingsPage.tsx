@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { Select, Switch, Slider, Input, message, Typography } from "antd";
+import { Select, Switch, Slider, Input, App, Typography } from "antd";
 import SettingRow from "./components/SettingRow";
 import SectionHeader from "./components/SectionHeader";
 import { useAppStore } from "../../stores/appStore";
@@ -64,6 +64,7 @@ interface TerminalSettingsPageProps {
 }
 
 export default function TerminalSettingsPage({ searchText = "" }: TerminalSettingsPageProps) {
+  const { message } = App.useApp();
   const settings = useAppStore((s) => s.terminalSettings);
   const updateSetting = useAppStore((s) => s.updateTerminalSetting);
   const [systemFonts, setSystemFonts] = useState<string[]>([]);

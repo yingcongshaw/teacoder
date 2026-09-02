@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Switch, Input, InputNumber, Button, message } from "antd";
+import { Switch, Input, InputNumber, Button, App } from "antd";
 import { DeleteOutlined } from "@ant-design/icons";
 import SettingRow from "./components/SettingRow";
 import SectionHeader from "./components/SectionHeader";
@@ -39,6 +39,7 @@ interface RemoteAccessPageProps {
 }
 
 export default function RemoteAccessPage({ searchText = "" }: RemoteAccessPageProps) {
+  const { message } = App.useApp();
   const [settings, setSettings] = useState<RemoteAccessSettings>(DEFAULT_SETTINGS);
   const [showAddForm, setShowAddForm] = useState(false);
   const [hostForm, setHostForm] = useState(DEFAULT_HOST_FORM);
