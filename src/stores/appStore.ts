@@ -20,6 +20,7 @@ import {
 
 const OPEN_TABS_KEY = "teacoder_open_tabs";
 const TERMINAL_SETTINGS_KEY = "teacoder_terminal_settings";
+const QUICK_COMMANDS_KEY = "teacoder_quick_commands";
 
 function loadOpenTabIds(): string[] {
   try {
@@ -56,6 +57,23 @@ function loadTerminalSettings(): TerminalSettings {
 function saveTerminalSettings(settings: TerminalSettings) {
   try {
     localStorage.setItem(TERMINAL_SETTINGS_KEY, JSON.stringify(settings));
+  } catch {
+    // non-critical
+  }
+}
+
+function loadQuickCommands(): Record<string, string> {
+  try {
+    const saved = localStorage.getItem(QUICK_COMMANDS_KEY);
+    return saved ? JSON.parse(saved) : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveQuickCommands(map: Record<string, string>) {
+  try {
+    localStorage.setItem(QUICK_COMMANDS_KEY, JSON.stringify(map));
   } catch {
     // non-critical
   }
@@ -201,11 +219,19 @@ interface AppState {
   settingsPage: boolean;
   setSettingsPage: (open: boolean) => void;
 
+  // 设置面板当前激活的菜单项 key，用于跨页面跳转
+  settingsActiveKey: string;
+  setSettingsActiveKey: (key: string) => void;
+
   costTick: number;
   setCostTick: (tick: number) => void;
 
   terminalSettings: TerminalSettings;
   updateTerminalSetting: <K extends keyof TerminalSettings>(key: K, value: TerminalSettings[K]) => void;
+
+  // 快捷命令（按 CLI 工具类型存储多行文本，每行一个命令）
+  quickCommandsByToolType: Record<string, string>;
+  updateQuickCommands: (toolType: string, value: string) => void;
 }
 
 const FAVORITE_KEY = "teacoder_favorites";
@@ -315,13 +341,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
   createSession: async (input) => {
     const cliSessionId = input.toolType === "claude" ? crypto.randomUUID() : undefined;
-    let title = input.title;
-    if (input.toolType === "terminal" && !title) {
-      const terminalCount = get().sessions.filter(
-        (s) => s.toolType === "terminal" && s.projectId === input.projectId,
-      ).length + 1;
-      title = `终端 ${terminalCount}`;
-    }
+    const title = input.title;
     const session = await sessionCreate({ ...input, title, cliSessionId });
     const project = get().projects.find((p) => p.id === input.projectId);
     const envVars = parseEnvVars(input.envVars || "");
@@ -761,6 +781,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   settingsPage: false,
   setSettingsPage: (open) => set({ settingsPage: open }),
 
+  settingsActiveKey: "general",
+  setSettingsActiveKey: (key) => set({ settingsActiveKey: key }),
+
   costTick: 0,
   setCostTick: (tick) => set({ costTick: tick }),
 
@@ -770,6 +793,14 @@ export const useAppStore = create<AppState>((set, get) => ({
       const settings = { ...state.terminalSettings, [key]: value };
       saveTerminalSettings(settings);
       return { terminalSettings: settings };
+    }),
+
+  quickCommandsByToolType: loadQuickCommands(),
+  updateQuickCommands: (toolType, value) =>
+    set((state) => {
+      const next = { ...state.quickCommandsByToolType, [toolType]: value };
+      saveQuickCommands(next);
+      return { quickCommandsByToolType: next };
     }),
 }));
 

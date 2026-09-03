@@ -1,11 +1,12 @@
 import { useState, useEffect } from "react";
 import { Switch, Input, InputNumber, Tag, Button, App } from "antd";
-import { CheckCircleOutlined } from "@ant-design/icons";
+import { CheckCircleOutlined, ArrowRightOutlined } from "@ant-design/icons";
 import { useAppStore } from "../../stores/appStore";
 import { getToolSettings, upsertToolSettings } from "../../utils/ipc";
 import type { Profile } from "../../types";
 import SettingRow from "./components/SettingRow";
 import SectionHeader from "./components/SectionHeader";
+import QuickCommandsEditor from "../quick-commands/QuickCommandsEditor";
 
 const CLAUDE_MODELS = [
   { value: "claude-opus-4", label: "Opus 4", tag: "最强", description: "最强推理能力，适合复杂任务" },
@@ -57,6 +58,7 @@ export default function ClaudeSettingsPage({ searchText = "" }: ClaudeSettingsPa
   const [loading, setLoading] = useState(false);
   const [verifying, setVerifying] = useState(false);
   const profiles = useAppStore((s) => s.profiles);
+  const setSettingsActiveKey = useAppStore((s) => s.setSettingsActiveKey);
   const claudeProfiles = profiles.filter((p) => p.toolType === "claude");
   const activeProfile: Profile | undefined = claudeProfiles[0];
 
@@ -140,8 +142,26 @@ export default function ClaudeSettingsPage({ searchText = "" }: ClaudeSettingsPa
 
   if (!activeProfile) {
     return (
-      <div style={{ padding: "48px 0", textAlign: "center", color: "var(--ant-color-text-secondary)" }}>
-        暂无 Claude Code Profile，请先在 Profile 管理中创建一个
+      <div
+        style={{
+          padding: "64px 24px",
+          textAlign: "center",
+          color: "var(--ant-color-text-secondary)",
+        }}
+      >
+        <div style={{ fontSize: 14, marginBottom: 16 }}>
+          暂无 Claude Code Profile
+        </div>
+        <div style={{ fontSize: 12, color: "var(--ant-color-text-tertiary)", marginBottom: 24 }}>
+          请先在 Profile 管理中创建一个 Claude Code Profile，然后再配置模型、思考强度、快捷命令等。
+        </div>
+        <Button
+          type="primary"
+          icon={<ArrowRightOutlined />}
+          onClick={() => setSettingsActiveKey("profile-management")}
+        >
+          前往 Profile 管理
+        </Button>
       </div>
     );
   }
@@ -346,6 +366,8 @@ export default function ClaudeSettingsPage({ searchText = "" }: ClaudeSettingsPa
           />
         </div>
       )}
+
+      {matchesSearch("快捷命令") && <QuickCommandsEditor toolType="claude" />}
     </div>
   );
 }

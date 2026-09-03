@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Select, Switch, Input, App } from "antd";
 import SettingRow from "./components/SettingRow";
 import SectionHeader from "./components/SectionHeader";
+import QuickCommandsEditor from "../quick-commands/QuickCommandsEditor";
 
 const ANTIGRAVITY_MODELS = [
   { value: "antigravity-1", label: "Antigravity 1", description: "完整能力，适合复杂任务" },
@@ -109,6 +110,8 @@ export default function AntigravitySettingsPage({ searchText = "" }: Antigravity
           />
         </SettingRow>
       )}
+
+      {matchesSearch("快捷命令") && <QuickCommandsEditor toolType="antigravity" />}
     </div>
   );
 }

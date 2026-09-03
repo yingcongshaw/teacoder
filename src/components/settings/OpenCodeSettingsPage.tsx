@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Select, Switch, Input, App } from "antd";
 import SettingRow from "./components/SettingRow";
 import SectionHeader from "./components/SectionHeader";
+import QuickCommandsEditor from "../quick-commands/QuickCommandsEditor";
 
 const OPENCODE_MODELS = [
   { value: "gpt-4o", label: "GPT-4o", description: "最强代码生成能力" },
@@ -134,6 +135,8 @@ export default function OpenCodeSettingsPage({ searchText = "" }: OpenCodeSettin
           />
         </SettingRow>
       )}
+
+      {matchesSearch("快捷命令") && <QuickCommandsEditor toolType="opencode" />}
     </div>
   );
 }

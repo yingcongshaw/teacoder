@@ -1,13 +1,10 @@
 import { useState, useEffect, useRef } from "react";
 import { Input, Select, Tooltip, App, Button } from "antd";
-import {
-  DesktopOutlined,
-  CloudOutlined,
-} from "@ant-design/icons";
 import { useAppStore } from "../../stores/appStore";
 import { detectCliTools, testSshConnection } from "../../utils/ipc";
-import { TOOL_DISPLAY_NAMES, BUILTIN_SESSION_TEMPLATES } from "../../types";
+import { BUILTIN_SESSION_TEMPLATES } from "../../types";
 import type { ToolType, CliTool } from "../../types";
+import { CLI_TOOLS, sortCliToolsByAvailability, isCliToolAvailable, type CliToolMeta } from "../cli/cliTools";
 import CliArgsClaude from "../cli/CliArgsClaude";
 
 interface EditSessionModalProps {
@@ -20,22 +17,6 @@ const COLOR_PRESETS = [
   "#722ed1", "#1890ff", "#1677ff", "#fa8c16",
   "#52c41a", "#13c2c2", "#eb2f96", "#ff4d4f",
 ];
-
-const TOOL_META: Record<ToolType, {
-  icon?: string;
-  iconComponent?: React.ReactNode;
-  color: string;
-  desc: string;
-  alwaysAvailable?: boolean;
-}> = {
-  claude: { icon: "/claude.png", color: "#722ed1", desc: "Anthropic 官方 CLI" },
-  codex: { icon: "/codex.png", color: "#1890ff", desc: "OpenAI Codex CLI" },
-  gemini: { icon: "/gemini.png", color: "#1677ff", desc: "Google Gemini CLI" },
-  antigravity: { icon: "", color: "#52c41a", desc: "Antigravity CLI" },
-  opencode: { icon: "/opencode.png", color: "#fa8c16", desc: "开源编码助手" },
-  terminal: { iconComponent: <DesktopOutlined />, color: "#52c41a", desc: "系统终端", alwaysAvailable: true },
-  ssh: { iconComponent: <CloudOutlined />, color: "#1677ff", desc: "SSH 远程连接", alwaysAvailable: true },
-};
 
 const THINKING_OPTIONS = [
   { value: "low", label: "低" },
@@ -84,7 +65,6 @@ export default function EditSessionModal({ open: isOpen, sessionId, onClose }: E
   const [cliParams, setCliParams] = useState<Record<string, unknown>>({});
   const [categoryId, setCategoryId] = useState<string | undefined>();
 
-  // SSH 连接参数
   const [sshHostname, setSshHostname] = useState("");
   const [sshPort, setSshPort] = useState(22);
   const [sshUsername, setSshUsername] = useState("root");
@@ -141,7 +121,6 @@ export default function EditSessionModal({ open: isOpen, sessionId, onClose }: E
     };
   }, [isDragging]);
 
-  // 初始化表单值
   useEffect(() => {
     if (isOpen && session) {
       setSelectedTool(session.toolType);
@@ -152,12 +131,16 @@ export default function EditSessionModal({ open: isOpen, sessionId, onClose }: E
       setTemplateId(session.templateId);
       setEnvVars(session.envVars || "");
       setCategoryId(session.categoryId);
+      setSshHostname("");
+      setSshPort(22);
+      setSshUsername("root");
+      setSshPassword("");
+      setSshIdentityFile("");
 
-      // 解析 cliArgs
       if (session.cliArgs) {
         try {
           const parsed = JSON.parse(session.cliArgs);
-          if (session.toolType === "ssh" && typeof parsed === "object") {
+          if (session.toolType === "ssh" && parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
             setSshHostname(parsed.hostname || "");
             setSshPort(parsed.port || 22);
             setSshUsername(parsed.username || "root");
@@ -165,7 +148,6 @@ export default function EditSessionModal({ open: isOpen, sessionId, onClose }: E
             setSshIdentityFile(parsed.identityFile || "");
             setCliParams({});
           } else if (Array.isArray(parsed)) {
-            // Claude CLI 参数解析
             const params: Record<string, unknown> = {};
             for (let i = 0; i < parsed.length; i++) {
               const arg = parsed[i];
@@ -178,6 +160,8 @@ export default function EditSessionModal({ open: isOpen, sessionId, onClose }: E
               else if (arg === "--disallowedTools") params.disallowedTools = (parsed[++i] || "").split(",");
             }
             setCliParams(params);
+          } else {
+            setCliParams({});
           }
         } catch {
           setCliParams({});
@@ -196,27 +180,25 @@ export default function EditSessionModal({ open: isOpen, sessionId, onClose }: E
     ? categories.filter((c) => c.projectId === session.projectId)
     : [];
 
+  const sortedTools = sortCliToolsByAvailability(CLI_TOOLS, cliTools);
+
   const getToolInfo = (toolType: ToolType): CliTool | undefined =>
     cliTools.find((t) => t.toolType === toolType);
 
-  // 构建 SSH 连接参数
-  const buildSshArgs = (): string => {
-    return JSON.stringify({
+  const buildSshArgs = (): string =>
+    JSON.stringify({
       hostname: sshHostname,
       port: sshPort,
       username: sshUsername,
       password: sshPassword,
       identityFile: sshIdentityFile,
     });
-  };
 
-  // 测试 SSH 连接
   const handleTestSsh = async () => {
     if (!sshHostname.trim()) {
       message.warning("请填写主机名");
       return;
     }
-
     setTestingConnection(true);
     try {
       const result = await testSshConnection({
@@ -243,22 +225,15 @@ export default function EditSessionModal({ open: isOpen, sessionId, onClose }: E
       message.warning("会话不存在");
       return;
     }
-
-    // SSH 连接需要验证必填字段
-    if (selectedTool === "ssh") {
-      if (!sshHostname.trim()) {
-        message.warning("请填写主机名");
-        return;
-      }
+    if (selectedTool === "ssh" && !sshHostname.trim()) {
+      message.warning("请填写主机名");
+      return;
     }
 
-    // 构建 CLI 参数
-    let finalCliArgs: string | undefined;
-    if (selectedTool === "ssh") {
-      finalCliArgs = buildSshArgs();
-    } else {
-      finalCliArgs = buildCliArgs(selectedTool, cliParams) || undefined;
-    }
+    const finalCliArgs =
+      selectedTool === "ssh"
+        ? buildSshArgs()
+        : buildCliArgs(selectedTool, cliParams) || undefined;
 
     try {
       await updateSession(sessionId, {
@@ -303,7 +278,6 @@ export default function EditSessionModal({ open: isOpen, sessionId, onClose }: E
           cursor: isDragging ? "grabbing" : "default",
         }}
       >
-        {/* Header - drag handle */}
         <div
           className="flex items-center justify-between px-5 py-3"
           style={{ borderBottom: "1px solid var(--ant-color-border-secondary)", cursor: "grab" }}
@@ -326,9 +300,7 @@ export default function EditSessionModal({ open: isOpen, sessionId, onClose }: E
           </button>
         </div>
 
-        {/* Body */}
         <div className="flex-1 overflow-y-auto px-5 py-4">
-          {/* 所属分类 */}
           <div style={{ marginBottom: 12 }}>
             <label style={{ display: "block", fontSize: 12, color: "var(--ant-color-text-secondary)", marginBottom: 4 }}>所属分类</label>
             <Select
@@ -347,7 +319,6 @@ export default function EditSessionModal({ open: isOpen, sessionId, onClose }: E
             </Select>
           </div>
 
-          {/* 会话名称 */}
           <div style={{ marginBottom: 12 }}>
             <label style={{ display: "block", fontSize: 12, color: "var(--ant-color-text-secondary)", marginBottom: 4 }}>会话名称</label>
             <Input
@@ -359,22 +330,23 @@ export default function EditSessionModal({ open: isOpen, sessionId, onClose }: E
             />
           </div>
 
-          {/* CLI 工具选择 - 横向排列 */}
           <div style={{ marginBottom: 16 }}>
             <label style={{ display: "block", fontSize: 12, color: "var(--ant-color-text-secondary)", marginBottom: 6 }}>
               CLI 工具 <span style={{ color: "#ff4d4f" }}>*</span>
+              <span style={{ fontSize: 10, color: "var(--ant-color-text-quaternary)", marginLeft: 6 }}>
+                来自设置 · CLI 工具
+              </span>
             </label>
             <div className="flex gap-2 flex-wrap">
-              {(Object.keys(TOOL_META) as ToolType[]).map((toolType) => {
-                const meta = TOOL_META[toolType];
-                const toolInfo = getToolInfo(toolType);
-                const isAvailable = toolInfo?.isAvailable ?? meta.alwaysAvailable ?? false;
-                const isSelected = selectedTool === toolType;
+              {sortedTools.map((meta) => {
+                const toolInfo = getToolInfo(meta.id);
+                const isAvailable = isCliToolAvailable(meta, cliTools);
+                const isSelected = selectedTool === meta.id;
 
                 return (
                   <Tooltip
-                    key={toolType}
-                    title={`${meta.desc}${toolInfo?.version ? ` · v${toolInfo.version}` : ""}`}
+                    key={meta.id}
+                    title={`${meta.desc}${toolInfo?.version ? ` · v${toolInfo.version}` : ""}${isAvailable ? "" : " · 未安装"}`}
                     placement="top"
                   >
                     <div
@@ -386,14 +358,14 @@ export default function EditSessionModal({ open: isOpen, sessionId, onClose }: E
                         borderRadius: 5,
                         cursor: isAvailable ? "pointer" : "default",
                         backgroundColor: isSelected ? meta.color : "var(--ant-color-bg-elevated)",
-                        border: `1px solid ${isSelected ? meta.color : "var(--ant-color-border)"}}`,
+                        border: `1px solid ${isSelected ? meta.color : "var(--ant-color-border)"}`,
                         opacity: isAvailable ? 1 : 0.4,
                         transition: "all 0.15s",
                       }}
                       onClick={() => {
                         if (isAvailable) {
-                          setSelectedTool(toolType);
-                          setCliParams(toolType === "claude" ? { dangerouslySkipPermissions: true } : {});
+                          setSelectedTool(meta.id);
+                          setCliParams(meta.id === "claude" ? { dangerouslySkipPermissions: true } : {});
                         }
                       }}
                     >
@@ -412,19 +384,10 @@ export default function EditSessionModal({ open: isOpen, sessionId, onClose }: E
                           color: isSelected ? "#ffffff" : meta.color,
                         }}
                       >
-                        {meta.icon ? (
-                          <img
-                            src={meta.icon}
-                            alt={toolType}
-                            style={{ width: 14, height: 14 }}
-                            draggable={false}
-                          />
-                        ) : meta.iconComponent ? (
-                          meta.iconComponent
-                        ) : null}
+                        <CliToolBadge meta={meta} />
                       </div>
                       <span style={{ fontSize: 12, color: isSelected ? "#ffffff" : "var(--ant-color-text-secondary)" }}>
-                        {TOOL_DISPLAY_NAMES[toolType]}
+                        {meta.name}
                       </span>
                     </div>
                   </Tooltip>
@@ -433,7 +396,6 @@ export default function EditSessionModal({ open: isOpen, sessionId, onClose }: E
             </div>
           </div>
 
-          {/* Profile - SSH 和 Terminal 不需要 */}
           {selectedTool !== "ssh" && selectedTool !== "terminal" && (
             <div style={{ marginBottom: 12 }}>
               <label style={{ display: "block", fontSize: 12, color: "var(--ant-color-text-secondary)", marginBottom: 4 }}>Profile</label>
@@ -454,7 +416,6 @@ export default function EditSessionModal({ open: isOpen, sessionId, onClose }: E
             </div>
           )}
 
-          {/* 颜色标记 */}
           <div style={{ marginBottom: 12 }}>
             <label style={{ display: "block", fontSize: 12, color: "#aaaaaa", marginBottom: 4 }}>颜色标记</label>
             <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -477,7 +438,6 @@ export default function EditSessionModal({ open: isOpen, sessionId, onClose }: E
             </div>
           </div>
 
-          {/* 思考强度 - SSH 不需要 */}
           {selectedTool !== "ssh" && (
             <div style={{ marginBottom: 12 }}>
               <label style={{ display: "block", fontSize: 12, color: "#aaaaaa", marginBottom: 4 }}>思考强度</label>
@@ -491,7 +451,6 @@ export default function EditSessionModal({ open: isOpen, sessionId, onClose }: E
             </div>
           )}
 
-          {/* 会话模板 - SSH 不需要 */}
           {selectedTool !== "ssh" && (
             <div style={{ marginBottom: 12 }}>
               <label style={{ display: "block", fontSize: 12, color: "var(--ant-color-text-secondary)", marginBottom: 4 }}>会话模板</label>
@@ -513,7 +472,6 @@ export default function EditSessionModal({ open: isOpen, sessionId, onClose }: E
             </div>
           )}
 
-          {/* CLI 专属参数 */}
           {selectedTool === "claude" && (
             <div style={{ marginBottom: 12, borderTop: "1px solid var(--ant-color-border-secondary)", paddingTop: 8 }}>
               <label style={{ display: "block", fontSize: 12, color: "#aaaaaa", marginBottom: 6 }}>
@@ -523,7 +481,6 @@ export default function EditSessionModal({ open: isOpen, sessionId, onClose }: E
             </div>
           )}
 
-          {/* SSH 连接参数 */}
           {selectedTool === "ssh" && (
             <div style={{ marginBottom: 12, borderTop: "1px solid var(--ant-color-border-secondary)", paddingTop: 8 }}>
               <label style={{ display: "block", fontSize: 12, color: "#aaaaaa", marginBottom: 6 }}>
@@ -582,7 +539,6 @@ export default function EditSessionModal({ open: isOpen, sessionId, onClose }: E
             </div>
           )}
 
-          {/* 环境变量 */}
           <div style={{ marginBottom: 12, borderTop: "1px solid #2a2d38", paddingTop: 8 }}>
             <label style={{ display: "block", fontSize: 12, color: "var(--ant-color-text-secondary)", marginBottom: 4 }}>
               环境变量
@@ -599,7 +555,6 @@ export default function EditSessionModal({ open: isOpen, sessionId, onClose }: E
           </div>
         </div>
 
-        {/* Footer */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 12, padding: "12px 20px", borderTop: "1px solid var(--ant-color-border-secondary)" }}>
           <button
             onClick={handleCancel}
@@ -619,16 +574,16 @@ export default function EditSessionModal({ open: isOpen, sessionId, onClose }: E
           </button>
           <button
             onClick={handleOk}
-            disabled={!selectedTool || !sessionId}
+            disabled={!sessionId}
             style={{
               padding: "6px 20px",
               fontSize: 14,
               color: "#ffffff",
               borderRadius: 6,
-              backgroundColor: selectedTool && sessionId ? "var(--ant-color-primary)" : "var(--ant-color-bg-elevated)",
+              backgroundColor: sessionId ? "var(--ant-color-primary)" : "var(--ant-color-bg-elevated)",
               border: "none",
-              cursor: selectedTool && sessionId ? "pointer" : "not-allowed",
-              opacity: selectedTool && sessionId ? 1 : 0.5,
+              cursor: sessionId ? "pointer" : "not-allowed",
+              opacity: sessionId ? 1 : 0.5,
             }}
           >
             保存
@@ -637,4 +592,11 @@ export default function EditSessionModal({ open: isOpen, sessionId, onClose }: E
       </div>
     </div>
   );
+}
+
+function CliToolBadge({ meta }: { meta: CliToolMeta }) {
+  if (meta.icon) {
+    return <img src={meta.icon} alt={meta.id} style={{ width: 14, height: 14 }} draggable={false} />;
+  }
+  return meta.iconComponent ?? null;
 }

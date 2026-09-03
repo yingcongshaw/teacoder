@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Menu, Input } from "antd";
 import {
   SearchOutlined,
@@ -13,7 +13,10 @@ import {
   SyncOutlined,
   ApiOutlined,
   InfoCircleOutlined,
+  UserOutlined,
 } from "@ant-design/icons";
+import { CLI_TOOLS, CLI_TOOLS_IN_SETTINGS_GROUP, getCliToolIcon } from "../cli/cliTools";
+import { useAppStore } from "../../stores/appStore";
 import GeneralSettingsPage from "../settings/GeneralSettingsPage";
 import TerminalSettingsPage from "../settings/TerminalSettingsPage";
 import ClaudeSettingsPage from "../settings/ClaudeSettingsPage";
@@ -21,6 +24,7 @@ import CodexSettingsPage from "../settings/CodexSettingsPage";
 import GeminiSettingsPage from "../settings/GeminiSettingsPage";
 import AntigravitySettingsPage from "../settings/AntigravitySettingsPage";
 import OpenCodeSettingsPage from "../settings/OpenCodeSettingsPage";
+import ProfileManagementPage from "../settings/ProfileManagementPage";
 import AIAssistantPage from "../settings/AIAssistantPage";
 import NetworkSettingsPage from "../settings/NetworkSettingsPage";
 import RemoteAccessPage from "../settings/RemoteAccessPage";
@@ -33,35 +37,8 @@ import AboutPage from "../settings/AboutPage";
 
 const SIDEBAR_WIDTH = 180;
 
-const CLI_TOOL_ICONS: Record<string, { icon: string; color: string }> = {
-  claude: { icon: "/claude.png", color: "#722ed1" },
-  codex: { icon: "/codex.png", color: "#1890ff" },
-  gemini: { icon: "/gemini.png", color: "#1677ff" },
-  antigravity: { icon: "", color: "#52c41a" },
-  opencode: { icon: "/opencode.png", color: "#fa8c16" },
-};
-
 function CliToolIcon({ toolKey }: { toolKey: string }) {
-  const meta = CLI_TOOL_ICONS[toolKey];
-  if (!meta) return <CodeOutlined />;
-  if (meta.icon) {
-    return (
-      <span
-        style={{
-          display: "inline-flex",
-          alignItems: "center",
-          justifyContent: "center",
-          width: 18,
-          height: 18,
-          borderRadius: 4,
-          background: `${meta.color}20`,
-        }}
-      >
-        <img src={meta.icon} alt="" style={{ width: 14, height: 14 }} />
-      </span>
-    );
-  }
-  return <CodeOutlined style={{ color: meta.color }} />;
+  return getCliToolIcon(toolKey as Parameters<typeof getCliToolIcon>[0]);
 }
 
 const menuItems = [
@@ -71,14 +48,13 @@ const menuItems = [
     key: "cli-tools-group",
     label: "CLI 工具",
     icon: <RobotOutlined />,
-    children: [
-      { key: "claude", label: "Claude Code", icon: <CliToolIcon toolKey="claude" /> },
-      { key: "codex", label: "Codex CLI", icon: <CliToolIcon toolKey="codex" /> },
-      { key: "gemini", label: "Gemini CLI", icon: <CliToolIcon toolKey="gemini" /> },
-      { key: "antigravity", label: "Antigravity", icon: <CliToolIcon toolKey="antigravity" /> },
-      { key: "opencode", label: "OpenCode", icon: <CliToolIcon toolKey="opencode" /> },
-    ],
+    children: CLI_TOOLS_IN_SETTINGS_GROUP.map((t) => ({
+      key: t.id,
+      label: t.name,
+      icon: <CliToolIcon toolKey={t.id} />,
+    })),
   },
+  { key: "profile-management", label: "Profile 管理", icon: <UserOutlined /> },
   { key: "ai-assistant", label: "AI 辅助", icon: <RobotOutlined /> },
   { key: "network", label: "网络", icon: <GlobalOutlined /> },
   { key: "remote", label: "远程访问", icon: <CloudServerOutlined /> },
@@ -90,15 +66,15 @@ const menuItems = [
   { key: "about", label: "关于", icon: <InfoCircleOutlined /> },
 ];
 
+const CLI_TOOL_TITLES: Record<string, string> = Object.fromEntries(
+  CLI_TOOLS.map((t) => [t.id, t.name]),
+);
+
 const PAGE_TITLES: Record<string, string> = {
   general: "通用设置",
   terminal: "终端设置",
   "cli-tools-group": "CLI 工具",
-  claude: "Claude Code",
-  codex: "Codex CLI",
-  gemini: "Gemini CLI",
-  antigravity: "Antigravity",
-  opencode: "OpenCode",
+  "profile-management": "Profile 管理",
   "ai-assistant": "AI 辅助",
   network: "网络",
   remote: "远程访问",
@@ -108,12 +84,19 @@ const PAGE_TITLES: Record<string, string> = {
   sync: "同步",
   mcp: "MCP 接入",
   about: "关于",
+  ...CLI_TOOL_TITLES,
 };
 
 export default function SettingsPage() {
-  const [activeKey, setActiveKey] = useState("general");
+  const activeKey = useAppStore((s) => s.settingsActiveKey);
+  const setActiveKey = useAppStore((s) => s.setSettingsActiveKey);
   const [openKeys, setOpenKeys] = useState<string[]>(["cli-tools-group"]);
   const [searchText, setSearchText] = useState("");
+
+  // 当设置面板打开时，自动展开 CLI 工具组
+  useEffect(() => {
+    setOpenKeys(["cli-tools-group"]);
+  }, []);
 
   const renderContent = () => {
     const props = { searchText };
@@ -132,6 +115,8 @@ export default function SettingsPage() {
         return <AntigravitySettingsPage {...props} />;
       case "opencode":
         return <OpenCodeSettingsPage {...props} />;
+      case "profile-management":
+        return <ProfileManagementPage />;
       case "ai-assistant":
         return <AIAssistantPage {...props} />;
       case "network":

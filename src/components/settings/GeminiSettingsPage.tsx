@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Select, Switch, Input, App } from "antd";
 import SettingRow from "./components/SettingRow";
 import SectionHeader from "./components/SectionHeader";
+import QuickCommandsEditor from "../quick-commands/QuickCommandsEditor";
 
 const GEMINI_MODELS = [
   { value: "gemini-2.5-pro", label: "Gemini 2.5 Pro", description: "最强推理能力，适合复杂任务" },
@@ -132,6 +133,8 @@ export default function GeminiSettingsPage({ searchText = "" }: GeminiSettingsPa
           </Select>
         </SettingRow>
       )}
+
+      {matchesSearch("快捷命令") && <QuickCommandsEditor toolType="gemini" />}
     </div>
   );
 }
