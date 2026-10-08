@@ -37,6 +37,8 @@ export default function AppLayout() {
   const editSessionModalOpen = useAppStore((s) => s.editSessionModalOpen);
   const setEditSessionModalOpen = useAppStore((s) => s.setEditSessionModalOpen);
   const editingSessionId = useAppStore((s) => s.editingSessionId);
+  const setSettingsPage = useAppStore((s) => s.setSettingsPage);
+  const setSettingsActiveKey = useAppStore((s) => s.setSettingsActiveKey);
   const loadProjects = useAppStore((s) => s.loadProjects);
   const loadSessions = useAppStore((s) => s.loadSessions);
   const loadCategories = useAppStore((s) => s.loadCategories);
@@ -201,6 +203,17 @@ export default function AppLayout() {
       unlisten.then((fn) => fn());
     };
   }, [setCostTick]);
+
+  // 托盘"关于"菜单：打开设置面板并跳转到关于页
+  useEffect(() => {
+    const unlisten = listen("settings:open-about", () => {
+      setSettingsActiveKey("about");
+      setSettingsPage(true);
+    });
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, [setSettingsPage, setSettingsActiveKey]);
 
   // Resolve theme configuration
   const themeConfig = resolveTheme(appTheme, systemDark);
