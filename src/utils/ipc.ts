@@ -1,5 +1,19 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { CliTool, Profile, SessionCost, CostSummary, PricingConfig, ToolSettings, Project, Session, SessionCategory } from "../types";
+import type {
+  CliTool,
+  Profile,
+  SessionCost,
+  CostSummary,
+  PricingConfig,
+  ToolSettings,
+  Project,
+  Session,
+  SessionCategory,
+  LlmProvider,
+  CreateLlmProviderInput,
+  UpdateLlmProviderInput,
+  PresetProviderView,
+} from "../types";
 
 export async function detectCliTools(): Promise<CliTool[]> {
   return invoke<CliTool[]>("detect_cli_tools");
@@ -300,4 +314,44 @@ export async function readClipboardText(): Promise<string> {
 
 export async function writeClipboardText(text: string): Promise<void> {
   return invoke("plugin:clipboard-manager|write_text", { label: null, text });
+}
+
+// LLM Provider IPC
+
+export async function listLlmProviders(includeInactive = false): Promise<LlmProvider[]> {
+  return await invoke<LlmProvider[]>("llm_provider_list", { includeInactive });
+}
+
+export async function getLlmProvider(id: string): Promise<LlmProvider | null> {
+  return await invoke<LlmProvider | null>("llm_provider_get", { id });
+}
+
+export async function createLlmProvider(input: CreateLlmProviderInput): Promise<LlmProvider> {
+  return await invoke<LlmProvider>("llm_provider_create", { input });
+}
+
+export async function updateLlmProvider(
+  id: string,
+  input: UpdateLlmProviderInput,
+): Promise<LlmProvider> {
+  return await invoke<LlmProvider>("llm_provider_update", { id, input });
+}
+
+export async function deleteLlmProvider(id: string): Promise<void> {
+  await invoke("llm_provider_delete", { id });
+}
+
+export async function hardDeleteLlmProvider(id: string): Promise<void> {
+  await invoke("llm_provider_hard_delete", { id });
+}
+
+export async function setLlmProviderDefaultModel(
+  providerId: string,
+  modelId: string,
+): Promise<void> {
+  await invoke("llm_provider_set_default_model", { providerId, modelId });
+}
+
+export async function listLlmProviderPresets(): Promise<PresetProviderView[]> {
+  return await invoke<PresetProviderView[]>("llm_provider_list_presets");
 }
