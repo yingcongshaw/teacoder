@@ -2,7 +2,7 @@
 ///
 /// 字段全部为 `Option` / `Vec`，便于在不兼容组合（kind mismatch）下整体返回空。
 /// 环境变量名作为字面量（API Key 环境变量名是常量），值使用 `String` 以避免生命周期约束。
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct EnvInjection {
     /// `(env var 名, 值)`；不适用或未提供时为 `None`。
     pub api_key_var: Option<(String, String)>,

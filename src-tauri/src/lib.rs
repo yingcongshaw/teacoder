@@ -2,7 +2,7 @@ mod cli;
 mod commands;
 mod cost;
 mod crypto;
-mod llm_provider;
+pub mod llm_provider;
 mod profile;
 mod project;
 mod pty;

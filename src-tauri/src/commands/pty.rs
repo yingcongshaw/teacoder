@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use serde::Deserialize;
 
 use crate::crypto::keychain;
+use crate::llm_provider::env_inject::EnvInjection;
 use crate::profile;
 use crate::pty::manager::PtyManager;
 use crate::pty::ToolType;
@@ -24,6 +25,7 @@ pub fn start_session(
     model_name: Option<String>,
 ) -> Result<(), String> {
     let mut env_vars = HashMap::new();
+    let mut provider_inj: Option<EnvInjection> = None;
 
     if let Some(ref pid) = profile_id {
         // Load profile for data isolation env vars
@@ -124,12 +126,7 @@ pub fn start_session(
             if inj.api_key_var.is_none() && !api_key.is_empty() {
                 // 合法组合下 api_key 非空却未注入 → kind 不匹配 tool_type
                 // 不报错也不注入（compute_injection 已经返回 None）。
-            }
-            if let Some((name, value)) = inj.api_key_var {
-                env_vars.insert(name, value);
-            } else if !api_key.is_empty() {
-                // api_key 非空但 compute_injection 因不兼容未产出 → 静默忽略（设计选择）
-            } else if api_key.is_empty() && !tool_str.is_empty() {
+            } else if inj.api_key_var.is_none() && api_key.is_empty() && !tool_str.is_empty() {
                 // tool 合法但 key 缺失：除 opencode 外，要求必须有 API Key
                 // opencode 不强制（与 compute_injection 矩阵对齐）
                 if !matches!(tool_type, ToolType::OpenCode) {
@@ -140,18 +137,17 @@ pub fn start_session(
                 }
             }
 
-            if let Some((name, value)) = inj.base_url_var {
-                env_vars.insert(name, value);
-            }
+            // Provider 注入统一通过 compose_env 合并，避免在多处重复写入 env_vars。
+            provider_inj = Some(inj);
         }
     }
 
-    // Merge user-provided env vars (override profile defaults)
-    if let Some(user_vars) = user_env_vars {
-        for (k, v) in user_vars {
-            env_vars.insert(k, v);
-        }
-    }
+    // 合并 Profile + LLM Provider + user_env_vars（后者覆盖前者）。
+    let env_vars = crate::llm_provider::env_merge::compose_env(
+        env_vars,
+        provider_inj.unwrap_or_default(),
+        user_env_vars.unwrap_or_default(),
+    );
 
     let mut args: Vec<String> = if let Some(json) = cli_args {
         serde_json::from_str(&json).unwrap_or_default()
