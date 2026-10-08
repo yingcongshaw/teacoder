@@ -581,3 +581,71 @@ export const TERMINAL_COLOR_THEMES: TerminalColorTheme[] = [
     },
   },
 ];
+
+// LLM Provider 相关类型
+
+export interface LlmProviderModel {
+  id: string;
+  providerId: string;
+  modelName: string;
+  isDefault: boolean;
+  sortOrder: number;
+  createdAt: number;
+}
+
+export interface LlmProvider {
+  id: string;
+  name: string;
+  providerKind: "anthropic" | "openai" | "google" | "custom";
+  baseUrl: string | null;
+  icon: string | null;
+  color: string | null;
+  isPreset: boolean;
+  isActive: boolean;
+  createdAt: number;
+  updatedAt: number;
+  models: LlmProviderModel[];
+}
+
+export interface CreateLlmProviderInput {
+  name: string;
+  providerKind: "anthropic" | "openai" | "google" | "custom";
+  baseUrl?: string;
+  icon?: string;
+  color?: string;
+  models: string[];
+  defaultModel?: string;
+  apiKey?: string;
+}
+
+export interface UpdateLlmProviderInput {
+  name?: string;
+  providerKind?: "anthropic" | "openai" | "google" | "custom";
+  baseUrl?: string;
+  icon?: string;
+  color?: string;
+  models?: string[];
+  defaultModel?: string;
+  isActive?: boolean;
+  apiKey?: string;
+}
+
+export interface PresetProviderView {
+  name: string;
+  providerKind: "anthropic" | "openai" | "google" | "custom";
+  baseUrl: string;
+  icon: string;
+  color: string;
+  models: string[];
+}
+
+/** CLI 工具兼容的 provider_kind 映射 */
+export const TOOL_PROVIDER_KIND_MAP: Record<
+  string,
+  ReadonlyArray<"anthropic" | "openai" | "google" | "custom">
+> = {
+  claude: ["anthropic"],
+  codex: ["openai"],
+  gemini: ["google"],
+  opencode: ["anthropic", "openai", "google", "custom"],
+};
