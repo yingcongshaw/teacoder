@@ -23,9 +23,13 @@ pub fn seed_preset_providers(db: &AppDatabase) -> Result<usize, String> {
     let now = chrono::Utc::now().timestamp_millis();
     let mut count = 0;
 
+    let tx = conn
+        .unchecked_transaction()
+        .map_err(|e| format!("开启事务失败: {}", e))?;
+
     for preset in PRESET_PROVIDERS {
         let provider_id = uuid::Uuid::new_v4().to_string();
-        conn.execute(
+        tx.execute(
             "INSERT INTO llm_providers (id, name, provider_kind, base_url, icon, color, is_preset, is_active, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 1, 1, ?7, ?7)",
             rusqlite::params![
                 provider_id,
@@ -41,7 +45,7 @@ pub fn seed_preset_providers(db: &AppDatabase) -> Result<usize, String> {
 
         for (idx, model_name) in preset.models.iter().enumerate() {
             let model_id = uuid::Uuid::new_v4().to_string();
-            conn.execute(
+            tx.execute(
                 "INSERT INTO llm_provider_models (id, provider_id, model_name, is_default, sort_order, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
                 rusqlite::params![
                     model_id,
@@ -56,6 +60,9 @@ pub fn seed_preset_providers(db: &AppDatabase) -> Result<usize, String> {
         }
         count += 1;
     }
+
+    tx.commit()
+        .map_err(|e| format!("提交事务失败: {}", e))?;
 
     Ok(count)
 }

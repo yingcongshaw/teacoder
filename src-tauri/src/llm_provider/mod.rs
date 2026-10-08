@@ -1,11 +1,6 @@
 //! LLM 供应商管理模块：CRUD、软删除、硬删除、默认模型切换。
 //!
 //! API Key 不存储在 SQLite，统一通过 `crate::crypto::keychain` 写入系统 Keychain。
-//!
-//! 本模块的 `pub` 类型与函数在本任务（Task 4）尚未接入 IPC 命令层，
-//! 故对 lib crate 自身而言属于"未被非测试代码引用"。下一阶段（Task 5）注册 IPC 后会消除。
-
-#![allow(dead_code)]
 
 use serde::{Deserialize, Serialize};
 

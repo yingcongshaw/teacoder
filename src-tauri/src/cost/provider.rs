@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use async_trait::async_trait;
 
@@ -22,7 +22,7 @@ pub trait CostProvider: Send + Sync {
     fn tool_type(&self) -> ToolType;
     fn data_dir(&self, profile: &Profile) -> PathBuf;
     async fn list_sessions(&self, profile: &Profile) -> Result<Vec<SessionFile>, String>;
-    async fn parse_session(&self, file_path: &PathBuf) -> Result<SessionCost, String>;
+    async fn parse_session(&self, file_path: &Path) -> Result<SessionCost, String>;
     async fn get_live_usage(&self, profile: &Profile, session_id: &str) -> Result<SessionCost, String>;
 }
 

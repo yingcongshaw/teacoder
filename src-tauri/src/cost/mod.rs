@@ -10,6 +10,11 @@ pub mod gemini;
 pub mod opencode;
 pub mod provider;
 
+/// 每 token 价格四元组：(输入, 输出, 缓存创建, 缓存读取)。
+pub type TokenPrices = (f64, f64, f64, f64);
+/// model → 价格四元组 的映射。
+pub type PricingMap = HashMap<String, TokenPrices>;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionCost {
@@ -227,7 +232,7 @@ fn row_to_summary(row: &rusqlite::Row) -> rusqlite::Result<CostSummary> {
 /// Prices are per-token (already divided by 1_000_000).
 pub fn load_pricing_map(
     db: &AppDatabase,
-) -> Result<HashMap<String, (f64, f64, f64, f64)>, String> {
+) -> Result<PricingMap, String> {
     let conn = db.conn.lock().map_err(|e| e.to_string())?;
 
     let mut stmt = conn

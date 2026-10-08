@@ -115,7 +115,15 @@ impl PtyManager {
             sessions: Mutex::new(HashMap::new()),
         }
     }
+}
 
+impl Default for PtyManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl PtyManager {
     pub fn start_session(
         &self,
         tab_id: String,

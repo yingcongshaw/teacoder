@@ -22,16 +22,11 @@ use tauri_plugin_autostart::MacosLauncher;
 use std::sync::Mutex;
 use once_cell::sync::Lazy;
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub enum CloseBehavior {
     MinimizeToTray,
+    #[default]
     Exit,
-}
-
-impl Default for CloseBehavior {
-    fn default() -> Self {
-        CloseBehavior::Exit
-    }
 }
 
 static CLOSE_BEHAVIOR: Lazy<Mutex<CloseBehavior>> = Lazy::new(|| Mutex::new(CloseBehavior::default()));

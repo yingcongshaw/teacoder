@@ -54,7 +54,7 @@ pub fn scan_claude_sessions(
                     .parent()
                     .and_then(|p| p.file_name())
                     .and_then(|n| n.to_str())
-                    .map(|s| simple_hash(s))
+                    .map(simple_hash)
                     .unwrap_or(0u64);
 
                 let session_id = format!("claude_{:x}_{}", project_hash, file_stem);

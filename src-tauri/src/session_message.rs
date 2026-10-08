@@ -40,7 +40,7 @@ pub fn list_session_messages(
         .map_err(|e| format!("Failed to prepare query: {}", e))?;
 
     let rows = stmt
-        .query_map([session_id], |row| row_to_message(row))
+        .query_map([session_id], row_to_message)
         .map_err(|e| format!("Failed to query messages: {}", e))?;
 
     rows.collect::<Result<Vec<_>, _>>()

@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use async_trait::async_trait;
 
@@ -26,7 +26,7 @@ impl CostProvider for OpenCodeProvider {
         Ok(vec![])
     }
 
-    async fn parse_session(&self, _file_path: &PathBuf) -> Result<SessionCost, String> {
+    async fn parse_session(&self, _file_path: &Path) -> Result<SessionCost, String> {
         // TODO: Implement OpenCode JSONL parsing
         Err("OpenCode cost parsing not yet implemented".to_string())
     }

@@ -103,7 +103,7 @@ pub fn list_sessions(
             .map_err(|e| format!("Failed to prepare query: {}", e))?;
 
         let rows = stmt
-            .query_map([pid], |row| row_to_session(row))
+            .query_map([pid], row_to_session)
             .map_err(|e| format!("Failed to query sessions: {}", e))?;
 
         rows.collect::<Result<Vec<_>, _>>()
@@ -117,7 +117,7 @@ pub fn list_sessions(
             .map_err(|e| format!("Failed to prepare query: {}", e))?;
 
         let rows = stmt
-            .query_map([], |row| row_to_session(row))
+            .query_map([], row_to_session)
             .map_err(|e| format!("Failed to query sessions: {}", e))?;
 
         rows.collect::<Result<Vec<_>, _>>()
@@ -290,7 +290,7 @@ pub fn update_session(
         ))
         .map_err(|e| format!("Failed to prepare query: {}", e))?;
 
-    stmt.query_row([id], |row| row_to_session(row))
+    stmt.query_row([id], row_to_session)
         .map_err(|e| format!("Failed to fetch updated session: {}", e))
 }
 
