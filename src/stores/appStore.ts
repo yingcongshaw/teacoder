@@ -1,5 +1,16 @@
 import { create } from "zustand";
-import type { CliTool, Profile, TerminalSettings, Project, Session, SessionTemplate, SessionCategory } from "../types";
+import type {
+  CliTool,
+  Profile,
+  TerminalSettings,
+  Project,
+  Session,
+  SessionTemplate,
+  SessionCategory,
+  LlmProvider,
+  CreateLlmProviderInput,
+  UpdateLlmProviderInput,
+} from "../types";
 import { DEFAULT_TERMINAL_SETTINGS, BUILTIN_SESSION_TEMPLATES } from "../types";
 import {
   stopSession,
@@ -16,6 +27,10 @@ import {
   categoryCreate,
   categoryUpdate,
   categoryDelete,
+  listLlmProviders,
+  createLlmProvider as createLlmProviderIpc,
+  updateLlmProvider as updateLlmProviderIpc,
+  deleteLlmProvider as deleteLlmProviderIpc,
 } from "../utils/ipc";
 
 const OPEN_TABS_KEY = "teacoder_open_tabs";
@@ -194,6 +209,15 @@ interface AppState {
 
   profiles: Profile[];
   setProfiles: (profiles: Profile[]) => void;
+
+  // LLM Provider 列表（从后端加载，与 Profile 解耦）
+  llmProviders: LlmProvider[];
+  setLlmProviders: (providers: LlmProvider[]) => void;
+  loadLlmProviders: () => Promise<void>;
+  createLlmProvider: (input: CreateLlmProviderInput) => Promise<LlmProvider>;
+  updateLlmProvider: (id: string, input: UpdateLlmProviderInput) => Promise<LlmProvider>;
+  deleteLlmProvider: (id: string) => Promise<void>;
+  toggleLlmProviderActive: (id: string, isActive: boolean) => Promise<void>;
 
   sidebarCollapsed: boolean;
   toggleSidebar: () => void;
@@ -722,6 +746,32 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   profiles: [],
   setProfiles: (profiles) => set({ profiles }),
+
+  // LLM Provider
+  llmProviders: [],
+  setLlmProviders: (providers) => set({ llmProviders: providers }),
+  loadLlmProviders: async () => {
+    const providers = await listLlmProviders(false);
+    set({ llmProviders: providers });
+  },
+  createLlmProvider: async (input) => {
+    const created = await createLlmProviderIpc(input);
+    await get().loadLlmProviders();
+    return created;
+  },
+  updateLlmProvider: async (id, input) => {
+    const updated = await updateLlmProviderIpc(id, input);
+    await get().loadLlmProviders();
+    return updated;
+  },
+  deleteLlmProvider: async (id) => {
+    await deleteLlmProviderIpc(id);
+    await get().loadLlmProviders();
+  },
+  toggleLlmProviderActive: async (id, isActive) => {
+    await updateLlmProviderIpc(id, { isActive });
+    await get().loadLlmProviders();
+  },
 
   sidebarCollapsed: false,
   toggleSidebar: () =>
