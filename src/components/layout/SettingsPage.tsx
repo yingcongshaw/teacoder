@@ -14,6 +14,7 @@ import {
   ApiOutlined,
   InfoCircleOutlined,
   UserOutlined,
+  CloudOutlined,
 } from "@ant-design/icons";
 import { CLI_TOOLS, CLI_TOOLS_IN_SETTINGS_GROUP, getCliToolIcon } from "../cli/cliTools";
 import { useAppStore } from "../../stores/appStore";
@@ -34,6 +35,7 @@ import DataManagementPage from "../settings/DataManagementPage";
 import SyncPage from "../settings/SyncPage";
 import McpAccessPage from "../settings/McpAccessPage";
 import AboutPage from "../settings/AboutPage";
+import LlmProvidersPage from "../settings/LlmProvidersPage";
 
 const SIDEBAR_WIDTH = 180;
 
@@ -54,6 +56,7 @@ const menuItems = [
       icon: <CliToolIcon toolKey={t.id} />,
     })),
   },
+  { key: "llm-providers", label: "LLM 设置", icon: <CloudOutlined /> },
   { key: "profile-management", label: "Profile 管理", icon: <UserOutlined /> },
   { key: "ai-assistant", label: "AI 辅助", icon: <RobotOutlined /> },
   { key: "network", label: "网络", icon: <GlobalOutlined /> },
@@ -84,6 +87,7 @@ const PAGE_TITLES: Record<string, string> = {
   sync: "同步",
   mcp: "MCP 接入",
   about: "关于",
+  "llm-providers": "LLM 设置",
   ...CLI_TOOL_TITLES,
 };
 
@@ -133,6 +137,8 @@ export default function SettingsPage() {
         return <SyncPage {...props} />;
       case "mcp":
         return <McpAccessPage {...props} />;
+      case "llm-providers":
+        return <LlmProvidersPage />;
       case "about":
         return <AboutPage {...props} />;
       default:
