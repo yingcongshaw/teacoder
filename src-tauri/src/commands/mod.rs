@@ -1,5 +1,6 @@
 pub mod cli;
 pub mod cost;
+pub mod llm_provider;
 pub mod profile;
 pub mod project;
 pub mod pty;

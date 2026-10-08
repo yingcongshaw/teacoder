@@ -134,6 +134,18 @@ pub const PRESET_PROVIDERS: &[PresetProvider] = &[
     },
 ];
 
+/// 预设供应商的对外视图（IPC 序列化），字段全部为 `String`。
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PresetProviderView {
+    pub name: String,
+    pub provider_kind: String,
+    pub base_url: String,
+    pub icon: String,
+    pub color: String,
+    pub models: Vec<String>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
