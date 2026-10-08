@@ -2,6 +2,7 @@ mod cli;
 mod commands;
 mod cost;
 mod crypto;
+mod llm_provider;
 mod profile;
 mod project;
 mod pty;
@@ -143,6 +144,7 @@ pub fn run() {
             commands::session::session_create,
             commands::session::session_update,
             commands::session::session_delete,
+            commands::session::find_latest_claude_session,
             commands::session_category::category_list,
             commands::session_category::category_create,
             commands::session_category::category_update,
