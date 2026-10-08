@@ -3,11 +3,7 @@ import { Select, Switch, Input, App } from "antd";
 import SettingRow from "./components/SettingRow";
 import SectionHeader from "./components/SectionHeader";
 import QuickCommandsEditor from "../quick-commands/QuickCommandsEditor";
-
-const GEMINI_MODELS = [
-  { value: "gemini-2.5-pro", label: "Gemini 2.5 Pro", description: "最强推理能力，适合复杂任务" },
-  { value: "gemini-2.5-flash", label: "Gemini 2.5 Flash", description: "快速响应，适合日常任务" },
-];
+import CliArgsLlmList from "../cli/CliArgsLlmList";
 
 const SAFETY_LEVELS = [
   { value: "standard", label: "标准" },
@@ -37,6 +33,10 @@ interface GeminiSettingsPageProps {
 export default function GeminiSettingsPage({ searchText = "" }: GeminiSettingsPageProps) {
   const { message } = App.useApp();
   const [settings, setSettings] = useState<GeminiSettings>(DEFAULT_SETTINGS);
+  const [llmConfig, setLlmConfig] = useState<{
+    llmProviderIds: string[];
+    defaultLlmProviderId?: string;
+  }>({ llmProviderIds: [] });
 
   useEffect(() => {
     try {
@@ -45,6 +45,18 @@ export default function GeminiSettingsPage({ searchText = "" }: GeminiSettingsPa
       setSettings({ ...DEFAULT_SETTINGS, ...saved });
     } catch {
       setSettings(DEFAULT_SETTINGS);
+    }
+    try {
+      const llmRaw = localStorage.getItem("teacoder_gemini_llm_config");
+      if (llmRaw) {
+        const parsed = JSON.parse(llmRaw);
+        setLlmConfig({
+          llmProviderIds: parsed.llmProviderIds ?? [],
+          defaultLlmProviderId: parsed.defaultLlmProviderId,
+        });
+      }
+    } catch {
+      // llm config 解析失败时保留默认
     }
   }, []);
 
@@ -58,6 +70,14 @@ export default function GeminiSettingsPage({ searchText = "" }: GeminiSettingsPa
     message.success("设置已保存");
   };
 
+  const handleLlmConfigChange = (next: {
+    llmProviderIds: string[];
+    defaultLlmProviderId?: string;
+  }) => {
+    setLlmConfig(next);
+    localStorage.setItem("teacoder_gemini_llm_config", JSON.stringify(next));
+  };
+
   const matchesSearch = (label: string, desc?: string) => {
     if (!searchText) return true;
     const q = searchText.toLowerCase();
@@ -66,25 +86,14 @@ export default function GeminiSettingsPage({ searchText = "" }: GeminiSettingsPa
 
   return (
     <div>
-      {/* 模型 */}
-      <SectionHeader title="模型" />
-      {matchesSearch("默认模型") && (
-        <SettingRow label="默认模型" description="选择 Gemini CLI 使用的默认模型">
-          <Select
-            value={settings.model}
-            onChange={(v) => updateSetting("model", v)}
-            style={{ width: 220 }}
-          >
-            {GEMINI_MODELS.map((m) => (
-              <Select.Option key={m.value} value={m.value}>
-                <div className="flex flex-col">
-                  <span className="font-medium">{m.label}</span>
-                  <span style={{ fontSize: 11, color: "var(--ant-color-text-tertiary)" }}>{m.description}</span>
-                </div>
-              </Select.Option>
-            ))}
-          </Select>
-        </SettingRow>
+      {/* LLM 供应商 */}
+      <SectionHeader title="LLM 供应商" />
+      {matchesSearch("LLM 供应商") && (
+        <CliArgsLlmList
+          toolType="gemini"
+          value={llmConfig}
+          onChange={handleLlmConfigChange}
+        />
       )}
 
       {/* 认证 */}
