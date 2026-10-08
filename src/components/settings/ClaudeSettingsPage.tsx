@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Switch, Input, InputNumber, Tag, Button, App } from "antd";
+import { Switch, Input, InputNumber, Button, App } from "antd";
 import { CheckCircleOutlined, ArrowRightOutlined } from "@ant-design/icons";
 import { useAppStore } from "../../stores/appStore";
 import { getToolSettings, upsertToolSettings } from "../../utils/ipc";
@@ -7,12 +7,7 @@ import type { Profile } from "../../types";
 import SettingRow from "./components/SettingRow";
 import SectionHeader from "./components/SectionHeader";
 import QuickCommandsEditor from "../quick-commands/QuickCommandsEditor";
-
-const CLAUDE_MODELS = [
-  { value: "claude-opus-4", label: "Opus 4", tag: "最强", description: "最强推理能力，适合复杂任务" },
-  { value: "claude-sonnet-4", label: "Sonnet 4", tag: "推荐", description: "平衡性能与速度" },
-  { value: "claude-haiku-4", label: "Haiku 4", tag: "最快", description: "最快响应，适合简单任务" },
-];
+import CliArgsLlmList from "../cli/CliArgsLlmList";
 
 const THINKING_INTENSITIES = [
   { value: "low", label: "低", color: "#52c41a" },
@@ -55,6 +50,10 @@ interface ClaudeSettingsPageProps {
 export default function ClaudeSettingsPage({ searchText = "" }: ClaudeSettingsPageProps) {
   const { message } = App.useApp();
   const [settings, setSettings] = useState<ClaudeSettings>(DEFAULT_SETTINGS);
+  const [llmConfig, setLlmConfig] = useState<{
+    llmProviderIds: string[];
+    defaultLlmProviderId?: string;
+  }>({ llmProviderIds: [] });
   const [loading, setLoading] = useState(false);
   const [verifying, setVerifying] = useState(false);
   const profiles = useAppStore((s) => s.profiles);
@@ -83,6 +82,17 @@ export default function ClaudeSettingsPage({ searchText = "" }: ClaudeSettingsPa
           maxOutputLength: DEFAULT_SETTINGS.maxOutputLength,
           customInstructions: data.customInstructions || DEFAULT_SETTINGS.customInstructions,
         });
+        if (data.settingsJson) {
+          try {
+            const parsed = JSON.parse(data.settingsJson);
+            setLlmConfig({
+              llmProviderIds: parsed.llmProviderIds ?? [],
+              defaultLlmProviderId: parsed.defaultLlmProviderId,
+            });
+          } catch {
+            // settingsJson 解析失败时保留默认 llmConfig
+          }
+        }
       }
     } catch {
       message.error("加载设置失败");
@@ -105,6 +115,8 @@ export default function ClaudeSettingsPage({ searchText = "" }: ClaudeSettingsPa
           baseUrl: next.baseUrl,
           permissionMode: next.permissionMode,
           maxOutputLength: next.maxOutputLength,
+          llmProviderIds: llmConfig.llmProviderIds,
+          defaultLlmProviderId: llmConfig.defaultLlmProviderId,
         }),
       });
       message.success("设置已保存");
@@ -168,50 +180,14 @@ export default function ClaudeSettingsPage({ searchText = "" }: ClaudeSettingsPa
 
   return (
     <div>
-      {/* 模型 */}
-      <SectionHeader title="模型" />
-      {matchesSearch("默认模型") && (
-        <div style={{ padding: "8px 0", borderBottom: "1px solid var(--ant-color-border-secondary)" }}>
-          <div style={{ fontSize: 13, fontWeight: 500, color: "var(--ant-color-text)", marginBottom: 8 }}>
-            默认模型
-          </div>
-          <div style={{ fontSize: 12, color: "var(--ant-color-text-tertiary)", marginBottom: 10 }}>
-            选择 Claude Code 使用的默认模型
-          </div>
-          <div className="flex gap-3">
-            {CLAUDE_MODELS.map((m) => {
-              const isSelected = settings.model === m.value;
-              return (
-                <div
-                  key={m.value}
-                  onClick={() => !loading && updateSetting("model", m.value)}
-                  style={{
-                    flex: 1,
-                    padding: "10px 12px",
-                    borderRadius: 8,
-                    border: `1.5px solid ${isSelected ? "var(--ant-color-primary)" : "var(--ant-color-border)"}`,
-                    background: isSelected ? "var(--ant-color-primary-bg)" : "var(--ant-color-fill-quaternary)",
-                    cursor: loading ? "not-allowed" : "pointer",
-                    transition: "all 0.15s",
-                  }}
-                >
-                  <div className="flex items-center justify-between" style={{ marginBottom: 4 }}>
-                    <span style={{ fontSize: 13, fontWeight: 600, color: "var(--ant-color-text)" }}>{m.label}</span>
-                    <Tag
-                      color={isSelected ? "blue" : "default"}
-                      style={{ fontSize: 10, lineHeight: "16px", padding: "0 4px", margin: 0, borderRadius: 4 }}
-                    >
-                      {m.tag}
-                    </Tag>
-                  </div>
-                  <div style={{ fontSize: 11, color: "var(--ant-color-text-tertiary)", lineHeight: "16px" }}>
-                    {m.description}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
+      {/* LLM 供应商 */}
+      <SectionHeader title="LLM 供应商" />
+      {matchesSearch("LLM 供应商") && (
+        <CliArgsLlmList
+          toolType="claude"
+          value={llmConfig}
+          onChange={setLlmConfig}
+        />
       )}
       {matchesSearch("思考强度", "推理深度") && (
         <div style={{ padding: "8px 0", borderBottom: "1px solid var(--ant-color-border-secondary)" }}>
