@@ -214,6 +214,18 @@ export async function sessionDelete(id: string): Promise<void> {
   return invoke("session_delete", { id });
 }
 
+export async function findLatestClaudeSession(
+  workDir: string,
+  claudeConfigDir: string | null,
+  beforeTsMs: number,
+): Promise<string | null> {
+  return invoke<string | null>("find_latest_claude_session", {
+    workDir,
+    claudeConfigDir,
+    beforeTsMs,
+  });
+}
+
 // Category IPC
 export async function categoryList(projectId?: string): Promise<SessionCategory[]> {
   return invoke<SessionCategory[]>("category_list", { projectId });
