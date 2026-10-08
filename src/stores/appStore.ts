@@ -27,6 +27,7 @@ import {
   categoryCreate,
   categoryUpdate,
   categoryDelete,
+  findLatestClaudeSession,
   listLlmProviders,
   createLlmProvider as createLlmProviderIpc,
   updateLlmProvider as updateLlmProviderIpc,
@@ -473,6 +474,34 @@ export const useAppStore = create<AppState>((set, get) => ({
   closeTab: (id) => {
     const state = get();
     const session = state.sessions.find((s) => s.id === id);
+
+    // Claude Code 关闭标签前，先探测 work_dir 下 mtime <= 当前时刻的最近 JSONL，
+    // 确保 cliSessionId 与磁盘上最近一次写入的 JSONL UUID 一致。
+    // 这样即使 /clear 改变了文件 mtime，cliSessionId 也会与最新 JSONL 对齐；
+    // 多标签同 work_dir 时，本会话 JSONL 必然不晚于当前时间（我们还没停 PTY）。
+    if (session?.isRunning && session.toolType === "claude") {
+      const project = state.projects.find((p) => p.id === session.projectId);
+      const profile = session.profileId
+        ? state.profiles.find((p) => p.id === session.profileId)
+        : undefined;
+      const workDir = project?.path || "~";
+      const claudeConfigDir = profile?.appDataRoot ?? null;
+      findLatestClaudeSession(workDir, claudeConfigDir, Date.now())
+        .then((detected) => {
+          if (detected && detected !== session.cliSessionId) {
+            sessionUpdate(id, { cliSessionId: detected }).catch(() => {});
+            set((s) => ({
+              sessions: s.sessions.map((sess) =>
+                sess.id === id ? { ...sess, cliSessionId: detected } : sess,
+              ),
+            }));
+          }
+        })
+        .catch(() => {
+          // 探测失败时不影响关闭流程
+        });
+    }
+
     if (session?.isRunning) {
       stopSession(id).catch(() => {});
     }
@@ -536,20 +565,58 @@ export const useAppStore = create<AppState>((set, get) => ({
       cliArgs,
       cliSessionId: willResumeSessionId,
     }).catch((err) => {
-      // --resume 失败（空会话）：清除 cliSessionId，重新以新会话启动
-      if (willResumeSessionId && String(err).includes("No conversation found")) {
-        sessionUpdate(id, { cliSessionId: undefined }).catch(() => {});
-        const newArgs: string[] = [];
-        startSession({
-          toolType: session.toolType,
-          profileId: session.profileId || "",
-          workDir: project?.path || "~",
-          tabId: id,
-          envVars,
-          cliArgs: JSON.stringify(newArgs),
-          cliSessionId: undefined,
-        }).catch(() => {});
+      // --resume 在交互模式下因跟踪文件被清理而失败。
+      // 主动探测 work_dir 下最近的 JSONL：若存在，则用其 UUID + --session-id
+      // 重新启动，让 Claude Code 继续现有 JSONL 而不是从空白开始。
+      if (!willResumeSessionId || !String(err).includes("No conversation found")) {
+        return;
       }
+      const workDir = project?.path || "~";
+      const profile = session.profileId
+        ? state.profiles.find((p) => p.id === session.profileId)
+        : undefined;
+      const claudeConfigDir = profile?.appDataRoot ?? null;
+      findLatestClaudeSession(workDir, claudeConfigDir, Date.now())
+        .then((detected) => {
+          if (!detected) {
+            // 工作目录下没有任何 JSONL：保持原回退，从空白会话启动
+            sessionUpdate(id, { cliSessionId: undefined }).catch(() => {});
+            startSession({
+              toolType: session.toolType,
+              profileId: session.profileId || "",
+              workDir,
+              tabId: id,
+              envVars,
+              cliArgs: "[]",
+              cliSessionId: undefined,
+            }).catch(() => {});
+            return;
+          }
+          // 用探测到的 UUID + --session-id 启动 Claude Code，让其继续现有 JSONL
+          sessionUpdate(id, { cliSessionId: detected }).catch(() => {});
+          startSession({
+            toolType: session.toolType,
+            profileId: session.profileId || "",
+            workDir,
+            tabId: id,
+            envVars,
+            cliArgs: JSON.stringify(["--session-id", detected]),
+            cliSessionId: detected,
+          }).catch(() => {});
+        })
+        .catch(() => {
+          // 探测本身失败时仍走原始回退路径，避免卡死
+          sessionUpdate(id, { cliSessionId: undefined }).catch(() => {});
+          startSession({
+            toolType: session.toolType,
+            profileId: session.profileId || "",
+            workDir,
+            tabId: id,
+            envVars,
+            cliArgs: "[]",
+            cliSessionId: undefined,
+          }).catch(() => {});
+        });
     });
     // 标记 isRunning，清除 closedAt
     sessionUpdate(id, { isRunning: true, closedAt: 0 }).catch(() => {});
