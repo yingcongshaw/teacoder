@@ -27,6 +27,8 @@ export async function startSession(params: {
   envVars?: Record<string, string>;
   cliArgs?: string;
   cliSessionId?: string;
+  llmProviderId?: string;
+  modelName?: string;
 }): Promise<void> {
   return invoke("start_session", params);
 }
@@ -186,6 +188,8 @@ export async function sessionCreate(input: {
   envVars?: string;
   cliSessionId?: string;
   categoryId?: string;
+  llmProviderId?: string;
+  modelName?: string;
 }): Promise<Session> {
   return invoke<Session>("session_create", { input });
 }
@@ -205,6 +209,8 @@ export async function sessionUpdate(
     projectId?: string;
     cliSessionId?: string;
     categoryId?: string;
+    llmProviderId?: string;
+    modelName?: string;
   },
 ): Promise<Session> {
   return invoke<Session>("session_update", { id, input });

@@ -92,6 +92,8 @@ export interface Session {
   closedAt?: number;
   cliSessionId?: string;
   categoryId?: string;
+  llmProviderId?: string;
+  modelName?: string;
 }
 
 export interface SessionTemplate {

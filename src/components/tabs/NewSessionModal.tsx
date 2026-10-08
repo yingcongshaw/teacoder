@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef } from "react";
 import { Input, Select, Tooltip, App, Button } from "antd";
 import { useAppStore } from "../../stores/appStore";
-import { detectCliTools, testSshConnection } from "../../utils/ipc";
-import { BUILTIN_SESSION_TEMPLATES } from "../../types";
-import type { ToolType, CliTool } from "../../types";
+import { detectCliTools, testSshConnection, getToolSettings } from "../../utils/ipc";
+import { BUILTIN_SESSION_TEMPLATES, TOOL_PROVIDER_KIND_MAP } from "../../types";
+import type { ToolType, CliTool, LlmProvider } from "../../types";
 import { CLI_TOOLS, sortCliToolsByAvailability, isCliToolAvailable, type CliToolMeta } from "../cli/cliTools";
 import CliArgsClaude from "../cli/CliArgsClaude";
 
@@ -52,6 +52,8 @@ export default function NewSessionModal({ open: isOpen, projectId, categoryId, o
   const globalThinkingIntensity = useAppStore((s) => s.globalThinkingIntensity);
   const projects = useAppStore((s) => s.projects);
   const categories = useAppStore((s) => s.categories);
+  const llmProviders = useAppStore((s) => s.llmProviders);
+  const loadLlmProviders = useAppStore((s) => s.loadLlmProviders);
 
   const [selectedTool, setSelectedTool] = useState<ToolType | null>(null);
   const [selectedColor, setSelectedColor] = useState<string>(COLOR_PRESETS[0]);
@@ -62,6 +64,9 @@ export default function NewSessionModal({ open: isOpen, projectId, categoryId, o
   const [envVars, setEnvVars] = useState("");
   const [cliParams, setCliParams] = useState<Record<string, unknown>>({});
   const [sessionCategoryId, setSessionCategoryId] = useState<string | undefined>(undefined);
+  const [llmProviderId, setLlmProviderId] = useState<string | undefined>();
+  const [modelName, setModelName] = useState<string | undefined>();
+  const [profileLlmDefaults, setProfileLlmDefaults] = useState<{ defaultLlmProviderId?: string }>({});
 
   const [sshHostname, setSshHostname] = useState("");
   const [sshPort, setSshPort] = useState(22);
@@ -109,6 +114,12 @@ export default function NewSessionModal({ open: isOpen, projectId, categoryId, o
   }, [isOpen, cliTools.length, setCliTools]);
 
   useEffect(() => {
+    if (isOpen && llmProviders.length === 0) {
+      loadLlmProviders().catch(() => {});
+    }
+  }, [isOpen, llmProviders.length, loadLlmProviders]);
+
+  useEffect(() => {
     if (isDragging) {
       window.addEventListener("mousemove", handleMouseMove);
       window.addEventListener("mouseup", handleMouseUp);
@@ -135,8 +146,55 @@ export default function NewSessionModal({ open: isOpen, projectId, categoryId, o
       setSshPassword("");
       setSshIdentityFile("");
       setSessionCategoryId(categoryId || undefined);
+      setLlmProviderId(undefined);
+      setModelName(undefined);
+      setProfileLlmDefaults({});
     }
   }, [isOpen, globalThinkingIntensity, categoryId]);
+
+  useEffect(() => {
+    if (!profileId) {
+      setProfileLlmDefaults({});
+      return;
+    }
+    let cancelled = false;
+    getToolSettings(profileId)
+      .then((toolSettings) => {
+        if (cancelled) return;
+        if (!toolSettings?.settingsJson) {
+          setProfileLlmDefaults({});
+          return;
+        }
+        try {
+          const parsed = JSON.parse(toolSettings.settingsJson);
+          setProfileLlmDefaults({
+            defaultLlmProviderId: typeof parsed.defaultLlmProviderId === "string" ? parsed.defaultLlmProviderId : undefined,
+          });
+        } catch {
+          setProfileLlmDefaults({});
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setProfileLlmDefaults({});
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [profileId]);
+
+  useEffect(() => {
+    const defId = profileLlmDefaults.defaultLlmProviderId;
+    if (!defId) {
+      setLlmProviderId(undefined);
+      setModelName(undefined);
+      return;
+    }
+    const provider = llmProviders.find((p) => p.id === defId);
+    if (!provider || !provider.isActive) return;
+    setLlmProviderId(defId);
+    const defModel = provider.models.find((m) => m.isDefault);
+    setModelName(defModel?.modelName);
+  }, [profileLlmDefaults.defaultLlmProviderId, llmProviders]);
 
   const project = projects.find((p) => p.id === projectId);
 
@@ -161,6 +219,14 @@ export default function NewSessionModal({ open: isOpen, projectId, categoryId, o
       password: sshPassword,
       identityFile: sshIdentityFile,
     });
+
+  const compatibleProviders = (toolType: ToolType | null): LlmProvider[] => {
+    if (!toolType) return [];
+    const allowedKinds = TOOL_PROVIDER_KIND_MAP[toolType] ?? [];
+    return llmProviders.filter(
+      (p) => p.isActive && allowedKinds.includes(p.providerKind),
+    );
+  };
 
   const handleTestSsh = async () => {
     if (!sshHostname.trim()) {
@@ -215,6 +281,8 @@ export default function NewSessionModal({ open: isOpen, projectId, categoryId, o
         cliArgs: finalCliArgs,
         envVars: envVars.trim() || undefined,
         categoryId: sessionCategoryId,
+        llmProviderId,
+        modelName,
       });
       onClose();
     } catch (err) {
@@ -378,6 +446,56 @@ export default function NewSessionModal({ open: isOpen, projectId, categoryId, o
                 {filteredProfiles.map((p) => (
                   <Select.Option key={p.id} value={p.id}>
                     {p.name}
+                  </Select.Option>
+                ))}
+              </Select>
+            </div>
+          )}
+
+          {selectedTool !== "ssh" && selectedTool !== "terminal" && (
+            <div style={{ marginBottom: 12 }}>
+              <label style={{ display: "block", fontSize: 12, color: "var(--ant-color-text-secondary)", marginBottom: 4 }}>
+                LLM 供应商
+              </label>
+              <Select
+                size="small"
+                placeholder="选择 LLM 供应商（可选）"
+                allowClear
+                value={llmProviderId}
+                onChange={(id) => {
+                  setLlmProviderId(id);
+                  const provider = llmProviders.find((p) => p.id === id);
+                  const defModel = provider?.models.find((m) => m.isDefault);
+                  setModelName(defModel?.modelName);
+                }}
+                style={{ width: "100%" }}
+              >
+                {compatibleProviders(selectedTool).map((p) => (
+                  <Select.Option key={p.id} value={p.id}>
+                    {p.name}（{p.providerKind}）
+                  </Select.Option>
+                ))}
+              </Select>
+            </div>
+          )}
+
+          {selectedTool !== "ssh" && selectedTool !== "terminal" && llmProviderId && (
+            <div style={{ marginBottom: 12 }}>
+              <label style={{ display: "block", fontSize: 12, color: "var(--ant-color-text-secondary)", marginBottom: 4 }}>
+                模型
+              </label>
+              <Select
+                size="small"
+                placeholder="选择模型"
+                allowClear
+                value={modelName}
+                onChange={setModelName}
+                style={{ width: "100%" }}
+              >
+                {(llmProviders.find((p) => p.id === llmProviderId)?.models ?? []).map((m) => (
+                  <Select.Option key={m.id} value={m.modelName}>
+                    {m.modelName}
+                    {m.isDefault && <span className="text-[var(--ant-color-text-quaternary)] text-[10px] ml-2">默认</span>}
                   </Select.Option>
                 ))}
               </Select>

@@ -143,6 +143,8 @@ interface AppState {
     cliArgs?: string;
     envVars?: string;
     categoryId?: string;
+    llmProviderId?: string;
+    modelName?: string;
   }) => Promise<Session>;
   updateSession: (id: string, updates: Partial<Session>) => Promise<void>;
   deleteSession: (id: string) => Promise<void>;
@@ -378,6 +380,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       envVars,
       cliArgs: input.cliArgs,
       cliSessionId,
+      llmProviderId: input.llmProviderId,
+      modelName: input.modelName,
     }).catch(() => {});
     const updatedSession = { ...session, isRunning: true };
     set((state) => ({
@@ -564,6 +568,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       envVars,
       cliArgs,
       cliSessionId: willResumeSessionId,
+      llmProviderId: session.llmProviderId,
+      modelName: session.modelName,
     }).catch((err) => {
       // --resume 在交互模式下因跟踪文件被清理而失败。
       // 主动探测 work_dir 下最近的 JSONL：若存在，则用其 UUID + --session-id
@@ -589,6 +595,8 @@ export const useAppStore = create<AppState>((set, get) => ({
               envVars,
               cliArgs: "[]",
               cliSessionId: undefined,
+              llmProviderId: session.llmProviderId,
+              modelName: session.modelName,
             }).catch(() => {});
             return;
           }
@@ -602,6 +610,8 @@ export const useAppStore = create<AppState>((set, get) => ({
             envVars,
             cliArgs: JSON.stringify(["--session-id", detected]),
             cliSessionId: detected,
+            llmProviderId: session.llmProviderId,
+            modelName: session.modelName,
           }).catch(() => {});
         })
         .catch(() => {
@@ -615,6 +625,8 @@ export const useAppStore = create<AppState>((set, get) => ({
             envVars,
             cliArgs: "[]",
             cliSessionId: undefined,
+            llmProviderId: session.llmProviderId,
+            modelName: session.modelName,
           }).catch(() => {});
         });
     });
