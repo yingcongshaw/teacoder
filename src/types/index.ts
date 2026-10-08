@@ -94,6 +94,7 @@ export interface Session {
   categoryId?: string;
   llmProviderId?: string;
   modelName?: string;
+  claudeModels?: { sonnet?: string; opus?: string; haiku?: string };
 }
 
 export interface SessionTemplate {
@@ -599,30 +600,37 @@ export interface LlmProvider {
   id: string;
   name: string;
   providerKind: "anthropic" | "openai" | "google" | "custom";
+  authType: AuthType;
   baseUrl: string | null;
   icon: string | null;
   color: string | null;
   isPreset: boolean;
   isActive: boolean;
+  isDefault: boolean;
   createdAt: number;
   updatedAt: number;
   models: LlmProviderModel[];
+  apiKey?: string;
+  oauthToken?: string;
 }
 
 export interface CreateLlmProviderInput {
   name: string;
   providerKind: "anthropic" | "openai" | "google" | "custom";
+  authType?: AuthType;
   baseUrl?: string;
   icon?: string;
   color?: string;
   models: string[];
   defaultModel?: string;
   apiKey?: string;
+  oauthToken?: string;
 }
 
 export interface UpdateLlmProviderInput {
   name?: string;
   providerKind?: "anthropic" | "openai" | "google" | "custom";
+  authType?: AuthType;
   baseUrl?: string;
   icon?: string;
   color?: string;
@@ -630,6 +638,7 @@ export interface UpdateLlmProviderInput {
   defaultModel?: string;
   isActive?: boolean;
   apiKey?: string;
+  oauthToken?: string;
 }
 
 export interface PresetProviderView {

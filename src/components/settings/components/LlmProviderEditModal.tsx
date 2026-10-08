@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Modal, Form, Input, Select, Button, App } from 'antd';
 import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
-import type { LlmProvider } from '../../../types';
+import type { LlmProvider, AuthType } from '../../../types';
 import { useAppStore } from '../../../stores/appStore';
 
 interface Props {
@@ -18,6 +18,11 @@ const PROVIDER_KINDS = [
   { value: 'custom', label: '自定义' },
 ];
 
+const AUTH_TYPES = [
+  { value: 'api_key', label: 'API Key' },
+  { value: 'oauth', label: 'OAuth Token' },
+];
+
 /**
  * LlmProvider 编辑模态框：新建或编辑一个 LLM 供应商配置。
  * 通过 store 的 createLlmProvider / updateLlmProvider 触发保存，
@@ -31,7 +36,13 @@ export default function LlmProviderEditModal({ open, provider, onCancel, onSaved
   const [form] = Form.useForm();
   const [models, setModels] = useState<string[]>([]);
   const [defaultModel, setDefaultModel] = useState<string | null>(null);
+  const [authType, setAuthType] = useState<AuthType>('api_key');
   const [apiKey, setApiKey] = useState('');
+  const [apiKeyTouched, setApiKeyTouched] = useState(false);
+  const [hasExistingApiKey, setHasExistingApiKey] = useState(false);
+  const [oauthToken, setOauthToken] = useState('');
+  const [oauthTokenTouched, setOauthTokenTouched] = useState(false);
+  const [hasExistingOauthToken, setHasExistingOauthToken] = useState(false);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -40,6 +51,7 @@ export default function LlmProviderEditModal({ open, provider, onCancel, onSaved
         form.setFieldsValue({
           name: provider.name,
           providerKind: provider.providerKind,
+          authType: provider.authType,
           baseUrl: provider.baseUrl ?? '',
           icon: provider.icon ?? '',
           color: provider.color ?? '',
@@ -47,15 +59,47 @@ export default function LlmProviderEditModal({ open, provider, onCancel, onSaved
         setModels(provider.models.map((m) => m.modelName));
         const def = provider.models.find((m) => m.isDefault);
         setDefaultModel(def?.modelName ?? null);
+        setAuthType(provider.authType);
         setApiKey('');
+        setApiKeyTouched(false);
+        setHasExistingApiKey(false);
+        setOauthToken('');
+        setOauthTokenTouched(false);
+        setHasExistingOauthToken(false);
+        // 从 provider.apiKey / oauthToken 获取实际值用于回显（不是掩码）
+        if (provider.apiKey) {
+          setHasExistingApiKey(true);
+          setApiKey(provider.apiKey);
+        }
+        if (provider.oauthToken) {
+          setHasExistingOauthToken(true);
+          setOauthToken(provider.oauthToken);
+        }
       } else {
         form.resetFields();
         setModels([]);
         setDefaultModel(null);
+        setAuthType('api_key');
         setApiKey('');
+        setApiKeyTouched(false);
+        setHasExistingApiKey(false);
+        setOauthToken('');
+        setOauthTokenTouched(false);
+        setHasExistingOauthToken(false);
       }
     }
   }, [open, provider, form]);
+
+  const handleAuthTypeChange = (value: AuthType) => {
+    setAuthType(value);
+    // 切换认证方式时清除敏感字段
+    setApiKey('');
+    setApiKeyTouched(false);
+    setHasExistingApiKey(false);
+    setOauthToken('');
+    setOauthTokenTouched(false);
+    setHasExistingOauthToken(false);
+  };
 
   const handleAddModel = () => {
     setModels([...models, '']);
@@ -82,27 +126,40 @@ export default function LlmProviderEditModal({ open, provider, onCancel, onSaved
 
       setSaving(true);
       if (provider) {
-        await updateStore(provider.id, {
+        const apiKeyValue = apiKeyTouched ? (apiKey || '') : undefined;
+        const oauthTokenValue = oauthTokenTouched ? (oauthToken || '') : undefined;
+        const updateInput = {
           name: values.name,
           providerKind: values.providerKind,
+          authType: values.authType,
           baseUrl: values.baseUrl || undefined,
           icon: values.icon || undefined,
           color: values.color || undefined,
           models: cleanedModels,
           defaultModel: effectiveDefault,
-          apiKey: apiKey || undefined,
-        });
-        message.success('已更新');
+          apiKey: apiKeyValue,
+          oauthToken: oauthTokenValue,
+        };
+        try {
+          await updateStore(provider.id, updateInput);
+          message.success('已更新');
+        } catch (err) {
+          message.error('保存失败: ' + String(err));
+          setSaving(false);
+          return;
+        }
       } else {
         await createStore({
           name: values.name,
           providerKind: values.providerKind,
+          authType: values.authType,
           baseUrl: values.baseUrl || undefined,
           icon: values.icon || undefined,
           color: values.color || undefined,
           models: cleanedModels,
           defaultModel: effectiveDefault,
-          apiKey: apiKey || undefined,
+          apiKey: authType === 'api_key' ? (apiKey || undefined) : undefined,
+          oauthToken: authType === 'oauth' ? (oauthToken || undefined) : undefined,
         });
         message.success('已创建');
       }
@@ -130,19 +187,46 @@ export default function LlmProviderEditModal({ open, provider, onCancel, onSaved
         <Form.Item name="name" label="名称" rules={[{ required: true, message: '请输入名称' }]}>
           <Input placeholder="例如：Anthropic、GLM 智谱" />
         </Form.Item>
-        <Form.Item name="providerKind" label="协议类型" rules={[{ required: true }]}>
-          <Select options={PROVIDER_KINDS} placeholder="选择协议类型" />
-        </Form.Item>
+        <div className="grid grid-cols-2 gap-3">
+          <Form.Item name="providerKind" label="协议类型" rules={[{ required: true }]}>
+            <Select options={PROVIDER_KINDS} placeholder="选择协议类型" />
+          </Form.Item>
+          <Form.Item name="authType" label="认证方式" rules={[{ required: true }]}>
+            <Select
+              options={AUTH_TYPES}
+              placeholder="选择认证方式"
+              onChange={handleAuthTypeChange}
+            />
+          </Form.Item>
+        </div>
         <Form.Item name="baseUrl" label="Base URL">
           <Input placeholder="https://api.example.com/v1" />
         </Form.Item>
-        <Form.Item label="API Key">
-          <Input.Password
-            value={apiKey}
-            onChange={(e) => setApiKey(e.target.value)}
-            placeholder={provider ? '留空保持原值' : '请输入 API Key'}
-          />
-        </Form.Item>
+
+        {authType === 'api_key' ? (
+          <Form.Item label={hasExistingApiKey ? 'API Key（已设置）' : 'API Key'}>
+            <Input.Password
+              value={apiKey}
+              onChange={(e) => {
+                setApiKey(e.target.value);
+                setApiKeyTouched(true);
+              }}
+              placeholder={hasExistingApiKey ? '留空保持原值，填写则覆盖' : '请输入 API Key'}
+            />
+          </Form.Item>
+        ) : (
+          <Form.Item label={hasExistingOauthToken ? 'OAuth Token（已设置）' : 'OAuth Token'}>
+            <Input.Password
+              value={oauthToken}
+              onChange={(e) => {
+                setOauthToken(e.target.value);
+                setOauthTokenTouched(true);
+              }}
+              placeholder={hasExistingOauthToken ? '留空保持原值，填写则覆盖' : '请输入 OAuth Token'}
+            />
+          </Form.Item>
+        )}
+
         <div className="grid grid-cols-2 gap-3">
           <Form.Item name="icon" label="图标名">
             <Input placeholder="anthropic" />

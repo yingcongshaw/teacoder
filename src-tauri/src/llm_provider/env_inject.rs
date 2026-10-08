@@ -12,13 +12,14 @@ pub struct EnvInjection {
     pub model_args: Vec<String>,
 }
 
-/// 根据 `(tool_type, provider_kind)` 计算 LLM 环境变量注入规则。
+/// 根据 `(tool_type, provider_kind, auth_type)` 计算 LLM 环境变量注入规则。
 ///
 /// 注入矩阵（合法组合）：
-/// - `(claude, anthropic)` → `ANTHROPIC_API_KEY` + `ANTHROPIC_BASE_URL`
-/// - `(codex, openai)`    → `OPENAI_API_KEY` + `OPENAI_BASE_URL`
-/// - `(gemini, google)`   → `GOOGLE_API_KEY` + `GOOGLE_BASE_URL`
-/// - `(opencode, _)`      → `OPENCODE_API_KEY`（无 base_url env）
+/// - `(claude, anthropic, api_key)` → `ANTHROPIC_API_KEY` + `ANTHROPIC_BASE_URL`
+/// - `(claude, anthropic, oauth)`  → `ANTHROPIC_AUTH_TOKEN` + `ANTHROPIC_BASE_URL`
+/// - `(codex, openai, api_key)`   → `OPENAI_API_KEY` + `OPENAI_BASE_URL`
+/// - `(gemini, google, api_key)`  → `GOOGLE_API_KEY` + `GOOGLE_BASE_URL`
+/// - `(opencode, _, api_key)`     → `OPENCODE_API_KEY`（无 base_url env）
 ///
 /// 其它组合（如 `claude × openai`）一律返回全 `None` / 空 `Vec`，由调用方自行处理。
 ///
@@ -26,20 +27,31 @@ pub struct EnvInjection {
 pub fn compute_injection(
     tool_type: &str,
     provider_kind: &str,
+    auth_type: &str,
     api_key: Option<&str>,
+    oauth_token: Option<&str>,
     base_url: Option<&str>,
     model: Option<&str>,
 ) -> EnvInjection {
-    let (api_key_name, base_url_name) = match (tool_type, provider_kind) {
-        ("claude", "anthropic") => (Some("ANTHROPIC_API_KEY"), Some("ANTHROPIC_BASE_URL")),
-        ("codex", "openai") => (Some("OPENAI_API_KEY"), Some("OPENAI_BASE_URL")),
-        ("gemini", "google") => (Some("GOOGLE_API_KEY"), Some("GOOGLE_BASE_URL")),
-        ("opencode", _) => (Some("OPENCODE_API_KEY"), None),
-        _ => (None, None),
+    // 根据 auth_type 决定注入哪个 token 环境变量
+    let token_var_name = match (tool_type, provider_kind, auth_type) {
+        ("claude", "anthropic", "oauth") => Some("ANTHROPIC_AUTH_TOKEN"),
+        ("claude", "anthropic", _) => Some("ANTHROPIC_API_KEY"),
+        ("codex", "openai", _) => Some("OPENAI_API_KEY"),
+        ("gemini", "google", _) => Some("GOOGLE_API_KEY"),
+        ("opencode", _, _) => Some("OPENCODE_API_KEY"),
+        _ => None,
+    };
+
+    let base_url_name = match (tool_type, provider_kind) {
+        ("claude", "anthropic") => Some("ANTHROPIC_BASE_URL"),
+        ("codex", "openai") => Some("OPENAI_BASE_URL"),
+        ("gemini", "google") => Some("GOOGLE_BASE_URL"),
+        _ => None,
     };
 
     // 不兼容组合（如 claude × openai）一律返回空注入。
-    if api_key_name.is_none() {
+    if token_var_name.is_none() {
         return EnvInjection {
             api_key_var: None,
             base_url_var: None,
@@ -47,13 +59,18 @@ pub fn compute_injection(
         };
     }
 
-    let api_key_trimmed = api_key.map(str::trim).filter(|s| !s.is_empty());
+    // 根据 auth_type 选择要注入的凭证
+    let token_value = if auth_type == "oauth" {
+        oauth_token.map(str::trim).filter(|s| !s.is_empty())
+    } else {
+        api_key.map(str::trim).filter(|s| !s.is_empty())
+    };
     let base_url_trimmed = base_url.map(str::trim).filter(|s| !s.is_empty());
     let model_trimmed = model.map(str::trim).filter(|s| !s.is_empty());
 
     EnvInjection {
-        api_key_var: api_key_name
-            .zip(api_key_trimmed)
+        api_key_var: token_var_name
+            .zip(token_value)
             .map(|(n, v)| (n.to_string(), v.to_string())),
         base_url_var: base_url_name
             .zip(base_url_trimmed)
@@ -70,11 +87,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_claude_anthropic_env() {
+    fn test_claude_anthropic_api_key_env() {
         let inj = compute_injection(
             "claude",
             "anthropic",
+            "api_key",
             Some("sk-test"),
+            None,
             Some("https://api.anthropic.com"),
             Some("claude-sonnet-4"),
         );
@@ -93,11 +112,30 @@ mod tests {
     }
 
     #[test]
+    fn test_claude_anthropic_oauth_env() {
+        let inj = compute_injection(
+            "claude",
+            "anthropic",
+            "oauth",
+            None,
+            Some("oauth-token-abc"),
+            Some("https://api.anthropic.com"),
+            Some("claude-sonnet-4"),
+        );
+        assert_eq!(
+            inj.api_key_var,
+            Some(("ANTHROPIC_AUTH_TOKEN".to_string(), "oauth-token-abc".to_string()))
+        );
+    }
+
+    #[test]
     fn test_codex_openai_env() {
         let inj = compute_injection(
             "codex",
             "openai",
+            "api_key",
             Some("sk-x"),
+            None,
             Some("https://api.openai.com/v1"),
             Some("gpt-4o"),
         );
@@ -120,7 +158,9 @@ mod tests {
         let inj = compute_injection(
             "gemini",
             "google",
+            "api_key",
             Some("gkey"),
+            None,
             Some("https://generativelanguage.googleapis.com/v1beta"),
             Some("gemini-2.0-pro"),
         );
@@ -144,7 +184,9 @@ mod tests {
         let inj = compute_injection(
             "claude",
             "openai",
+            "api_key",
             Some("k"),
+            None,
             Some("u"),
             Some("m"),
         );
@@ -158,7 +200,9 @@ mod tests {
         let inj = compute_injection(
             "opencode",
             "openai",
+            "api_key",
             Some("ok"),
+            None,
             Some("https://example.com"),
             Some("model-x"),
         );
@@ -172,7 +216,7 @@ mod tests {
 
     #[test]
     fn test_empty_inputs_are_omitted() {
-        let inj = compute_injection("claude", "anthropic", Some(""), None, Some(""));
+        let inj = compute_injection("claude", "anthropic", "api_key", Some(""), None, None, Some(""));
         assert_eq!(inj.api_key_var, None);
         assert_eq!(inj.base_url_var, None);
         assert!(inj.model_args.is_empty());

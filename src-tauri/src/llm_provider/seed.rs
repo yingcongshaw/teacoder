@@ -97,29 +97,29 @@ mod tests {
     }
 
     #[test]
-    fn test_seed_inserts_14_providers() {
+    fn test_seed_inserts_15_providers() {
         let db = make_db();
         let count = seed_preset_providers(&db).unwrap();
-        assert_eq!(count, 14);
+        assert_eq!(count, 15);
 
         let conn = db.conn.lock().unwrap();
         let provider_count: i64 = conn
             .query_row("SELECT COUNT(*) FROM llm_providers", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(provider_count, 14, "应插入 14 个供应商");
+        assert_eq!(provider_count, 15, "应插入 15 个供应商");
 
         let model_count: i64 = conn
             .query_row("SELECT COUNT(*) FROM llm_provider_models", [], |r| {
                 r.get(0)
             })
             .unwrap();
-        assert!(model_count > 14, "应至少有 14 个模型，实际: {}", model_count);
+        assert!(model_count > 15, "应至少有 15 个模型，实际: {}", model_count);
     }
 
     #[test]
     fn test_seed_is_idempotent() {
         let db = make_db();
-        assert_eq!(seed_preset_providers(&db).unwrap(), 14);
+        assert_eq!(seed_preset_providers(&db).unwrap(), 15);
         assert_eq!(
             seed_preset_providers(&db).unwrap(),
             0,
@@ -140,7 +140,7 @@ mod tests {
             )
             .unwrap();
         assert_eq!(
-            default_count, 14,
+            default_count, 15,
             "每个 provider 应有且仅有一个默认模型"
         );
     }

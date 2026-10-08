@@ -18,7 +18,9 @@ fn test_user_env_vars_override_provider() {
     let provider_inj = compute_injection(
         "claude",
         "anthropic",
+        "api_key",
         Some("provider-key"),
+        None,
         Some("https://provider.url"),
         None,
     );
@@ -47,7 +49,9 @@ fn test_provider_base_url_not_overridden_when_user_env_empty() {
     let provider_inj = compute_injection(
         "codex",
         "openai",
+        "api_key",
         Some("sk-openai-x"),
+        None,
         Some("https://api.openai.com/v1"),
         Some("gpt-4o"),
     );
@@ -80,7 +84,9 @@ fn test_compute_injection_merges_with_user_env_cleanly() {
     let provider_inj = compute_injection(
         "claude",
         "anthropic",
+        "api_key",
         Some("provider-key-xyz"),
+        None,
         Some("https://api.anthropic.com"),
         Some("claude-sonnet-4"),
     );

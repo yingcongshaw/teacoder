@@ -23,6 +23,7 @@ pub fn start_session(
     cli_session_id: Option<String>,
     llm_provider_id: Option<String>,
     model_name: Option<String>,
+    _claude_models: Option<String>,
 ) -> Result<(), String> {
     let mut env_vars = HashMap::new();
     let mut provider_inj: Option<EnvInjection> = None;
@@ -86,7 +87,7 @@ pub fn start_session(
     }
 
     // LLM Provider 注入（Profile 之后、user_env_vars 之前）；
-    // 强制要求：若 provider 需要 API Key 但 keychain 中缺失则报错，不静默忽略。
+    // 强制要求：若 provider 需要凭证但缺失则报错，不静默忽略。
     // 不兼容组合（如 claude × openai）由 compute_injection 返回空注入，调用方不报错。
     if let Some(ref lpid) = llm_provider_id {
         if let Some(provider) = crate::llm_provider::get_provider(&db, lpid)? {
@@ -96,10 +97,6 @@ pub fn start_session(
                     provider.name
                 ));
             }
-
-            let api_key = crate::crypto::keychain::get_secret(lpid, "api_key")
-                .map_err(|e| format!("读取 API Key 失败: {}", e))?
-                .unwrap_or_default();
 
             let tool_str = match tool_type {
                 ToolType::Claude => "claude",
@@ -112,27 +109,23 @@ pub fn start_session(
             let inj = crate::llm_provider::env_inject::compute_injection(
                 tool_str,
                 &provider.provider_kind,
-                if api_key.is_empty() {
-                    None
-                } else {
-                    Some(&api_key)
-                },
+                &provider.auth_type,
+                provider.api_key.as_deref(),
+                provider.oauth_token.as_deref(),
                 provider.base_url.as_deref(),
                 model_name.as_deref(),
             );
 
-            // API Key：compute_injection 在 (tool, provider_kind) 合法且 key 非空时才返回 Some。
-            // 此处再次显式校验 api_key_var 是否存在 → 缺失则报错（避免静默放过）。
-            if inj.api_key_var.is_none() && !api_key.is_empty() {
-                // 合法组合下 api_key 非空却未注入 → kind 不匹配 tool_type
-                // 不报错也不注入（compute_injection 已经返回 None）。
-            } else if inj.api_key_var.is_none() && api_key.is_empty() && !tool_str.is_empty() {
-                // tool 合法但 key 缺失：除 opencode 外，要求必须有 API Key
-                // opencode 不强制（与 compute_injection 矩阵对齐）
+            // 凭证检查：compute_injection 在合法组合下返回 Some。
+            // 此处校验凭证是否存在，缺失则报错（避免静默）。
+            let has_credential = inj.api_key_var.is_some();
+            if !has_credential && !tool_str.is_empty() {
+                // tool 合法但凭证缺失：除 opencode 外，要求必须有凭证
                 if !matches!(tool_type, ToolType::OpenCode) {
+                    let cred_type = if provider.auth_type == "oauth" { "OAuth Token" } else { "API Key" };
                     return Err(format!(
-                        "LLM 供应商「{}」未配置 API Key",
-                        provider.name
+                        "LLM 供应商「{}」未配置 {}",
+                        provider.name, cred_type
                     ));
                 }
             }
