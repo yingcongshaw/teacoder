@@ -60,6 +60,16 @@ pub fn run() {
                 session::reset_all_running(&db_state).ok();
             }
 
+            // 首次启动时 seed 预设 LLM 供应商
+            {
+                let db_state = app.state::<AppDatabase>();
+                match llm_provider::seed::seed_preset_providers(&db_state) {
+                    Ok(n) if n > 0 => eprintln!("[seed] 已 seed {} 个预设 LLM 供应商", n),
+                    Ok(_) => {}
+                    Err(e) => eprintln!("[seed] seed LLM 供应商失败: {}", e),
+                }
+            }
+
             // 从数据库加载 close_behavior 设置
             {
                 let db_state = app.state::<AppDatabase>();

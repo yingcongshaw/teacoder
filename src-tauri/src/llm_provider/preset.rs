@@ -1,6 +1,5 @@
 /// 预设供应商模板（程序内置，首次启动时 seed）
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub struct PresetProvider {
     pub name: &'static str,
     pub provider_kind: &'static str,
@@ -13,7 +12,6 @@ pub struct PresetProvider {
 /// 程序内置的全部预设 LLM 供应商模板，共 14 项。
 ///
 /// 首次启动或用户主动重置时，由 [`seed`](crate::llm_provider::seed) 模块写入数据库。
-#[allow(dead_code)]
 pub const PRESET_PROVIDERS: &[PresetProvider] = &[
     PresetProvider {
         name: "Anthropic",
