@@ -28,6 +28,7 @@ axum = "0.8"
 rusqlite = { version = "0.35", features = ["bundled"] }
 portable-pty = "0.8"
 keyring = "3"
+base64 = "0.22"
 thiserror = "2"
 uuid = { version = "1", features = ["v4"] }
 chrono = "0.4"
