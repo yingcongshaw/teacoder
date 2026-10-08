@@ -83,3 +83,24 @@ pub fn llm_provider_list_presets() -> Result<Vec<PresetProviderView>, String> {
         })
         .collect())
 }
+
+/// 设置全局默认供应商。
+#[tauri::command]
+pub async fn llm_provider_set_default_provider(
+    db: State<'_, AppDatabase>,
+    provider_id: String,
+) -> Result<(), String> {
+    llm_provider::set_default_provider(&db, &provider_id)
+}
+
+/// 检查供应商是否已设置 API Key。
+#[tauri::command]
+pub async fn llm_provider_has_api_key(provider_id: String) -> Result<bool, String> {
+    crate::crypto::keychain::has_secret(&provider_id, "api_key")
+}
+
+/// 获取供应商的掩码 API Key（用于回显）。
+#[tauri::command]
+pub async fn llm_provider_get_api_key(provider_id: String) -> Result<Option<String>, String> {
+    crate::crypto::keychain::get_secret_masked(&provider_id, "api_key")
+}

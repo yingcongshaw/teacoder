@@ -23,6 +23,7 @@ pub struct Session {
     pub category_id: Option<String>,
     pub llm_provider_id: Option<String>,
     pub model_name: Option<String>,
+    pub claude_models: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -41,6 +42,7 @@ pub struct CreateSessionInput {
     pub category_id: Option<String>,
     pub llm_provider_id: Option<String>,
     pub model_name: Option<String>,
+    pub claude_models: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -60,6 +62,7 @@ pub struct UpdateSessionInput {
     pub category_id: Option<String>,
     pub llm_provider_id: Option<String>,
     pub model_name: Option<String>,
+    pub claude_models: Option<String>,
 }
 
 fn row_to_session(row: &rusqlite::Row) -> Result<Session, rusqlite::Error> {
@@ -83,10 +86,11 @@ fn row_to_session(row: &rusqlite::Row) -> Result<Session, rusqlite::Error> {
         category_id: row.get(15)?,
         llm_provider_id: row.get(16)?,
         model_name: row.get(17)?,
+        claude_models: row.get(18)?,
     })
 }
 
-const SESSION_COLUMNS: &str = "id, project_id, title, tool_type, profile_id, color, thinking_intensity, template_id, cli_args, env_vars, is_running, created_at, updated_at, closed_at, cli_session_id, category_id, llm_provider_id, model_name";
+const SESSION_COLUMNS: &str = "id, project_id, title, tool_type, profile_id, color, thinking_intensity, template_id, cli_args, env_vars, is_running, created_at, updated_at, closed_at, cli_session_id, category_id, llm_provider_id, model_name, claude_models";
 
 pub fn list_sessions(
     db: &AppDatabase,
@@ -136,7 +140,7 @@ pub fn create_session(db: &AppDatabase, input: CreateSessionInput) -> Result<Ses
     let is_running: i64 = 1;
 
     conn.execute(
-        "INSERT INTO sessions (id, project_id, title, tool_type, profile_id, color, thinking_intensity, template_id, cli_args, env_vars, is_running, created_at, updated_at, cli_session_id, category_id, llm_provider_id, model_name) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)",
+        "INSERT INTO sessions (id, project_id, title, tool_type, profile_id, color, thinking_intensity, template_id, cli_args, env_vars, is_running, created_at, updated_at, cli_session_id, category_id, llm_provider_id, model_name, claude_models) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)",
         rusqlite::params![
             id,
             input.project_id,
@@ -155,6 +159,7 @@ pub fn create_session(db: &AppDatabase, input: CreateSessionInput) -> Result<Ses
             input.category_id,
             input.llm_provider_id,
             input.model_name,
+            input.claude_models,
         ],
     )
     .map_err(|e| format!("Failed to insert session: {}", e))?;
@@ -178,6 +183,7 @@ pub fn create_session(db: &AppDatabase, input: CreateSessionInput) -> Result<Ses
         category_id: input.category_id,
         llm_provider_id: input.llm_provider_id,
         model_name: input.model_name,
+        claude_models: input.claude_models,
     })
 }
 
@@ -269,6 +275,15 @@ pub fn update_session(
     if let Some(ref model_name) = input.model_name {
         set_clauses.push("model_name = ?".to_string());
         params.push(Box::new(model_name.clone()));
+    }
+
+    if let Some(ref claude_models) = input.claude_models {
+        if claude_models.is_empty() {
+            set_clauses.push("claude_models = NULL".to_string());
+        } else {
+            set_clauses.push("claude_models = ?".to_string());
+            params.push(Box::new(claude_models.clone()));
+        }
     }
 
     let sql = format!(

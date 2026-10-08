@@ -30,6 +30,8 @@ export default function UserMessageTracker({ tabId, xtermRef, trackerRef }: User
   const pendingInputRef = useRef<string>("");
   const [loaded, setLoaded] = useState(false);
   const messageIndexRef = useRef(0);
+  const isComposingRef = useRef(false);
+  const [imeTextarea, setImeTextarea] = useState<HTMLTextAreaElement | null>(null);
 
   // 加载历史消息
   useEffect(() => {
@@ -54,6 +56,40 @@ export default function UserMessageTracker({ tabId, xtermRef, trackerRef }: User
         });
     }
   }, [tabId, loaded]);
+
+  // 等待 xterm 初始化完成,获取内部 textarea 用于挂载 IME 合成事件。
+  // TerminalView 的 useEffect 在子组件 effect 之后才跑,xtermRef.current 初始为 null,需要轮询。
+  useEffect(() => {
+    let rafId: number | null = null;
+    const check = () => {
+      const textarea = xtermRef.current?.element?.querySelector("textarea") as HTMLTextAreaElement | null;
+      if (textarea) {
+        setImeTextarea(textarea);
+        return;
+      }
+      rafId = requestAnimationFrame(check);
+    };
+    check();
+    return () => {
+      if (rafId !== null) cancelAnimationFrame(rafId);
+    };
+  }, [tabId, xtermRef]);
+
+  useEffect(() => {
+    if (!imeTextarea) return;
+    const onCompositionStart = () => {
+      isComposingRef.current = true;
+    };
+    const onCompositionEnd = () => {
+      isComposingRef.current = false;
+    };
+    imeTextarea.addEventListener("compositionstart", onCompositionStart, true);
+    imeTextarea.addEventListener("compositionend", onCompositionEnd, true);
+    return () => {
+      imeTextarea.removeEventListener("compositionstart", onCompositionStart, true);
+      imeTextarea.removeEventListener("compositionend", onCompositionEnd, true);
+    };
+  }, [imeTextarea]);
 
   const handleMessageSend = useCallback((text: string) => {
     if (!text.trim()) return;
@@ -122,19 +158,20 @@ export default function UserMessageTracker({ tabId, xtermRef, trackerRef }: User
   const cleanMessage = (text: string): string => {
     if (!text) return "";
 
-    // 移除所有以 [ 开头后跟数字/分号/问号并以字母/~ 结尾的转义序列
-    // 同时移除控制字符
+    // 只移除必须以 ESC 起头的转义序列,避免误伤中文/英文混排中的 `[数字字母]` 文本
     return text
-      .replace(/\x1b\[[\?;\d]*[a-zA-Z~]/g, "")  // ESC[... 序列
-      .replace(/\[[\?;\d]*[a-zA-Z~]/g, "")       // [...] 序列（不带 ESC）
-      .replace(/\[O[^\s\w]*/g, "")                 // [O... 序列
-      .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "") // 控制字符
-      .replace(/�/g, "")                            // Unicode 替代字符
+      .replace(/\x1b\[[\?;\d]*[a-zA-Z~]/g, "")                                 // CSI 序列
+      .replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, "")                        // OSC 序列
+      .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "")                          // 控制字符
+      .replace(/�/g, "")                                                          // Unicode 替代字符
       .trim();
   };
 
   const captureInput = useCallback((text: string) => {
-    // 跳过明显的终端转义序列
+    // IME 合成期间跳过:WebKitGTK 上 onData 会泄漏中间状态字节,导致字节错位拼接
+    if (isComposingRef.current) {
+      return;
+    }
     if (isLikelyEscapeSequence(text)) {
       return;
     }

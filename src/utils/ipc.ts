@@ -29,6 +29,7 @@ export async function startSession(params: {
   cliSessionId?: string;
   llmProviderId?: string;
   modelName?: string;
+  claudeModels?: string;
 }): Promise<void> {
   return invoke("start_session", params);
 }
@@ -190,8 +191,14 @@ export async function sessionCreate(input: {
   categoryId?: string;
   llmProviderId?: string;
   modelName?: string;
+  claudeModels?: { sonnet?: string; opus?: string; haiku?: string };
 }): Promise<Session> {
-  return invoke<Session>("session_create", { input });
+  return invoke<Session>("session_create", {
+    input: {
+      ...input,
+      claudeModels: input.claudeModels ? JSON.stringify(input.claudeModels) : undefined,
+    },
+  });
 }
 
 export async function sessionUpdate(
@@ -211,9 +218,16 @@ export async function sessionUpdate(
     categoryId?: string;
     llmProviderId?: string;
     modelName?: string;
+    claudeModels?: { sonnet?: string; opus?: string; haiku?: string };
   },
 ): Promise<Session> {
-  return invoke<Session>("session_update", { id, input });
+  return invoke<Session>("session_update", {
+    id,
+    input: {
+      ...input,
+      claudeModels: input.claudeModels ? JSON.stringify(input.claudeModels) : undefined,
+    },
+  });
 }
 
 export async function sessionDelete(id: string): Promise<void> {
@@ -372,4 +386,16 @@ export async function setLlmProviderDefaultModel(
 
 export async function listLlmProviderPresets(): Promise<PresetProviderView[]> {
   return await invoke<PresetProviderView[]>("llm_provider_list_presets");
+}
+
+export async function setDefaultLlmProvider(providerId: string): Promise<void> {
+  await invoke("llm_provider_set_default_provider", { providerId });
+}
+
+export async function hasLlmProviderApiKey(providerId: string): Promise<boolean> {
+  return invoke<boolean>("llm_provider_has_api_key", { providerId });
+}
+
+export async function getLlmProviderApiKey(providerId: string): Promise<string | null> {
+  return invoke<string | null>("llm_provider_get_api_key", { providerId });
 }

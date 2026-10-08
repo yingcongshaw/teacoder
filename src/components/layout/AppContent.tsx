@@ -31,6 +31,11 @@ const TOOL_COLORS: Record<string, string> = {
   opencode: "#ffa940",
 };
 
+// macOS 主修饰键是 Cmd(metaKey),其他平台是 Ctrl(ctrlKey)
+const IS_MAC = typeof navigator !== "undefined" &&
+  (/Mac|iPhone|iPad|iPod/i.test(navigator.platform) ||
+    /Mac|iPhone|iPad|iPod/i.test(navigator.userAgent));
+
 export default function AppContent() {
   const { message } = App.useApp();
   const sessions = useAppStore((s) => s.sessions);
@@ -90,16 +95,18 @@ export default function AppContent() {
         setQuickCommandsVisible((v) => !v);
         return;
       }
-      // Shift+Alt+C 复制终端选中内容
-      if (e.shiftKey && e.altKey && (e.key === "C" || e.key === "c")) {
+      // 平台主修饰键:macOS 用 Cmd(metaKey),其他用 Ctrl(ctrlKey)
+      const primaryMod = IS_MAC ? e.metaKey : e.ctrlKey;
+      // Ctrl/Cmd+Shift+C 复制终端选中内容
+      if (primaryMod && e.shiftKey && (e.key === "C" || e.key === "c")) {
         if (!activeTabId) return;
         e.preventDefault();
         copyActiveTerminal();
         return;
       }
-      // Shift+Alt+V 或 Shift+Insert 粘贴到终端
+      // Ctrl/Cmd+Shift+V 或 Shift+Insert 粘贴到终端
       if (
-        (e.shiftKey && e.altKey && (e.key === "V" || e.key === "v")) ||
+        (primaryMod && e.shiftKey && (e.key === "V" || e.key === "v")) ||
         (e.shiftKey && e.key === "Insert")
       ) {
         if (!activeTabId) return;
@@ -138,7 +145,7 @@ export default function AppContent() {
                   label: (
                     <span className="flex items-center justify-between gap-4">
                       <span>复制</span>
-                      <span style={{ color: "var(--ant-color-text-tertiary)", fontSize: 11 }}>Shift+Alt+C</span>
+                      <span style={{ color: "var(--ant-color-text-tertiary)", fontSize: 11 }}>{IS_MAC ? "Cmd+Shift+C" : "Ctrl+Shift+C"}</span>
                     </span>
                   ),
                   icon: <CopyOutlined />,
@@ -149,7 +156,7 @@ export default function AppContent() {
                   label: (
                     <span className="flex items-center justify-between gap-4">
                       <span>粘贴</span>
-                      <span style={{ color: "var(--ant-color-text-tertiary)", fontSize: 11 }}>Shift+Alt+V</span>
+                      <span style={{ color: "var(--ant-color-text-tertiary)", fontSize: 11 }}>{IS_MAC ? "Cmd+Shift+V" : "Ctrl+Shift+V"}</span>
                     </span>
                   ),
                   icon: <SnippetsOutlined />,

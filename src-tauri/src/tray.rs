@@ -1,7 +1,7 @@
 use tauri::{
     menu::{MenuBuilder, MenuItemBuilder},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    AppHandle, Manager,
+    AppHandle, Emitter, Manager,
 };
 
 const TRAY_ID: &str = "main-tray";
@@ -13,11 +13,15 @@ pub fn create_tray(app: &AppHandle) -> Result<(), String> {
     let show_item = MenuItemBuilder::with_id("show", "显示窗口")
         .build(app)
         .map_err(|e| e.to_string())?;
+    let about_item = MenuItemBuilder::with_id("about", "关于")
+        .build(app)
+        .map_err(|e| e.to_string())?;
     let quit_item = MenuItemBuilder::with_id("quit", "退出")
         .build(app)
         .map_err(|e| e.to_string())?;
     let menu = MenuBuilder::new(app)
         .item(&show_item)
+        .item(&about_item)
         .separator()
         .item(&quit_item)
         .build()
@@ -33,6 +37,13 @@ pub fn create_tray(app: &AppHandle) -> Result<(), String> {
                     window.show().ok();
                     window.set_focus().ok();
                 }
+            }
+            "about" => {
+                if let Some(window) = app.get_webview_window("main") {
+                    window.show().ok();
+                    window.set_focus().ok();
+                }
+                app.emit("settings:open-about", ()).ok();
             }
             "quit" => {
                 app.exit(0);

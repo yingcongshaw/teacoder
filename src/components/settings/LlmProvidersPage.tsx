@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { App, Button, Empty, Modal, Switch } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import { useAppStore } from '../../stores/appStore';
-import { listLlmProviderPresets } from '../../utils/ipc';
+import { listLlmProviderPresets, setDefaultLlmProvider } from '../../utils/ipc';
 import type { LlmProvider, PresetProviderView } from '../../types';
 import SectionHeader from './components/SectionHeader';
 import LlmProviderCard from './components/LlmProviderCard';
@@ -27,6 +27,16 @@ export default function LlmProvidersPage() {
   const filtered = showInactive
     ? llmProviders
     : llmProviders.filter((p) => p.isActive);
+
+  const handleSetDefault = async (providerId: string) => {
+    try {
+      await setDefaultLlmProvider(providerId);
+      await loadLlmProviders();
+      message.success('已设为默认');
+    } catch {
+      message.error('设置失败');
+    }
+  };
 
   const handleNew = () => {
     setEditing(undefined);
@@ -77,7 +87,7 @@ export default function LlmProvidersPage() {
             从模板添加
           </Button>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
           <span style={{ fontSize: 12 }}>显示已停用</span>
           <Switch size="small" checked={showInactive} onChange={setShowInactive} />
         </div>
@@ -94,6 +104,7 @@ export default function LlmProvidersPage() {
               onEdit={handleEdit}
               onDelete={handleDelete}
               onToggleActive={handleToggleActive}
+              onSetDefault={handleSetDefault}
             />
           ))}
         </div>

@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef } from "react";
 import { Input, Select, Tooltip, App, Button } from "antd";
 import { useAppStore } from "../../stores/appStore";
-import { detectCliTools, testSshConnection } from "../../utils/ipc";
-import { BUILTIN_SESSION_TEMPLATES } from "../../types";
-import type { ToolType, CliTool } from "../../types";
+import { detectCliTools, testSshConnection, getToolSettings } from "../../utils/ipc";
+import { BUILTIN_SESSION_TEMPLATES, TOOL_PROVIDER_KIND_MAP } from "../../types";
+import type { ToolType, CliTool, LlmProvider } from "../../types";
 import { CLI_TOOLS, sortCliToolsByAvailability, isCliToolAvailable, type CliToolMeta } from "../cli/cliTools";
 import CliArgsClaude from "../cli/CliArgsClaude";
 
@@ -51,6 +51,8 @@ export default function EditSessionModal({ open: isOpen, sessionId, onClose }: E
   const sessions = useAppStore((s) => s.sessions);
   const categories = useAppStore((s) => s.categories);
   const projects = useAppStore((s) => s.projects);
+  const llmProviders = useAppStore((s) => s.llmProviders);
+  const loadLlmProviders = useAppStore((s) => s.loadLlmProviders);
 
   const session = sessions.find((s) => s.id === sessionId);
   const project = session ? projects.find((p) => p.id === session.projectId) : undefined;
@@ -64,6 +66,14 @@ export default function EditSessionModal({ open: isOpen, sessionId, onClose }: E
   const [envVars, setEnvVars] = useState("");
   const [cliParams, setCliParams] = useState<Record<string, unknown>>({});
   const [categoryId, setCategoryId] = useState<string | undefined>();
+  const [llmProviderId, setLlmProviderId] = useState<string | undefined>();
+  const [modelName, setModelName] = useState<string | undefined>();
+  const [claudeModels, setClaudeModels] = useState<{
+    sonnet?: string;
+    opus?: string;
+    haiku?: string;
+  }>({});
+  const [profileLlmDefaults, setProfileLlmDefaults] = useState<{ defaultLlmProviderId?: string }>({});
 
   const [sshHostname, setSshHostname] = useState("");
   const [sshPort, setSshPort] = useState(22);
@@ -131,6 +141,9 @@ export default function EditSessionModal({ open: isOpen, sessionId, onClose }: E
       setTemplateId(session.templateId);
       setEnvVars(session.envVars || "");
       setCategoryId(session.categoryId);
+      setLlmProviderId(session.llmProviderId);
+      setModelName(session.modelName);
+      setClaudeModels(session.claudeModels || {});
       setSshHostname("");
       setSshPort(22);
       setSshUsername("root");
@@ -172,6 +185,64 @@ export default function EditSessionModal({ open: isOpen, sessionId, onClose }: E
     }
   }, [isOpen, session]);
 
+  useEffect(() => {
+    if (isOpen && llmProviders.length === 0) {
+      loadLlmProviders().catch(() => {});
+    }
+  }, [isOpen, llmProviders.length, loadLlmProviders]);
+
+  useEffect(() => {
+    if (!profileId) {
+      setProfileLlmDefaults({});
+      return;
+    }
+    let cancelled = false;
+    getToolSettings(profileId)
+      .then((toolSettings) => {
+        if (cancelled) return;
+        if (!toolSettings?.settingsJson) {
+          setProfileLlmDefaults({});
+          return;
+        }
+        try {
+          const parsed = JSON.parse(toolSettings.settingsJson);
+          setProfileLlmDefaults({
+            defaultLlmProviderId: typeof parsed.defaultLlmProviderId === "string" ? parsed.defaultLlmProviderId : undefined,
+          });
+        } catch {
+          setProfileLlmDefaults({});
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setProfileLlmDefaults({});
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [profileId]);
+
+  useEffect(() => {
+    const defId = profileLlmDefaults.defaultLlmProviderId;
+    if (!defId) {
+      // Fall back to global default provider
+      const globalDefProvider = llmProviders.find((p) => p.isDefault && p.isActive);
+      if (
+        globalDefProvider &&
+        compatibleProviders(selectedTool).some((cp) => cp.id === globalDefProvider.id)
+      ) {
+        setLlmProviderId(globalDefProvider.id);
+        const defModel = globalDefProvider.models.find((m) => m.isDefault);
+        setModelName(defModel?.modelName);
+      }
+      return;
+    }
+    const provider = llmProviders.find((p) => p.id === defId);
+    if (!provider || !provider.isActive) return;
+    setLlmProviderId(defId);
+    const defModel = provider.models.find((m) => m.isDefault);
+    setModelName(defModel?.modelName);
+  }, [profileLlmDefaults.defaultLlmProviderId, llmProviders, selectedTool]);
+
   const filteredProfiles = profiles.filter((p) =>
     selectedTool ? p.toolType === selectedTool : true,
   );
@@ -184,6 +255,14 @@ export default function EditSessionModal({ open: isOpen, sessionId, onClose }: E
 
   const getToolInfo = (toolType: ToolType): CliTool | undefined =>
     cliTools.find((t) => t.toolType === toolType);
+
+  const compatibleProviders = (toolType: ToolType | null): LlmProvider[] => {
+    if (!toolType) return [];
+    const allowedKinds = TOOL_PROVIDER_KIND_MAP[toolType] ?? [];
+    return llmProviders.filter(
+      (p) => p.isActive && allowedKinds.includes(p.providerKind),
+    );
+  };
 
   const buildSshArgs = (): string =>
     JSON.stringify({
@@ -246,6 +325,9 @@ export default function EditSessionModal({ open: isOpen, sessionId, onClose }: E
         cliArgs: finalCliArgs,
         envVars: envVars.trim() || undefined,
         categoryId: categoryId || undefined,
+        llmProviderId: selectedTool !== "ssh" && selectedTool !== "terminal" ? llmProviderId : undefined,
+        modelName: selectedTool !== "ssh" && selectedTool !== "terminal" ? modelName : undefined,
+        claudeModels: selectedTool === "claude" && Object.keys(claudeModels).length > 0 ? claudeModels : undefined,
       });
       message.success("已保存会话信息");
       onClose();
@@ -413,6 +495,107 @@ export default function EditSessionModal({ open: isOpen, sessionId, onClose }: E
                   </Select.Option>
                 ))}
               </Select>
+            </div>
+          )}
+
+          {selectedTool !== "ssh" && selectedTool !== "terminal" && (
+            <div style={{ marginBottom: 12 }}>
+              <label style={{ display: "block", fontSize: 12, color: "var(--ant-color-text-secondary)", marginBottom: 4 }}>
+                LLM 供应商
+              </label>
+              <Select
+                size="small"
+                placeholder="选择 LLM 供应商（可选）"
+                allowClear
+                value={llmProviderId}
+                onChange={(id) => {
+                  setLlmProviderId(id);
+                  const provider = llmProviders.find((p) => p.id === id);
+                  if (selectedTool === "claude" && provider) {
+                    const defModel = provider.models.find((m) => m.isDefault)?.modelName;
+                    const modelToUse = defModel ?? provider.models[0]?.modelName;
+                    setClaudeModels({ sonnet: modelToUse, opus: modelToUse, haiku: modelToUse });
+                    setModelName(undefined);
+                  } else if (provider) {
+                    const defModel = provider.models.find((m) => m.isDefault);
+                    setModelName(defModel?.modelName);
+                    setClaudeModels({});
+                  } else {
+                    setModelName(undefined);
+                    setClaudeModels({});
+                  }
+                }}
+                style={{ width: "100%" }}
+              >
+                {compatibleProviders(selectedTool).map((p) => (
+                  <Select.Option key={p.id} value={p.id}>
+                    {p.name}（{p.providerKind}）
+                  </Select.Option>
+                ))}
+              </Select>
+            </div>
+          )}
+
+          {selectedTool !== "ssh" && selectedTool !== "terminal" && llmProviderId && (
+            <div style={{ marginBottom: 12 }}>
+              {selectedTool === "claude" ? (
+                // Claude Code: model mapping (provider already selected above)
+                <>
+                  <label style={{ display: "block", fontSize: 12, color: "#aaaaaa", marginBottom: 6 }}>
+                    Claude Code 模型映射
+                  </label>
+                  {[
+                    { key: "sonnet" as const, label: "Sonnet" },
+                    { key: "opus" as const, label: "Opus" },
+                    { key: "haiku" as const, label: "Haiku" },
+                  ].map(({ key, label }) => {
+                    const tierModel = claudeModels[key];
+                    const provider = llmProviders.find((p) => p.id === llmProviderId);
+                    return (
+                      <div key={key} style={{ marginBottom: 6 }}>
+                        <label style={{ display: "block", fontSize: 11, color: "var(--ant-color-text-secondary)", marginBottom: 2 }}>{label}</label>
+                        <Select
+                          size="small"
+                          placeholder="选择模型"
+                          allowClear
+                          value={tierModel}
+                          onChange={(v) => setClaudeModels({ ...claudeModels, [key]: v })}
+                          style={{ width: "100%" }}
+                        >
+                          {(provider?.models ?? []).map((m) => (
+                            <Select.Option key={m.id} value={m.modelName}>
+                              {m.modelName}
+                              {m.isDefault && <span className="text-[var(--ant-color-text-quaternary)] text-[10px] ml-2">默认</span>}
+                            </Select.Option>
+                          ))}
+                        </Select>
+                      </div>
+                    );
+                  })}
+                </>
+              ) : (
+                // Non-Claude: single model selector
+                <>
+                  <label style={{ display: "block", fontSize: 12, color: "var(--ant-color-text-secondary)", marginBottom: 4 }}>
+                    模型
+                  </label>
+                  <Select
+                    size="small"
+                    placeholder="选择模型"
+                    allowClear
+                    value={modelName}
+                    onChange={setModelName}
+                    style={{ width: "100%" }}
+                  >
+                    {(llmProviders.find((p) => p.id === llmProviderId)?.models ?? []).map((m) => (
+                      <Select.Option key={m.id} value={m.modelName}>
+                        {m.modelName}
+                        {m.isDefault && <span className="text-[var(--ant-color-text-quaternary)] text-[10px] ml-2">默认</span>}
+                      </Select.Option>
+                    ))}
+                  </Select>
+                </>
+              )}
             </div>
           )}
 

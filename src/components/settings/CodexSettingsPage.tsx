@@ -1,9 +1,9 @@
 import { useState, useEffect } from "react";
-import { Select, Switch, Input, App } from "antd";
+import { Select, Switch, App } from "antd";
 import SettingRow from "./components/SettingRow";
 import SectionHeader from "./components/SectionHeader";
 import QuickCommandsEditor from "../quick-commands/QuickCommandsEditor";
-import CliArgsLlmList from "../cli/CliArgsLlmList";
+
 
 const SANDBOX_MODES = [
   { value: "disabled", label: "禁用" },
@@ -13,16 +13,12 @@ const SANDBOX_MODES = [
 
 interface CodexSettings {
   model: string;
-  apiKey: string;
-  organizationId: string;
   autoApprove: boolean;
   sandboxMode: string;
 }
 
 const DEFAULT_SETTINGS: CodexSettings = {
   model: "codex-1",
-  apiKey: "",
-  organizationId: "",
   autoApprove: false,
   sandboxMode: "strict",
 };
@@ -34,10 +30,6 @@ interface CodexSettingsPageProps {
 export default function CodexSettingsPage({ searchText = "" }: CodexSettingsPageProps) {
   const { message } = App.useApp();
   const [settings, setSettings] = useState<CodexSettings>(DEFAULT_SETTINGS);
-  const [llmConfig, setLlmConfig] = useState<{
-    llmProviderIds: string[];
-    defaultLlmProviderId?: string;
-  }>({ llmProviderIds: [] });
 
   useEffect(() => {
     try {
@@ -46,18 +38,6 @@ export default function CodexSettingsPage({ searchText = "" }: CodexSettingsPage
       setSettings({ ...DEFAULT_SETTINGS, ...saved });
     } catch {
       setSettings(DEFAULT_SETTINGS);
-    }
-    try {
-      const llmRaw = localStorage.getItem("teacoder_codex_llm_config");
-      if (llmRaw) {
-        const parsed = JSON.parse(llmRaw);
-        setLlmConfig({
-          llmProviderIds: parsed.llmProviderIds ?? [],
-          defaultLlmProviderId: parsed.defaultLlmProviderId,
-        });
-      }
-    } catch {
-      // llm config 解析失败时保留默认
     }
   }, []);
 
@@ -71,13 +51,6 @@ export default function CodexSettingsPage({ searchText = "" }: CodexSettingsPage
     message.success("设置已保存");
   };
 
-  const handleLlmConfigChange = (next: {
-    llmProviderIds: string[];
-    defaultLlmProviderId?: string;
-  }) => {
-    setLlmConfig(next);
-    localStorage.setItem("teacoder_codex_llm_config", JSON.stringify(next));
-  };
 
   const matchesSearch = (label: string, desc?: string) => {
     if (!searchText) return true;
@@ -87,39 +60,6 @@ export default function CodexSettingsPage({ searchText = "" }: CodexSettingsPage
 
   return (
     <div>
-      {/* LLM 供应商 */}
-      <SectionHeader title="LLM 供应商" />
-      {matchesSearch("LLM 供应商") && (
-        <CliArgsLlmList
-          toolType="codex"
-          value={llmConfig}
-          onChange={handleLlmConfigChange}
-        />
-      )}
-
-      {/* 认证 */}
-      <SectionHeader title="认证" />
-      {matchesSearch("API Key") && (
-        <SettingRow label="API Key" description="OpenAI API 密钥，通过系统 Keychain 安全存储">
-          <Input.Password
-            value={settings.apiKey}
-            onChange={(e) => updateSetting("apiKey", e.target.value)}
-            placeholder="sk-..."
-            style={{ width: 200 }}
-          />
-        </SettingRow>
-      )}
-      {matchesSearch("Organization ID", "组织 ID") && (
-        <SettingRow label="Organization ID" description="可选，OpenAI 组织 ID">
-          <Input
-            value={settings.organizationId}
-            onChange={(e) => updateSetting("organizationId", e.target.value)}
-            placeholder="org-..."
-            style={{ width: 240 }}
-          />
-        </SettingRow>
-      )}
-
       {/* 行为 */}
       <SectionHeader title="行为" />
       {matchesSearch("自动批准") && (

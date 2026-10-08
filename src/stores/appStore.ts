@@ -145,6 +145,7 @@ interface AppState {
     categoryId?: string;
     llmProviderId?: string;
     modelName?: string;
+    claudeModels?: { sonnet?: string; opus?: string; haiku?: string };
   }) => Promise<Session>;
   updateSession: (id: string, updates: Partial<Session>) => Promise<void>;
   deleteSession: (id: string) => Promise<void>;
@@ -369,7 +370,11 @@ export const useAppStore = create<AppState>((set, get) => ({
   createSession: async (input) => {
     const cliSessionId = input.toolType === "claude" ? crypto.randomUUID() : undefined;
     const title = input.title;
-    const session = await sessionCreate({ ...input, title, cliSessionId });
+    const session = await sessionCreate({
+      ...input,
+      title,
+      cliSessionId,
+    });
     const project = get().projects.find((p) => p.id === input.projectId);
     const envVars = parseEnvVars(input.envVars || "");
     await startSession({
@@ -382,8 +387,13 @@ export const useAppStore = create<AppState>((set, get) => ({
       cliSessionId,
       llmProviderId: input.llmProviderId,
       modelName: input.modelName,
-    }).catch(() => {});
-    const updatedSession = { ...session, isRunning: true };
+      claudeModels: input.claudeModels ? JSON.stringify(input.claudeModels) : undefined,
+    });
+    const updatedSession = {
+      ...session,
+      isRunning: true,
+      claudeModels: input.claudeModels,
+    };
     set((state) => ({
       sessions: [...state.sessions, updatedSession],
       openTabIds: [...state.openTabIds, session.id],

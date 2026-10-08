@@ -45,7 +45,8 @@ function CliToolIcon({ toolKey }: { toolKey: string }) {
 
 const menuItems = [
   { key: "general", label: "通用设置", icon: <SettingOutlined /> },
-  { key: "terminal", label: "终端设置", icon: <CodeOutlined /> },
+  { key: "profile-management", label: "Profile 管理", icon: <UserOutlined /> },
+  { key: "llm-providers", label: "LLM 设置", icon: <CloudOutlined /> },
   {
     key: "cli-tools-group",
     label: "CLI 工具",
@@ -56,8 +57,7 @@ const menuItems = [
       icon: <CliToolIcon toolKey={t.id} />,
     })),
   },
-  { key: "llm-providers", label: "LLM 设置", icon: <CloudOutlined /> },
-  { key: "profile-management", label: "Profile 管理", icon: <UserOutlined /> },
+  { key: "terminal", label: "终端设置", icon: <CodeOutlined /> },
   { key: "ai-assistant", label: "AI 辅助", icon: <RobotOutlined /> },
   { key: "network", label: "网络", icon: <GlobalOutlined /> },
   { key: "remote", label: "远程访问", icon: <CloudServerOutlined /> },

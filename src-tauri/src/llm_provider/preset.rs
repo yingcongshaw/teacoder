@@ -9,7 +9,7 @@ pub struct PresetProvider {
     pub models: &'static [&'static str],
 }
 
-/// 程序内置的全部预设 LLM 供应商模板，共 14 项。
+/// 程序内置的全部预设 LLM 供应商模板，共 15 项。
 ///
 /// 首次启动或用户主动重置时，由 [`seed`](crate::llm_provider::seed) 模块写入数据库。
 pub const PRESET_PROVIDERS: &[PresetProvider] = &[
@@ -132,6 +132,14 @@ pub const PRESET_PROVIDERS: &[PresetProvider] = &[
         color: "#5E5EE6",
         models: &["anthropic/claude-sonnet-4", "openai/gpt-4o"],
     },
+    PresetProvider {
+        name: "LM Studio",
+        provider_kind: "openai",
+        base_url: "http://localhost:1234",
+        icon: "lmstudio",
+        color: "#1A1A1A",
+        models: &["local-model"],
+    },
 ];
 
 /// 预设供应商的对外视图（IPC 序列化），字段全部为 `String`。
@@ -151,8 +159,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_preset_count_is_14() {
-        assert_eq!(PRESET_PROVIDERS.len(), 14);
+    fn test_preset_count_is_15() {
+        assert_eq!(PRESET_PROVIDERS.len(), 15);
     }
 
     #[test]

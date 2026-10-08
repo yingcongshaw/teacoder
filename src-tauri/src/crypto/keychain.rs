@@ -40,6 +40,22 @@ pub fn delete_all_secrets(profile_id: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Check if a secret exists in the keychain.
+pub fn get_secret_masked(profile_id: &str, key_name: &str) -> Result<Option<String>, String> {
+    let secret = get_secret(profile_id, key_name)?;
+    Ok(secret.map(|s| mask_secret(&s)))
+}
+
+/// Check if a secret exists in the keychain.
+pub fn has_secret(profile_id: &str, key_name: &str) -> Result<bool, String> {
+    let entry = entry_for(profile_id, key_name)?;
+    match entry.get_password() {
+        Ok(_) => Ok(true),
+        Err(keyring::Error::NoEntry) => Ok(false),
+        Err(e) => Err(format!("Failed to check {} in keychain: {}", key_name, e)),
+    }
+}
+
 /// Mask a secret for display (e.g., "***...abc1").
 pub fn mask_secret(value: &str) -> String {
     if value.len() < 8 {

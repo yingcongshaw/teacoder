@@ -1,9 +1,9 @@
 import { useState, useEffect } from "react";
-import { Select, Switch, Input, App } from "antd";
+import { Select, Switch, App } from "antd";
 import SettingRow from "./components/SettingRow";
 import SectionHeader from "./components/SectionHeader";
 import QuickCommandsEditor from "../quick-commands/QuickCommandsEditor";
-import CliArgsLlmList from "../cli/CliArgsLlmList";
+
 
 const SAFETY_LEVELS = [
   { value: "standard", label: "标准" },
@@ -12,16 +12,12 @@ const SAFETY_LEVELS = [
 
 interface GeminiSettings {
   model: string;
-  apiKey: string;
-  googleCloudProject: string;
   autoExecute: boolean;
   safetyLevel: string;
 }
 
 const DEFAULT_SETTINGS: GeminiSettings = {
   model: "gemini-2.5-pro",
-  apiKey: "",
-  googleCloudProject: "",
   autoExecute: false,
   safetyLevel: "standard",
 };
@@ -33,10 +29,6 @@ interface GeminiSettingsPageProps {
 export default function GeminiSettingsPage({ searchText = "" }: GeminiSettingsPageProps) {
   const { message } = App.useApp();
   const [settings, setSettings] = useState<GeminiSettings>(DEFAULT_SETTINGS);
-  const [llmConfig, setLlmConfig] = useState<{
-    llmProviderIds: string[];
-    defaultLlmProviderId?: string;
-  }>({ llmProviderIds: [] });
 
   useEffect(() => {
     try {
@@ -45,18 +37,6 @@ export default function GeminiSettingsPage({ searchText = "" }: GeminiSettingsPa
       setSettings({ ...DEFAULT_SETTINGS, ...saved });
     } catch {
       setSettings(DEFAULT_SETTINGS);
-    }
-    try {
-      const llmRaw = localStorage.getItem("teacoder_gemini_llm_config");
-      if (llmRaw) {
-        const parsed = JSON.parse(llmRaw);
-        setLlmConfig({
-          llmProviderIds: parsed.llmProviderIds ?? [],
-          defaultLlmProviderId: parsed.defaultLlmProviderId,
-        });
-      }
-    } catch {
-      // llm config 解析失败时保留默认
     }
   }, []);
 
@@ -70,13 +50,6 @@ export default function GeminiSettingsPage({ searchText = "" }: GeminiSettingsPa
     message.success("设置已保存");
   };
 
-  const handleLlmConfigChange = (next: {
-    llmProviderIds: string[];
-    defaultLlmProviderId?: string;
-  }) => {
-    setLlmConfig(next);
-    localStorage.setItem("teacoder_gemini_llm_config", JSON.stringify(next));
-  };
 
   const matchesSearch = (label: string, desc?: string) => {
     if (!searchText) return true;
@@ -86,39 +59,6 @@ export default function GeminiSettingsPage({ searchText = "" }: GeminiSettingsPa
 
   return (
     <div>
-      {/* LLM 供应商 */}
-      <SectionHeader title="LLM 供应商" />
-      {matchesSearch("LLM 供应商") && (
-        <CliArgsLlmList
-          toolType="gemini"
-          value={llmConfig}
-          onChange={handleLlmConfigChange}
-        />
-      )}
-
-      {/* 认证 */}
-      <SectionHeader title="认证" />
-      {matchesSearch("API Key") && (
-        <SettingRow label="API Key" description="Google AI API 密钥，通过系统 Keychain 安全存储">
-          <Input.Password
-            value={settings.apiKey}
-            onChange={(e) => updateSetting("apiKey", e.target.value)}
-            placeholder="AIza..."
-            style={{ width: 200 }}
-          />
-        </SettingRow>
-      )}
-      {matchesSearch("Google Cloud Project", "云项目") && (
-        <SettingRow label="Google Cloud Project" description="可选，Google Cloud 项目 ID">
-          <Input
-            value={settings.googleCloudProject}
-            onChange={(e) => updateSetting("googleCloudProject", e.target.value)}
-            placeholder="my-project-id"
-            style={{ width: 240 }}
-          />
-        </SettingRow>
-      )}
-
       {/* 行为 */}
       <SectionHeader title="行为" />
       {matchesSearch("自动执行") && (

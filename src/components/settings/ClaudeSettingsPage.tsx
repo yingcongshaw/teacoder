@@ -1,19 +1,13 @@
 import { useState, useEffect } from "react";
 import { Switch, Input, InputNumber, Button, App } from "antd";
-import { CheckCircleOutlined, ArrowRightOutlined } from "@ant-design/icons";
+import { ArrowRightOutlined } from "@ant-design/icons";
 import { useAppStore } from "../../stores/appStore";
 import { getToolSettings, upsertToolSettings } from "../../utils/ipc";
 import type { Profile } from "../../types";
 import SettingRow from "./components/SettingRow";
 import SectionHeader from "./components/SectionHeader";
 import QuickCommandsEditor from "../quick-commands/QuickCommandsEditor";
-import CliArgsLlmList from "../cli/CliArgsLlmList";
 
-const THINKING_INTENSITIES = [
-  { value: "low", label: "低", color: "#52c41a" },
-  { value: "medium", label: "中", color: "#1677ff" },
-  { value: "high", label: "高", color: "#722ed1" },
-];
 
 const PERMISSION_MODES = [
   { value: "default", label: "默认" },
@@ -23,9 +17,6 @@ const PERMISSION_MODES = [
 
 interface ClaudeSettings {
   model: string;
-  thinkingIntensity: string;
-  apiKey: string;
-  baseUrl: string;
   autoSubmit: boolean;
   permissionMode: string;
   maxOutputLength: number;
@@ -34,9 +25,6 @@ interface ClaudeSettings {
 
 const DEFAULT_SETTINGS: ClaudeSettings = {
   model: "claude-sonnet-4",
-  thinkingIntensity: "medium",
-  apiKey: "",
-  baseUrl: "",
   autoSubmit: false,
   permissionMode: "default",
   maxOutputLength: 8192,
@@ -50,12 +38,7 @@ interface ClaudeSettingsPageProps {
 export default function ClaudeSettingsPage({ searchText = "" }: ClaudeSettingsPageProps) {
   const { message } = App.useApp();
   const [settings, setSettings] = useState<ClaudeSettings>(DEFAULT_SETTINGS);
-  const [llmConfig, setLlmConfig] = useState<{
-    llmProviderIds: string[];
-    defaultLlmProviderId?: string;
-  }>({ llmProviderIds: [] });
-  const [loading, setLoading] = useState(false);
-  const [verifying, setVerifying] = useState(false);
+  
   const profiles = useAppStore((s) => s.profiles);
   const setSettingsActiveKey = useAppStore((s) => s.setSettingsActiveKey);
   const claudeProfiles = profiles.filter((p) => p.toolType === "claude");
@@ -68,36 +51,20 @@ export default function ClaudeSettingsPage({ searchText = "" }: ClaudeSettingsPa
   }, [activeProfile?.id]);
 
   const loadSettings = async (profileId: string) => {
-    setLoading(true);
     try {
       const data = await getToolSettings(profileId);
       if (data) {
         setSettings({
           model: data.model || DEFAULT_SETTINGS.model,
-          thinkingIntensity: data.thinkingIntensity || DEFAULT_SETTINGS.thinkingIntensity,
-          apiKey: "",
-          baseUrl: "",
           autoSubmit: data.autoSubmit || DEFAULT_SETTINGS.autoSubmit,
           permissionMode: "default",
           maxOutputLength: DEFAULT_SETTINGS.maxOutputLength,
           customInstructions: data.customInstructions || DEFAULT_SETTINGS.customInstructions,
         });
-        if (data.settingsJson) {
-          try {
-            const parsed = JSON.parse(data.settingsJson);
-            setLlmConfig({
-              llmProviderIds: parsed.llmProviderIds ?? [],
-              defaultLlmProviderId: parsed.defaultLlmProviderId,
-            });
-          } catch {
-            // settingsJson 解析失败时保留默认 llmConfig
-          }
-        }
+
       }
     } catch {
       message.error("加载设置失败");
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -108,15 +75,11 @@ export default function ClaudeSettingsPage({ searchText = "" }: ClaudeSettingsPa
         profileId: activeProfile.id,
         toolType: "claude",
         model: next.model,
-        thinkingIntensity: next.thinkingIntensity,
         autoSubmit: next.autoSubmit,
         customInstructions: next.customInstructions,
         settingsJson: JSON.stringify({
-          baseUrl: next.baseUrl,
           permissionMode: next.permissionMode,
           maxOutputLength: next.maxOutputLength,
-          llmProviderIds: llmConfig.llmProviderIds,
-          defaultLlmProviderId: llmConfig.defaultLlmProviderId,
         }),
       });
       message.success("设置已保存");
@@ -132,18 +95,6 @@ export default function ClaudeSettingsPage({ searchText = "" }: ClaudeSettingsPa
     const next = { ...settings, [key]: value };
     setSettings(next);
     saveToBackend(next);
-  };
-
-  const handleVerifyApiKey = () => {
-    setVerifying(true);
-    setTimeout(() => {
-      setVerifying(false);
-      if (settings.apiKey) {
-        message.success("API Key 验证成功");
-      } else {
-        message.warning("请先输入 API Key");
-      }
-    }, 1500);
   };
 
   const matchesSearch = (label: string, desc?: string) => {
@@ -165,7 +116,7 @@ export default function ClaudeSettingsPage({ searchText = "" }: ClaudeSettingsPa
           暂无 Claude Code Profile
         </div>
         <div style={{ fontSize: 12, color: "var(--ant-color-text-tertiary)", marginBottom: 24 }}>
-          请先在 Profile 管理中创建一个 Claude Code Profile，然后再配置模型、思考强度、快捷命令等。
+          请先在 Profile 管理中创建一个 Claude Code Profile，然后再配置模型、快捷命令等。
         </div>
         <Button
           type="primary"
@@ -180,98 +131,6 @@ export default function ClaudeSettingsPage({ searchText = "" }: ClaudeSettingsPa
 
   return (
     <div>
-      {/* LLM 供应商 */}
-      <SectionHeader title="LLM 供应商" />
-      {matchesSearch("LLM 供应商") && (
-        <CliArgsLlmList
-          toolType="claude"
-          value={llmConfig}
-          onChange={setLlmConfig}
-        />
-      )}
-      {matchesSearch("思考强度", "推理深度") && (
-        <div style={{ padding: "8px 0", borderBottom: "1px solid var(--ant-color-border-secondary)" }}>
-          <div style={{ fontSize: 13, fontWeight: 500, color: "var(--ant-color-text)", marginBottom: 8 }}>
-            思考强度
-          </div>
-          <div style={{ fontSize: 12, color: "var(--ant-color-text-tertiary)", marginBottom: 10 }}>
-            影响 Claude 的推理深度和响应速度
-          </div>
-          <div className="flex gap-2">
-            {THINKING_INTENSITIES.map((t) => {
-              const isSelected = settings.thinkingIntensity === t.value;
-              return (
-                <div
-                  key={t.value}
-                  onClick={() => !loading && updateSetting("thinkingIntensity", t.value)}
-                  style={{
-                    padding: "6px 16px",
-                    borderRadius: 6,
-                    border: `1.5px solid ${isSelected ? t.color : "var(--ant-color-border)"}`,
-                    background: isSelected ? `${t.color}10` : "transparent",
-                    cursor: loading ? "not-allowed" : "pointer",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 6,
-                    transition: "all 0.15s",
-                  }}
-                >
-                  <div
-                    style={{
-                      width: 8,
-                      height: 8,
-                      borderRadius: "50%",
-                      background: isSelected ? t.color : "var(--ant-color-text-quaternary)",
-                    }}
-                  />
-                  <span style={{
-                    fontSize: 12,
-                    fontWeight: isSelected ? 600 : 400,
-                    color: isSelected ? t.color : "var(--ant-color-text-secondary)",
-                  }}>
-                    {t.label}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* 认证 */}
-      <SectionHeader title="认证" />
-      {matchesSearch("API Key") && (
-        <SettingRow label="API Key" description="Claude API 密钥，通过系统 Keychain 安全存储">
-          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-            <Input.Password
-              value={settings.apiKey}
-              onChange={(e) => setSettings({ ...settings, apiKey: e.target.value })}
-              placeholder="sk-ant-..."
-              style={{ width: 180 }}
-              visibilityToggle
-            />
-            <Button
-              size="small"
-              loading={verifying}
-              onClick={handleVerifyApiKey}
-              icon={<CheckCircleOutlined />}
-            >
-              验证
-            </Button>
-          </div>
-        </SettingRow>
-      )}
-      {matchesSearch("Base URL", "自定义 API 地址") && (
-        <SettingRow label="Base URL" description="可选，自定义 API 请求地址">
-          <Input
-            value={settings.baseUrl}
-            onChange={(e) => updateSetting("baseUrl", e.target.value)}
-            placeholder="https://api.anthropic.com"
-            style={{ width: 220 }}
-          />
-        </SettingRow>
-      )}
-
       {/* 行为 */}
       <SectionHeader title="行为" />
       {matchesSearch("自动提交") && (

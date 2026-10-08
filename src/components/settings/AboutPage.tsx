@@ -21,23 +21,13 @@ export default function AboutPage({ searchText = "" }: AboutPageProps) {
     <div>
       {/* App identity */}
       <div style={{ textAlign: "center", padding: "32px 0 24px" }}>
-        <div
-          style={{
-            width: 72,
-            height: 72,
-            margin: "0 auto 16px",
-            borderRadius: 16,
-            background: "linear-gradient(135deg, #1677ff 0%, #722ed1 100%)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            color: "#fff",
-            fontSize: 28,
-            fontWeight: 700,
-          }}
-        >
-          茶
-        </div>
+        <img
+          src="/logo-bg-w.png"
+          alt="茶码 TeaCoder"
+          width={72}
+          height={72}
+          style={{ display: "block", margin: "0 auto 16px", borderRadius: 16 }}
+        />
         <Typography.Title level={4} style={{ margin: 0 }}>
           茶码 TeaCoder
         </Typography.Title>

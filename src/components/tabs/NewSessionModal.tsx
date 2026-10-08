@@ -19,11 +19,6 @@ const COLOR_PRESETS = [
   "#52c41a", "#13c2c2", "#eb2f96", "#ff4d4f",
 ];
 
-const THINKING_OPTIONS = [
-  { value: "low", label: "低" },
-  { value: "medium", label: "中" },
-  { value: "high", label: "高" },
-];
 
 function buildCliArgs(toolType: ToolType, params: Record<string, unknown>): string {
   const args: string[] = [];
@@ -66,6 +61,12 @@ export default function NewSessionModal({ open: isOpen, projectId, categoryId, o
   const [sessionCategoryId, setSessionCategoryId] = useState<string | undefined>(undefined);
   const [llmProviderId, setLlmProviderId] = useState<string | undefined>();
   const [modelName, setModelName] = useState<string | undefined>();
+  // For Claude Code: per-tier model mapping
+  const [claudeModels, setClaudeModels] = useState<{
+    sonnet?: string;
+    opus?: string;
+    haiku?: string;
+  }>({});
   const [profileLlmDefaults, setProfileLlmDefaults] = useState<{ defaultLlmProviderId?: string }>({});
 
   const [sshHostname, setSshHostname] = useState("");
@@ -148,6 +149,7 @@ export default function NewSessionModal({ open: isOpen, projectId, categoryId, o
       setSessionCategoryId(categoryId || undefined);
       setLlmProviderId(undefined);
       setModelName(undefined);
+      setClaudeModels({});
       setProfileLlmDefaults({});
     }
   }, [isOpen, globalThinkingIntensity, categoryId]);
@@ -185,8 +187,19 @@ export default function NewSessionModal({ open: isOpen, projectId, categoryId, o
   useEffect(() => {
     const defId = profileLlmDefaults.defaultLlmProviderId;
     if (!defId) {
-      setLlmProviderId(undefined);
-      setModelName(undefined);
+      // Fall back to global default provider
+      const globalDefProvider = llmProviders.find((p) => p.isDefault && p.isActive);
+      if (
+        globalDefProvider &&
+        compatibleProviders(selectedTool).some((cp) => cp.id === globalDefProvider.id)
+      ) {
+        setLlmProviderId(globalDefProvider.id);
+        const defModel = globalDefProvider.models.find((m) => m.isDefault);
+        setModelName(defModel?.modelName);
+      } else {
+        setLlmProviderId(undefined);
+        setModelName(undefined);
+      }
       return;
     }
     const provider = llmProviders.find((p) => p.id === defId);
@@ -194,7 +207,14 @@ export default function NewSessionModal({ open: isOpen, projectId, categoryId, o
     setLlmProviderId(defId);
     const defModel = provider.models.find((m) => m.isDefault);
     setModelName(defModel?.modelName);
-  }, [profileLlmDefaults.defaultLlmProviderId, llmProviders]);
+  }, [profileLlmDefaults.defaultLlmProviderId, llmProviders, selectedTool]);
+
+  // Clear claudeModels when switching away from claude tool
+  useEffect(() => {
+    if (selectedTool !== "claude") {
+      setClaudeModels({});
+    }
+  }, [selectedTool]);
 
   const project = projects.find((p) => p.id === projectId);
 
@@ -283,6 +303,7 @@ export default function NewSessionModal({ open: isOpen, projectId, categoryId, o
         categoryId: sessionCategoryId,
         llmProviderId,
         modelName,
+        claudeModels: selectedTool === "claude" && Object.keys(claudeModels).length > 0 ? claudeModels : undefined,
       });
       onClose();
     } catch (err) {
@@ -465,8 +486,23 @@ export default function NewSessionModal({ open: isOpen, projectId, categoryId, o
                 onChange={(id) => {
                   setLlmProviderId(id);
                   const provider = llmProviders.find((p) => p.id === id);
-                  const defModel = provider?.models.find((m) => m.isDefault);
-                  setModelName(defModel?.modelName);
+                  if (selectedTool === "claude" && provider) {
+                    const defModel = provider.models.find((m) => m.isDefault)?.modelName;
+                    const modelToUse = defModel ?? provider.models[0]?.modelName;
+                    setClaudeModels({
+                      sonnet: modelToUse,
+                      opus: modelToUse,
+                      haiku: modelToUse,
+                    });
+                    setModelName(undefined); // claude uses claudeModels instead
+                  } else if (provider) {
+                    const defModel = provider.models.find((m) => m.isDefault);
+                    setModelName(defModel?.modelName);
+                    setClaudeModels({});
+                  } else {
+                    setModelName(undefined);
+                    setClaudeModels({});
+                  }
                 }}
                 style={{ width: "100%" }}
               >
@@ -481,24 +517,64 @@ export default function NewSessionModal({ open: isOpen, projectId, categoryId, o
 
           {selectedTool !== "ssh" && selectedTool !== "terminal" && llmProviderId && (
             <div style={{ marginBottom: 12 }}>
-              <label style={{ display: "block", fontSize: 12, color: "var(--ant-color-text-secondary)", marginBottom: 4 }}>
-                模型
-              </label>
-              <Select
-                size="small"
-                placeholder="选择模型"
-                allowClear
-                value={modelName}
-                onChange={setModelName}
-                style={{ width: "100%" }}
-              >
-                {(llmProviders.find((p) => p.id === llmProviderId)?.models ?? []).map((m) => (
-                  <Select.Option key={m.id} value={m.modelName}>
-                    {m.modelName}
-                    {m.isDefault && <span className="text-[var(--ant-color-text-quaternary)] text-[10px] ml-2">默认</span>}
-                  </Select.Option>
-                ))}
-              </Select>
+              {selectedTool === "claude" ? (
+                // Claude Code: model mapping (provider already selected above)
+                <>
+                  <label style={{ display: "block", fontSize: 12, color: "#aaaaaa", marginBottom: 6 }}>
+                    Claude Code 模型映射
+                  </label>
+                  {[
+                    { key: "sonnet" as const, label: "Sonnet" },
+                    { key: "opus" as const, label: "Opus" },
+                    { key: "haiku" as const, label: "Haiku" },
+                  ].map(({ key, label }) => {
+                    const tierModel = claudeModels[key];
+                    const provider = llmProviders.find((p) => p.id === llmProviderId);
+                    return (
+                      <div key={key} style={{ marginBottom: 6 }}>
+                        <label style={{ display: "block", fontSize: 11, color: "var(--ant-color-text-secondary)", marginBottom: 2 }}>{label}</label>
+                        <Select
+                          size="small"
+                          placeholder="选择模型"
+                          allowClear
+                          value={tierModel}
+                          onChange={(v) => setClaudeModels({ ...claudeModels, [key]: v })}
+                          style={{ width: "100%" }}
+                        >
+                          {(provider?.models ?? []).map((m) => (
+                            <Select.Option key={m.id} value={m.modelName}>
+                              {m.modelName}
+                              {m.isDefault && <span className="text-[var(--ant-color-text-quaternary)] text-[10px] ml-2">默认</span>}
+                            </Select.Option>
+                          ))}
+                        </Select>
+                      </div>
+                    );
+                  })}
+                </>
+              ) : (
+                // Non-Claude: single model selector
+                <>
+                  <label style={{ display: "block", fontSize: 12, color: "var(--ant-color-text-secondary)", marginBottom: 4 }}>
+                    模型
+                  </label>
+                  <Select
+                    size="small"
+                    placeholder="选择模型"
+                    allowClear
+                    value={modelName}
+                    onChange={setModelName}
+                    style={{ width: "100%" }}
+                  >
+                    {(llmProviders.find((p) => p.id === llmProviderId)?.models ?? []).map((m) => (
+                      <Select.Option key={m.id} value={m.modelName}>
+                        {m.modelName}
+                        {m.isDefault && <span className="text-[var(--ant-color-text-quaternary)] text-[10px] ml-2">默认</span>}
+                      </Select.Option>
+                    ))}
+                  </Select>
+                </>
+              )}
             </div>
           )}
 
@@ -527,13 +603,38 @@ export default function NewSessionModal({ open: isOpen, projectId, categoryId, o
           {selectedTool !== "ssh" && (
             <div style={{ marginBottom: 12 }}>
               <label style={{ display: "block", fontSize: 12, color: "#aaaaaa", marginBottom: 4 }}>思考强度</label>
-              <Select
-                size="small"
-                value={thinkingIntensity}
-                onChange={setThinkingIntensity}
-                style={{ width: 120 }}
-                options={THINKING_OPTIONS}
-              />
+              <div className="flex gap-2">
+                {[{ value: "low", label: "低", color: "#52c41a" }, { value: "medium", label: "中", color: "#1677ff" }, { value: "high", label: "高", color: "#722ed1" }].map((t) => {
+                  const isSelected = thinkingIntensity === t.value;
+                  return (
+                    <div
+                      key={t.value}
+                      onClick={() => setThinkingIntensity(t.value)}
+                      style={{
+                        padding: "5px 14px",
+                        borderRadius: 6,
+                        border: `1.5px solid ${isSelected ? t.color : "var(--ant-color-border)"}`,
+                        background: isSelected ? `${t.color}10` : "transparent",
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 6,
+                        transition: "all 0.15s",
+                      }}
+                    >
+                      <div style={{
+                        width: 7, height: 7, borderRadius: "50%",
+                        background: isSelected ? t.color : "var(--ant-color-text-quaternary)"
+                      }} />
+                      <span style={{
+                        fontSize: 12,
+                        fontWeight: isSelected ? 600 : 400,
+                        color: isSelected ? t.color : "var(--ant-color-text-secondary)",
+                      }}>{t.label}</span>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           )}
 

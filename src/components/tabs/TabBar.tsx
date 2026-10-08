@@ -11,7 +11,6 @@ import {
   InfoCircleOutlined,
   CloseOutlined,
   CloseCircleOutlined,
-  VerticalRightOutlined,
   DeleteOutlined,
 } from "@ant-design/icons";
 import { useAppStore } from "../../stores/appStore";
@@ -30,7 +29,7 @@ export default function TabBar() {
   const updateSession = useAppStore((s) => s.updateSession);
   const duplicateSession = useAppStore((s) => s.duplicateSession);
   const closeOtherTabs = useAppStore((s) => s.closeOtherTabs);
-  const closeTabsToRight = useAppStore((s) => s.closeTabsToRight);
+  const closeAllTabs = useAppStore((s) => s.closeAllTabs);
   const locateSession = useAppStore((s) => s.locateSession);
   const llmProviders = useAppStore((s) => s.llmProviders);
   const { message, modal } = App.useApp();
@@ -184,10 +183,10 @@ export default function TabBar() {
       onClick: () => closeOtherTabs(tab.id),
     },
     {
-      key: "closeRight",
-      label: "关闭右侧标签",
-      icon: <VerticalRightOutlined />,
-      onClick: () => closeTabsToRight(tab.id),
+      key: "closeAll",
+      label: "关闭所有标签",
+      icon: <CloseOutlined />,
+      onClick: () => closeAllTabs(),
     },
     { type: "divider" },
     {
