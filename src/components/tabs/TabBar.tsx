@@ -32,6 +32,7 @@ export default function TabBar() {
   const closeOtherTabs = useAppStore((s) => s.closeOtherTabs);
   const closeTabsToRight = useAppStore((s) => s.closeTabsToRight);
   const locateSession = useAppStore((s) => s.locateSession);
+  const llmProviders = useAppStore((s) => s.llmProviders);
   const { message, modal } = App.useApp();
 
   const [renamingId, setRenamingId] = useState<string | null>(null);
@@ -222,9 +223,8 @@ export default function TabBar() {
                   locateSession(tab.id);
                 }}
                 onDoubleClick={() => handleRename(tab)}
-                className="flex items-center gap-1 px-3 h-full cursor-pointer whitespace-nowrap"
+                className="flex items-center gap-1 px-3 h-full cursor-pointer whitespace-nowrap text-xs"
                 style={{
-                  fontSize: 12,
                   color: isActive ? "var(--ant-color-text)" : "var(--ant-color-text-secondary)",
                   borderRight: "1px solid var(--ant-color-border-secondary)",
                   backgroundColor: isActive ? "var(--ant-color-bg-layout)" : undefined,
@@ -257,6 +257,30 @@ export default function TabBar() {
                 ) : (
                   <span className="truncate max-w-[120px]">{tab.title || TOOL_DISPLAY_NAMES[tab.toolType]}</span>
                 )}
+                {(() => {
+                  const provider = llmProviders.find((p) => p.id === tab.llmProviderId);
+                  if (!provider) return null;
+                  const bg = provider.color || "var(--ant-color-primary)";
+                  const ch = provider.name.charAt(0).toUpperCase();
+                  return (
+                    <span
+                      title={provider.name}
+                      className="inline-flex items-center justify-center rounded flex-shrink-0"
+                      style={{
+                        width: 15,
+                        height: 15,
+                        backgroundColor: bg,
+                        color: "#fff",
+                        fontSize: 9,
+                        lineHeight: 1,
+                        fontWeight: 600,
+                        marginLeft: 2,
+                      }}
+                    >
+                      {ch}
+                    </span>
+                  );
+                })()}
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
