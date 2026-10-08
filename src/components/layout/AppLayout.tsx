@@ -40,6 +40,7 @@ export default function AppLayout() {
   const loadProjects = useAppStore((s) => s.loadProjects);
   const loadSessions = useAppStore((s) => s.loadSessions);
   const loadCategories = useAppStore((s) => s.loadCategories);
+  const loadLlmProviders = useAppStore((s) => s.loadLlmProviders);
   const restoreTabs = useAppStore((s) => s.restoreTabs);
   const sessions = useAppStore((s) => s.sessions);
   const setCostTick = useAppStore((s) => s.setCostTick);
@@ -151,6 +152,7 @@ export default function AppLayout() {
       await loadProjects();
       await loadSessions();
       await loadCategories();
+      await loadLlmProviders();
 
       // 检查"启动时恢复上次会话"设置
       try {
@@ -168,7 +170,7 @@ export default function AppLayout() {
     };
 
     initApp().catch(() => {});
-  }, [setCliTools, setProfiles, loadProjects, loadSessions, loadCategories, restoreTabs]);
+  }, [setCliTools, setProfiles, loadProjects, loadSessions, loadCategories, loadLlmProviders, restoreTabs]);
 
   // 30s cost polling when sessions are running
   useEffect(() => {
