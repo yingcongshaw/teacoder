@@ -1,11 +1,11 @@
 //! LLM 供应商管理模块：CRUD、软删除、硬删除、默认模型切换。
 //!
-//! API Key 存储在 SQLite 中，使用 base64 编码。
+//! API Key 与 OAuth Token 均以 base64 编码存入 SQLite，
+//! 不依赖系统 keychain（避免 Linux 上跨平台稳定性问题）。
 
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use serde::{Deserialize, Serialize};
 
-use crate::crypto::keychain;
 use crate::storage::AppDatabase;
 
 pub mod env_inject;
@@ -35,7 +35,7 @@ pub struct LlmProvider {
     /// API Key（base64 编码存储，仅 auth_type="api_key" 时使用）
     #[serde(skip_serializing_if = "Option::is_none")]
     pub api_key: Option<String>,
-    /// OAuth Token（从 keychain 读取，仅 auth_type="oauth" 时使用）
+    /// OAuth Token（base64 编码存储，仅 auth_type="oauth" 时使用）
     #[serde(skip_serializing_if = "Option::is_none")]
     pub oauth_token: Option<String>,
 }
@@ -67,9 +67,9 @@ pub struct CreateLlmProviderInput {
     pub models: Vec<String>,
     /// 默认模型名（须在 models 内）；None 则取第一个。
     pub default_model: Option<String>,
-    /// API Key（auth_type="api_key" 时写入 keychain，不入库）。
+    /// API Key（base64 编码入库，仅 auth_type="api_key" 时使用）。
     pub api_key: Option<String>,
-    /// OAuth Token（auth_type="oauth" 时写入 keychain，不入库）。
+    /// OAuth Token（base64 编码入库，仅 auth_type="oauth" 时使用）。
     pub oauth_token: Option<String>,
 }
 
@@ -89,9 +89,9 @@ pub struct UpdateLlmProviderInput {
     /// 提供则替换默认模型（须在新 models 内）。
     pub default_model: Option<String>,
     pub is_active: Option<bool>,
-    /// 提供则覆盖写入 keychain（空字符串视同删除，auth_type="api_key" 时使用）。
+    /// 提供则覆盖 API Key（空字符串视同删除；base64 编码入库）。
     pub api_key: Option<String>,
-    /// 提供则覆盖写入 keychain（auth_type="oauth" 时使用）。
+    /// 提供则覆盖 OAuth Token（空字符串视同删除；base64 编码入库）。
     pub oauth_token: Option<String>,
 }
 
@@ -134,10 +134,10 @@ pub fn list_providers(
     let conn = db.conn.lock().map_err(|e| e.to_string())?;
 
     let sql = if include_inactive {
-        "SELECT id, name, provider_kind, auth_type, base_url, icon, color, is_preset, is_active, is_default, created_at, updated_at, api_key \
+        "SELECT id, name, provider_kind, auth_type, base_url, icon, color, is_preset, is_active, is_default, created_at, updated_at, api_key, oauth_token \
          FROM llm_providers ORDER BY is_preset DESC, name ASC"
     } else {
-        "SELECT id, name, provider_kind, auth_type, base_url, icon, color, is_preset, is_active, is_default, created_at, updated_at, api_key \
+        "SELECT id, name, provider_kind, auth_type, base_url, icon, color, is_preset, is_active, is_default, created_at, updated_at, api_key, oauth_token \
          FROM llm_providers WHERE is_active = 1 ORDER BY is_preset DESC, name ASC"
     };
 
@@ -147,10 +147,8 @@ pub fn list_providers(
 
     let providers: Vec<LlmProvider> = stmt
         .query_map([], |row| {
-            let api_key_encoded: Option<String> = row.get(12)?;
-            let api_key = api_key_encoded.and_then(|enc| {
-                BASE64.decode(&enc).ok().map(|bytes| String::from_utf8_lossy(&bytes).to_string())
-            });
+            let api_key = decode_optional(row.get::<_, Option<String>>(12)?);
+            let oauth_token = decode_optional(row.get::<_, Option<String>>(13)?);
             Ok(LlmProvider {
                 id: row.get(0)?,
                 name: row.get(1)?,
@@ -166,7 +164,7 @@ pub fn list_providers(
                 updated_at: row.get(11)?,
                 models: vec![],
                 api_key,
-                oauth_token: None,
+                oauth_token,
             })
         })
         .map_err(|e| format!("查询供应商失败: {}", e))?
@@ -177,13 +175,21 @@ pub fn list_providers(
     let mut result = Vec::with_capacity(providers.len());
     for mut p in providers {
         p.models = load_models_for(&conn, &p.id)?;
-        // OAuth Token 从 keychain 加载（auth_type="oauth" 时）
-        if p.auth_type == "oauth" {
-            p.oauth_token = keychain::get_secret(&p.id, "oauth_token").ok().flatten();
-        }
         result.push(p);
     }
     Ok(result)
+}
+
+/// Base64 解码可选字符串；空 / 失败均回退为 None。
+fn decode_optional(encoded: Option<String>) -> Option<String> {
+    let enc = encoded?;
+    if enc.is_empty() {
+        return None;
+    }
+    BASE64
+        .decode(&enc)
+        .ok()
+        .map(|bytes| String::from_utf8_lossy(&bytes).to_string())
 }
 
 /// 按 id 查询单个供应商；不存在返回 Ok(None)。
@@ -192,17 +198,15 @@ pub fn get_provider(db: &AppDatabase, id: &str) -> Result<Option<LlmProvider>, S
 
     let mut stmt = conn
         .prepare(
-            "SELECT id, name, provider_kind, auth_type, base_url, icon, color, is_preset, is_active, is_default, created_at, updated_at, api_key \
+            "SELECT id, name, provider_kind, auth_type, base_url, icon, color, is_preset, is_active, is_default, created_at, updated_at, api_key, oauth_token \
              FROM llm_providers WHERE id = ?1",
         )
         .map_err(|e| format!("准备查询供应商失败: {}", e))?;
 
     let provider = stmt
         .query_row([id], |row| {
-            let api_key_encoded: Option<String> = row.get(12)?;
-            let api_key = api_key_encoded.and_then(|enc| {
-                BASE64.decode(&enc).ok().map(|bytes| String::from_utf8_lossy(&bytes).to_string())
-            });
+            let api_key = decode_optional(row.get::<_, Option<String>>(12)?);
+            let oauth_token = decode_optional(row.get::<_, Option<String>>(13)?);
             Ok(LlmProvider {
                 id: row.get(0)?,
                 name: row.get(1)?,
@@ -218,7 +222,7 @@ pub fn get_provider(db: &AppDatabase, id: &str) -> Result<Option<LlmProvider>, S
                 updated_at: row.get(11)?,
                 models: vec![],
                 api_key,
-                oauth_token: None,
+                oauth_token,
             })
         })
         .ok();
@@ -226,17 +230,13 @@ pub fn get_provider(db: &AppDatabase, id: &str) -> Result<Option<LlmProvider>, S
     match provider {
         Some(mut p) => {
             p.models = load_models_for(&conn, &p.id)?;
-            // OAuth Token 从 keychain 加载
-            if p.auth_type == "oauth" {
-                p.oauth_token = keychain::get_secret(&p.id, "oauth_token").ok().flatten();
-            }
             Ok(Some(p))
         }
         None => Ok(None),
     }
 }
 
-/// 新建供应商（含 models）。API Key 存储在 keychain，OAuth Token 也存储在 keychain。
+/// 新建供应商（含 models）。API Key 与 OAuth Token 均以 base64 编码存入数据库。
 pub fn create_provider(
     db: &AppDatabase,
     input: CreateLlmProviderInput,
@@ -250,9 +250,22 @@ pub fn create_provider(
         return Err("auth_type 必须是 'api_key' 或 'oauth'".to_string());
     }
 
-    // API Key base64 编码存储（仅 auth_type="api_key" 时）
+    // 敏感字段：仅在对应 auth_type 下 base64 编码入库；其他情况下写 NULL。
     let api_key_encoded = if auth_type == "api_key" {
-        input.api_key.as_ref().filter(|k| !k.is_empty()).map(|k| BASE64.encode(k.as_bytes()))
+        input
+            .api_key
+            .as_ref()
+            .filter(|k| !k.is_empty())
+            .map(|k| BASE64.encode(k.as_bytes()))
+    } else {
+        None
+    };
+    let oauth_token_encoded = if auth_type == "oauth" {
+        input
+            .oauth_token
+            .as_ref()
+            .filter(|t| !t.is_empty())
+            .map(|t| BASE64.encode(t.as_bytes()))
     } else {
         None
     };
@@ -265,8 +278,8 @@ pub fn create_provider(
 
         tx.execute(
             "INSERT INTO llm_providers \
-             (id, name, provider_kind, auth_type, base_url, icon, color, is_preset, is_active, created_at, updated_at, api_key) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 0, 1, ?8, ?8, ?9)",
+             (id, name, provider_kind, auth_type, base_url, icon, color, is_preset, is_active, created_at, updated_at, api_key, oauth_token) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 0, 1, ?8, ?8, ?9, ?10)",
             rusqlite::params![
                 provider_id,
                 input.name,
@@ -277,6 +290,7 @@ pub fn create_provider(
                 input.color,
                 now,
                 api_key_encoded,
+                oauth_token_encoded,
             ],
         )
         .map_err(|e| format!("插入供应商失败: {}", e))?;
@@ -298,15 +312,6 @@ pub fn create_provider(
 
         tx.commit()
             .map_err(|e| format!("提交事务失败: {}", e))?;
-    }
-
-    // OAuth Token 写入 keychain（auth_type="oauth" 时）
-    if auth_type == "oauth" {
-        if let Some(ref token) = input.oauth_token {
-            if !token.is_empty() {
-                keychain::store_secret(&provider_id, "oauth_token", token)?;
-            }
-        }
     }
 
     get_provider(db, &provider_id)?.ok_or_else(|| "新建的供应商查询不到".to_string())
@@ -347,7 +352,7 @@ pub fn update_provider(
             sets.push("is_active = ?".to_string());
             params.push(Box::new(active as i64));
         }
-        // API Key：空字符串视为删除，否则 base64 编码存储（仅 auth_type="api_key" 时处理）
+        // API Key：空字符串视为删除，否则 base64 编码存储
         if let Some(key) = &input.api_key {
             if key.is_empty() {
                 sets.push("api_key = ?".to_string());
@@ -355,6 +360,18 @@ pub fn update_provider(
             } else {
                 let encoded = BASE64.encode(key.as_bytes());
                 sets.push("api_key = ?".to_string());
+                params.push(Box::new(Some(encoded)));
+            }
+        }
+
+        // OAuth Token：空字符串视为删除，否则 base64 编码存储
+        if let Some(token) = &input.oauth_token {
+            if token.is_empty() {
+                sets.push("oauth_token = ?".to_string());
+                params.push(Box::new(Option::<String>::None));
+            } else {
+                let encoded = BASE64.encode(token.as_bytes());
+                sets.push("oauth_token = ?".to_string());
                 params.push(Box::new(Some(encoded)));
             }
         }
@@ -398,15 +415,6 @@ pub fn update_provider(
             .map_err(|e| format!("提交事务失败: {}", e))?;
     }
 
-    // OAuth Token 写入 keychain（auth_type="oauth" 时）
-    if let Some(ref token) = input.oauth_token {
-        if token.is_empty() {
-            let _ = keychain::delete_secret(id, "oauth_token");
-        } else {
-            keychain::store_secret(id, "oauth_token", token)?;
-        }
-    }
-
     get_provider(db, id)?.ok_or_else(|| "更新的供应商查询不到".to_string())
 }
 
@@ -426,7 +434,8 @@ pub fn delete_provider(db: &AppDatabase, id: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// 硬删除：仅允许删除非预设且无会话引用的供应商，同时清理 keychain。
+/// 硬删除：仅允许删除非预设且无会话引用的供应商。
+/// 同时清理 profile 模块遗留的 keychain api_key 记录（兼容性保留）。
 pub fn hard_delete_provider(db: &AppDatabase, id: &str) -> Result<(), String> {
     let conn = db.conn.lock().map_err(|e| e.to_string())?;
 
@@ -543,6 +552,8 @@ mod tests {
         conn.execute_batch(include_str!("../../migrations/v10_llm_provider_auth_type.sql"))
             .unwrap();
         conn.execute_batch(include_str!("../../migrations/v11_llm_provider_api_key.sql"))
+            .unwrap();
+        conn.execute_batch(include_str!("../../migrations/v12_llm_provider_oauth_token.sql"))
             .unwrap();
         AppDatabase {
             conn: Mutex::new(conn),
@@ -696,5 +707,68 @@ mod tests {
         // 数据库中仍然存在
         let after = get_provider(&db, &preset.id).unwrap();
         assert!(after.is_some());
+    }
+
+    #[test]
+    fn test_oauth_token_round_trips_via_database() {
+        let db = make_db();
+        let input = CreateLlmProviderInput {
+            name: "OAuth Provider".into(),
+            provider_kind: "anthropic".into(),
+            auth_type: Some("oauth".into()),
+            base_url: None,
+            icon: None,
+            color: None,
+            models: vec!["m".into()],
+            default_model: None,
+            api_key: None,
+            oauth_token: Some("sk-cp-jecFdy".into()),
+        };
+        let created = create_provider(&db, input).unwrap();
+        assert_eq!(created.oauth_token.as_deref(), Some("sk-cp-jecFdy"));
+
+        // list 应能读回
+        let providers = list_providers(&db, true).unwrap();
+        let found = providers.iter().find(|p| p.id == created.id).unwrap();
+        assert_eq!(found.oauth_token.as_deref(), Some("sk-cp-jecFdy"));
+
+        // 更新覆盖
+        let update = UpdateLlmProviderInput {
+            oauth_token: Some("new-token-2".into()),
+            ..Default::default()
+        };
+        let updated = update_provider(&db, &created.id, update).unwrap();
+        assert_eq!(updated.oauth_token.as_deref(), Some("new-token-2"));
+
+        // 更新为空字符串 → 等同删除
+        let clear = UpdateLlmProviderInput {
+            oauth_token: Some("".into()),
+            ..Default::default()
+        };
+        let cleared = update_provider(&db, &created.id, clear).unwrap();
+        assert!(cleared.oauth_token.is_none());
+    }
+
+    #[test]
+    fn test_api_key_round_trips_via_database() {
+        let db = make_db();
+        let input = CreateLlmProviderInput {
+            name: "API Key Provider".into(),
+            provider_kind: "anthropic".into(),
+            auth_type: Some("api_key".into()),
+            base_url: None,
+            icon: None,
+            color: None,
+            models: vec!["m".into()],
+            default_model: None,
+            api_key: Some("sk-ant-api03-abcdef".into()),
+            oauth_token: None,
+        };
+        let created = create_provider(&db, input).unwrap();
+        assert_eq!(created.api_key.as_deref(), Some("sk-ant-api03-abcdef"));
+        // list 也能读回
+        let providers = list_providers(&db, true).unwrap();
+        let found = providers.iter().find(|p| p.id == created.id).unwrap();
+        assert_eq!(found.api_key.as_deref(), Some("sk-ant-api03-abcdef"));
     }
 }

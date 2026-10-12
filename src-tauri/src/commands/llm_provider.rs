@@ -27,7 +27,7 @@ pub fn llm_provider_get(
     llm_provider::get_provider(&db, &id)
 }
 
-/// 新建供应商（含 models）。API Key 写入 keychain，不入库。
+/// 新建供应商（含 models）。API Key 与 OAuth Token 均 base64 编码存入数据库。
 #[tauri::command]
 pub fn llm_provider_create(
     db: State<AppDatabase>,
