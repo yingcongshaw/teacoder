@@ -222,3 +222,239 @@ mod tests {
         assert!(inj.model_args.is_empty());
     }
 }
+
+// -----------------------------------------------------------------------------
+// Claude Code 模型 tier 映射 → 环境变量
+// -----------------------------------------------------------------------------
+
+/// Claude Code 五个 tier 的模型名 + 1M 标记。
+#[derive(Default, Debug)]
+struct ClaudeTierMap {
+    sonnet: Option<String>,
+    opus: Option<String>,
+    haiku: Option<String>,
+    fable: Option<String>,
+    subagent: Option<String>,
+    sonnet1m: bool,
+    opus1m: bool,
+    haiku1m: bool,
+    fable1m: bool,
+    subagent1m: bool,
+}
+
+fn apply_str(value: &mut Option<String>, raw: &serde_json::Value) {
+    if let Some(s) = raw.as_str() {
+        let trimmed = s.trim();
+        if !trimmed.is_empty() {
+            *value = Some(trimmed.to_string());
+        }
+    }
+}
+
+fn apply_bool(flag: &mut bool, raw: &serde_json::Value) {
+    if let Some(b) = raw.as_bool() {
+        *flag = b;
+    }
+}
+
+fn parse_claude_tier_map(claude_models: Option<&str>) -> ClaudeTierMap {
+    let mut map = ClaudeTierMap::default();
+    let Some(raw) = claude_models else {
+        return map;
+    };
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(raw) else {
+        return map;
+    };
+    let Some(obj) = value.as_object() else {
+        return map;
+    };
+    if let Some(v) = obj.get("sonnet") { apply_str(&mut map.sonnet, v); }
+    if let Some(v) = obj.get("opus") { apply_str(&mut map.opus, v); }
+    if let Some(v) = obj.get("haiku") { apply_str(&mut map.haiku, v); }
+    if let Some(v) = obj.get("fable") { apply_str(&mut map.fable, v); }
+    if let Some(v) = obj.get("subagent") { apply_str(&mut map.subagent, v); }
+    if let Some(v) = obj.get("sonnet1M") { apply_bool(&mut map.sonnet1m, v); }
+    if let Some(v) = obj.get("opus1M") { apply_bool(&mut map.opus1m, v); }
+    if let Some(v) = obj.get("haiku1M") { apply_bool(&mut map.haiku1m, v); }
+    if let Some(v) = obj.get("fable1M") { apply_bool(&mut map.fable1m, v); }
+    if let Some(v) = obj.get("subagent1M") { apply_bool(&mut map.subagent1m, v); }
+    map
+}
+
+/// 拼接带 1M 后缀的模型名。
+fn with_one_m(model: &str, one_m: bool) -> String {
+    if one_m {
+        format!("{}[1M]", model)
+    } else {
+        model.to_string()
+    }
+}
+
+fn push_tier_env(out: &mut Vec<(String, String)>, key: &str, model: Option<String>, one_m: bool) {
+    if let Some(m) = model {
+        out.push((key.to_string(), with_one_m(&m, one_m)));
+    }
+}
+
+fn push_tier_name_env(out: &mut Vec<(String, String)>, key: &str, model: Option<String>) {
+    if let Some(m) = model {
+        out.push((key.to_string(), m));
+    }
+}
+
+/// Claude Code 模型 tier 映射 → 环境变量列表。
+///
+/// 输出 10 个环境变量（按以下规则）：
+/// - `ANTHROPIC_DEFAULT_{SONNET,OPUS,HAIKU,FABLE}_MODEL`     模型名 + (1M ? "[1M]" : "")
+/// - `ANTHROPIC_DEFAULT_{SONNET,OPUS,HAIKU,FABLE}_MODEL_NAME` 模型名（不带后缀）
+/// - `ANTHROPIC_MODEL`                                        sonnet + (sonnet1M ? "[1M]" : "")
+/// - `CLAUDE_CODE_SUBAGENT_MODEL`                             subagent + (subagent1M ? "[1M]" : "")
+///
+/// tier 模型名为空时跳过该行。`claude_models` 为 None / 解析失败 / 全空时返回空 Vec。
+pub fn compute_claude_tier_env(claude_models: Option<&str>) -> Vec<(String, String)> {
+    let map = parse_claude_tier_map(claude_models);
+    let mut out = Vec::with_capacity(10);
+
+    push_tier_env(&mut out, "ANTHROPIC_DEFAULT_SONNET_MODEL", map.sonnet.clone(), map.sonnet1m);
+    push_tier_name_env(&mut out, "ANTHROPIC_DEFAULT_SONNET_MODEL_NAME", map.sonnet.clone());
+
+    push_tier_env(&mut out, "ANTHROPIC_DEFAULT_OPUS_MODEL", map.opus.clone(), map.opus1m);
+    push_tier_name_env(&mut out, "ANTHROPIC_DEFAULT_OPUS_MODEL_NAME", map.opus.clone());
+
+    push_tier_env(&mut out, "ANTHROPIC_DEFAULT_HAIKU_MODEL", map.haiku.clone(), map.haiku1m);
+    push_tier_name_env(&mut out, "ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME", map.haiku.clone());
+
+    push_tier_env(&mut out, "ANTHROPIC_DEFAULT_FABLE_MODEL", map.fable.clone(), map.fable1m);
+    push_tier_name_env(&mut out, "ANTHROPIC_DEFAULT_FABLE_MODEL_NAME", map.fable.clone());
+
+    // ANTHROPIC_MODEL：默认主模型（用 Sonnet）
+    if let Some(m) = map.sonnet.clone() {
+        out.push(("ANTHROPIC_MODEL".to_string(), with_one_m(&m, map.sonnet1m)));
+    }
+
+    push_tier_env(&mut out, "CLAUDE_CODE_SUBAGENT_MODEL", map.subagent, map.subagent1m);
+
+    out
+}
+
+#[cfg(test)]
+mod tier_env_tests {
+    use super::*;
+
+    fn to_map(pairs: &[(&str, &str)]) -> serde_json::Value {
+        let mut m = serde_json::Map::new();
+        for (k, v) in pairs {
+            m.insert(k.to_string(), serde_json::Value::String(v.to_string()));
+        }
+        serde_json::Value::Object(m)
+    }
+
+    #[test]
+    fn test_none_returns_empty() {
+        assert!(compute_claude_tier_env(None).is_empty());
+    }
+
+    #[test]
+    fn test_invalid_json_returns_empty() {
+        assert!(compute_claude_tier_env(Some("not-json")).is_empty());
+    }
+
+    #[test]
+    fn test_all_tiers_no_one_m() {
+        let json = to_map(&[
+            ("sonnet", "sonnet-model"),
+            ("opus", "opus-model"),
+            ("haiku", "haiku-model"),
+            ("fable", "fable-model"),
+            ("subagent", "subagent-model"),
+        ])
+        .to_string();
+        let envs = compute_claude_tier_env(Some(&json));
+        assert_eq!(envs.len(), 10);
+        assert!(envs.contains(&("ANTHROPIC_DEFAULT_SONNET_MODEL".to_string(), "sonnet-model".to_string())));
+        assert!(envs.contains(&("ANTHROPIC_DEFAULT_OPUS_MODEL".to_string(), "opus-model".to_string())));
+        assert!(envs.contains(&("ANTHROPIC_DEFAULT_HAIKU_MODEL".to_string(), "haiku-model".to_string())));
+        assert!(envs.contains(&("ANTHROPIC_DEFAULT_FABLE_MODEL".to_string(), "fable-model".to_string())));
+        assert!(envs.contains(&("ANTHROPIC_DEFAULT_SONNET_MODEL_NAME".to_string(), "sonnet-model".to_string())));
+        // ANTHROPIC_MODEL 默认 = sonnet
+        assert!(envs.contains(&("ANTHROPIC_MODEL".to_string(), "sonnet-model".to_string())));
+        // subagent
+        assert!(envs.contains(&("CLAUDE_CODE_SUBAGENT_MODEL".to_string(), "subagent-model".to_string())));
+    }
+
+    #[test]
+    fn test_all_tiers_with_one_m() {
+        let mut obj = serde_json::Map::new();
+        obj.insert("sonnet".to_string(), serde_json::json!("M"));
+        obj.insert("opus".to_string(), serde_json::json!("M"));
+        obj.insert("haiku".to_string(), serde_json::json!("M"));
+        obj.insert("fable".to_string(), serde_json::json!("M"));
+        obj.insert("subagent".to_string(), serde_json::json!("M"));
+        obj.insert("sonnet1M".to_string(), serde_json::json!(true));
+        obj.insert("opus1M".to_string(), serde_json::json!(true));
+        obj.insert("haiku1M".to_string(), serde_json::json!(true));
+        obj.insert("fable1M".to_string(), serde_json::json!(true));
+        obj.insert("subagent1M".to_string(), serde_json::json!(true));
+        let json = serde_json::Value::Object(obj).to_string();
+
+        let envs = compute_claude_tier_env(Some(&json));
+        assert_eq!(envs.len(), 10);
+        assert!(envs.contains(&("ANTHROPIC_DEFAULT_SONNET_MODEL".to_string(), "M[1M]".to_string())));
+        assert!(envs.contains(&("ANTHROPIC_DEFAULT_OPUS_MODEL".to_string(), "M[1M]".to_string())));
+        assert!(envs.contains(&("ANTHROPIC_DEFAULT_HAIKU_MODEL".to_string(), "M[1M]".to_string())));
+        assert!(envs.contains(&("ANTHROPIC_DEFAULT_FABLE_MODEL".to_string(), "M[1M]".to_string())));
+        // _MODEL_NAME 不带后缀
+        assert!(envs.contains(&("ANTHROPIC_DEFAULT_SONNET_MODEL_NAME".to_string(), "M".to_string())));
+        assert!(envs.contains(&("ANTHROPIC_DEFAULT_OPUS_MODEL_NAME".to_string(), "M".to_string())));
+        assert!(envs.contains(&("ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME".to_string(), "M".to_string())));
+        assert!(envs.contains(&("ANTHROPIC_DEFAULT_FABLE_MODEL_NAME".to_string(), "M".to_string())));
+        // ANTHROPIC_MODEL 默认 = sonnet（含 [1M]）
+        assert!(envs.contains(&("ANTHROPIC_MODEL".to_string(), "M[1M]".to_string())));
+        assert!(envs.contains(&("CLAUDE_CODE_SUBAGENT_MODEL".to_string(), "M[1M]".to_string())));
+    }
+
+    #[test]
+    fn test_mixed_one_m_flags() {
+        // sonnet1M=true, opus1M=false, haiku1M 缺失（视为 false）
+        let mut obj = serde_json::Map::new();
+        obj.insert("sonnet".to_string(), serde_json::json!("S"));
+        obj.insert("opus".to_string(), serde_json::json!("O"));
+        obj.insert("haiku".to_string(), serde_json::json!("H"));
+        obj.insert("sonnet1M".to_string(), serde_json::json!(true));
+        obj.insert("opus1M".to_string(), serde_json::json!(false));
+        let json = serde_json::Value::Object(obj).to_string();
+
+        let envs = compute_claude_tier_env(Some(&json));
+        // 只有 sonnet/opus/haiku 三个 tier → 3 个 _MODEL + 3 个 _MODEL_NAME + ANTHROPIC_MODEL = 7 个
+        assert_eq!(envs.len(), 7);
+        assert!(envs.contains(&("ANTHROPIC_DEFAULT_SONNET_MODEL".to_string(), "S[1M]".to_string())));
+        assert!(envs.contains(&("ANTHROPIC_DEFAULT_OPUS_MODEL".to_string(), "O".to_string())));
+        assert!(envs.contains(&("ANTHROPIC_DEFAULT_HAIKU_MODEL".to_string(), "H".to_string())));
+        assert!(envs.contains(&("ANTHROPIC_MODEL".to_string(), "S[1M]".to_string())));
+    }
+
+    #[test]
+    fn test_empty_model_values_are_skipped() {
+        let mut obj = serde_json::Map::new();
+        obj.insert("sonnet".to_string(), serde_json::json!(""));
+        obj.insert("opus".to_string(), serde_json::json!("   "));
+        // haiku 缺失
+        let json = serde_json::Value::Object(obj).to_string();
+        let envs = compute_claude_tier_env(Some(&json));
+        assert!(envs.is_empty(), "所有 tier 模型名空时应返回空");
+    }
+
+    #[test]
+    fn test_extra_unknown_keys_are_ignored() {
+        // 包含污染数据中的索引键与未知字段
+        let mut obj = serde_json::Map::new();
+        obj.insert("sonnet".to_string(), serde_json::json!("S"));
+        obj.insert("0".to_string(), serde_json::json!("{"));
+        obj.insert("fable".to_string(), serde_json::json!("x"));
+        obj.insert("unknown".to_string(), serde_json::json!("y"));
+        let json = serde_json::Value::Object(obj).to_string();
+        let envs = compute_claude_tier_env(Some(&json));
+        // 只有 sonnet + fable 两个模型字段，ANTHROPIC_MODEL = sonnet
+        assert_eq!(envs.len(), 5);
+    }
+}

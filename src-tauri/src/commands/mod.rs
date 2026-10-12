@@ -1,3 +1,4 @@
+pub mod claude_settings;
 pub mod cli;
 pub mod cost;
 pub mod llm_provider;

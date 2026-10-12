@@ -30,8 +30,8 @@ function ProviderIcon({ icon, name, color, size = 32 }: { icon: string | null; n
   return (
     <div
       style={{
-        width: size,
-        height: size,
+        minWidth: size,
+        minHeight: size,
         borderRadius: 6,
         background: color ?? 'var(--ant-color-primary)',
         display: 'flex',

@@ -23,15 +23,17 @@ pub fn start_session(
     cli_session_id: Option<String>,
     llm_provider_id: Option<String>,
     model_name: Option<String>,
-    _claude_models: Option<String>,
+    claude_models: Option<String>,
 ) -> Result<(), String> {
     let mut env_vars = HashMap::new();
     let mut provider_inj: Option<EnvInjection> = None;
+    let mut profile_app_data_root: Option<String> = None;
 
     if let Some(ref pid) = profile_id {
         // Load profile for data isolation env vars
         let profiles = profile::list_profiles(&db, None)?;
         if let Some(p) = profiles.iter().find(|p| p.id == *pid) {
+            profile_app_data_root = p.app_data_root.clone();
             if let Some(ref root) = p.app_data_root {
                 match p.tool_type.as_str() {
                     "claude" => {
@@ -136,11 +138,28 @@ pub fn start_session(
     }
 
     // 合并 Profile + LLM Provider + user_env_vars（后者覆盖前者）。
-    let env_vars = crate::llm_provider::env_merge::compose_env(
+    let mut env_vars = crate::llm_provider::env_merge::compose_env(
         env_vars,
         provider_inj.unwrap_or_default(),
         user_env_vars.unwrap_or_default(),
     );
+
+    // Claude Code 模型 tier 映射 → ANTHROPIC_DEFAULT_*_MODEL[_NAME] + ANTHROPIC_MODEL + CLAUDE_CODE_SUBAGENT_MODEL
+    // 仅注入非空字段；user_env_vars 不覆盖此层（保持 TeaCoder 唯一权威性）。
+    for (k, v) in crate::llm_provider::env_inject::compute_claude_tier_env(claude_models.as_deref()) {
+        env_vars.insert(k, v);
+    }
+
+    // 启动 Claude Code 前清理 ~/.claude/settings.json 的 env 字段，
+    // 避免用户在该文件里手动配置的环境变量与 TeaCoder 的注入冲突。
+    // best-effort：失败不阻塞 PTY 启动。
+    if matches!(tool_type, ToolType::Claude) {
+        if let Err(e) =
+            crate::commands::claude_settings::clean_claude_settings_env(profile_app_data_root.as_deref())
+        {
+            eprintln!("清理 Claude Code settings.json 失败: {}", e);
+        }
+    }
 
     let mut args: Vec<String> = if let Some(json) = cli_args {
         serde_json::from_str(&json).unwrap_or_default()

@@ -9,6 +9,8 @@ lerna-debug.log*
 
 .playwright-mcp/*
 .superpowers/*
+.claude/
+sessions/
 node_modules
 dist
 dist-ssr
