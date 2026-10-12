@@ -33,6 +33,7 @@ import {
   updateLlmProvider as updateLlmProviderIpc,
   deleteLlmProvider as deleteLlmProviderIpc,
 } from "../utils/ipc";
+import { parseClaudeModels, serializeClaudeModels } from "../utils/claudeModels";
 
 const OPEN_TABS_KEY = "teacoder_open_tabs";
 const TERMINAL_SETTINGS_KEY = "teacoder_terminal_settings";
@@ -145,7 +146,18 @@ interface AppState {
     categoryId?: string;
     llmProviderId?: string;
     modelName?: string;
-    claudeModels?: { sonnet?: string; opus?: string; haiku?: string };
+    claudeModels?: {
+      sonnet?: string;
+      opus?: string;
+      haiku?: string;
+      fable?: string;
+      subagent?: string;
+      sonnet1M?: boolean;
+      opus1M?: boolean;
+      haiku1M?: boolean;
+      fable1M?: boolean;
+      subagent1M?: boolean;
+    };
   }) => Promise<Session>;
   updateSession: (id: string, updates: Partial<Session>) => Promise<void>;
   deleteSession: (id: string) => Promise<void>;
@@ -365,13 +377,19 @@ export const useAppStore = create<AppState>((set, get) => ({
   sessions: [],
   loadSessions: async () => {
     const sessions = await sessionList();
-    set({ sessions });
+    // 后端 Session.claude_models 是 JSON 字符串；统一在入口层反序列化为对象
+    const normalized = sessions.map((s) => ({
+      ...s,
+      claudeModels: parseClaudeModels(s.claudeModels),
+    }));
+    set({ sessions: normalized });
   },
   createSession: async (input) => {
     const cliSessionId = input.toolType === "claude" ? crypto.randomUUID() : undefined;
     const title = input.title;
     const session = await sessionCreate({
       ...input,
+      claudeModels: serializeClaudeModels(input.claudeModels),
       title,
       cliSessionId,
     });
@@ -387,12 +405,12 @@ export const useAppStore = create<AppState>((set, get) => ({
       cliSessionId,
       llmProviderId: input.llmProviderId,
       modelName: input.modelName,
-      claudeModels: input.claudeModels ? JSON.stringify(input.claudeModels) : undefined,
+      claudeModels: serializeClaudeModels(input.claudeModels),
     });
     const updatedSession = {
       ...session,
       isRunning: true,
-      claudeModels: input.claudeModels,
+      claudeModels: parseClaudeModels(input.claudeModels),
     };
     set((state) => ({
       sessions: [...state.sessions, updatedSession],
@@ -403,10 +421,73 @@ export const useAppStore = create<AppState>((set, get) => ({
     return updatedSession;
   },
   updateSession: async (id, updates) => {
-    const updated = await sessionUpdate(id, updates);
+    const updated = await sessionUpdate(id, {
+      ...updates,
+      claudeModels: serializeClaudeModels(updates.claudeModels),
+    });
+    // 后端返回的 claudeModels 是字符串；解析后 merge 到 store，避免 store 中出现字符串状态
     set((state) => ({
-      sessions: state.sessions.map((s) => (s.id === id ? { ...s, ...updated } : s)),
+      sessions: state.sessions.map((s) =>
+        s.id === id
+          ? { ...s, ...updated, claudeModels: parseClaudeModels(updated.claudeModels) }
+          : s,
+      ),
     }));
+
+    // Claude Code 会话且仍在运行：重启 PTY 以应用新的 env（1M 标记 / 模型映射变更）。
+    // PTY 重启会中断当前 Claude Code 会话上下文，由用户编辑保存触发的"重启配置"语义所预期。
+    const after = get().sessions.find((s) => s.id === id);
+    if (after?.toolType === "claude" && after.isRunning) {
+      stopSession(id).catch(() => {});
+      const project = get().projects.find((p) => p.id === after.projectId);
+      const envVars = parseEnvVars(after.envVars || "");
+      const claudeConfigDir = (() => {
+        const profile = after.profileId
+          ? get().profiles.find((p) => p.id === after.profileId)
+          : undefined;
+        return profile?.appDataRoot ?? null;
+      })();
+      findLatestClaudeSession(project?.path || "~", claudeConfigDir, Date.now())
+        .then((detected) => {
+          const cliSessionId = detected ?? after.cliSessionId ?? undefined;
+          let cliArgs = after.cliArgs || "[]";
+          if (cliSessionId) {
+            try {
+              const args = JSON.parse(cliArgs) as string[];
+              const hasResume = args.some((a) => a === "--resume" || a === "-r");
+              if (!hasResume) cliArgs = JSON.stringify(["--resume", cliSessionId, ...args]);
+            } catch {
+              cliArgs = JSON.stringify(["--resume", cliSessionId]);
+            }
+          }
+          startSession({
+            toolType: after.toolType,
+            profileId: after.profileId || "",
+            workDir: project?.path || "~",
+            tabId: id,
+            envVars,
+            cliArgs,
+            cliSessionId: cliSessionId ?? undefined,
+            llmProviderId: after.llmProviderId,
+            modelName: after.modelName,
+            claudeModels: serializeClaudeModels(after.claudeModels),
+          }).catch(() => {});
+        })
+        .catch(() => {
+          startSession({
+            toolType: after.toolType,
+            profileId: after.profileId || "",
+            workDir: project?.path || "~",
+            tabId: id,
+            envVars,
+            cliArgs: after.cliArgs || "[]",
+            cliSessionId: after.cliSessionId ?? undefined,
+            llmProviderId: after.llmProviderId,
+            modelName: after.modelName,
+            claudeModels: serializeClaudeModels(after.claudeModels),
+          }).catch(() => {});
+        });
+    }
   },
   deleteSession: async (id) => {
     const session = get().sessions.find((s) => s.id === id);
@@ -580,6 +661,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       cliSessionId: willResumeSessionId,
       llmProviderId: session.llmProviderId,
       modelName: session.modelName,
+      claudeModels: serializeClaudeModels(session.claudeModels),
     }).catch((err) => {
       // --resume 在交互模式下因跟踪文件被清理而失败。
       // 主动探测 work_dir 下最近的 JSONL：若存在，则用其 UUID + --session-id
@@ -607,6 +689,7 @@ export const useAppStore = create<AppState>((set, get) => ({
               cliSessionId: undefined,
               llmProviderId: session.llmProviderId,
               modelName: session.modelName,
+              claudeModels: serializeClaudeModels(session.claudeModels),
             }).catch(() => {});
             return;
           }
@@ -622,6 +705,7 @@ export const useAppStore = create<AppState>((set, get) => ({
             cliSessionId: detected,
             llmProviderId: session.llmProviderId,
             modelName: session.modelName,
+            claudeModels: serializeClaudeModels(session.claudeModels),
           }).catch(() => {});
         })
         .catch(() => {
@@ -637,6 +721,7 @@ export const useAppStore = create<AppState>((set, get) => ({
             cliSessionId: undefined,
             llmProviderId: session.llmProviderId,
             modelName: session.modelName,
+            claudeModels: serializeClaudeModels(session.claudeModels),
           }).catch(() => {});
         });
     });

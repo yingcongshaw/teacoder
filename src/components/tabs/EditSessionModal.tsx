@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from "react";
-import { Input, Select, Tooltip, App, Button } from "antd";
+import { Input, Select, Tooltip, App, Button, Checkbox } from "antd";
 import { useAppStore } from "../../stores/appStore";
 import { detectCliTools, testSshConnection, getToolSettings } from "../../utils/ipc";
+import { parseClaudeModels, CLAUDE_TIER_ENTRIES } from "../../utils/claudeModels";
 import { BUILTIN_SESSION_TEMPLATES, TOOL_PROVIDER_KIND_MAP } from "../../types";
 import type { ToolType, CliTool, LlmProvider } from "../../types";
 import { CLI_TOOLS, sortCliToolsByAvailability, isCliToolAvailable, type CliToolMeta } from "../cli/cliTools";
@@ -72,6 +73,13 @@ export default function EditSessionModal({ open: isOpen, sessionId, onClose }: E
     sonnet?: string;
     opus?: string;
     haiku?: string;
+    fable?: string;
+    subagent?: string;
+    sonnet1M?: boolean;
+    opus1M?: boolean;
+    haiku1M?: boolean;
+    fable1M?: boolean;
+    subagent1M?: boolean;
   }>({});
   const [profileLlmDefaults, setProfileLlmDefaults] = useState<{ defaultLlmProviderId?: string }>({});
 
@@ -143,7 +151,7 @@ export default function EditSessionModal({ open: isOpen, sessionId, onClose }: E
       setCategoryId(session.categoryId);
       setLlmProviderId(session.llmProviderId);
       setModelName(session.modelName);
-      setClaudeModels(session.claudeModels || {});
+      setClaudeModels(parseClaudeModels(session.claudeModels));
       setSshHostname("");
       setSshPort(22);
       setSshUsername("root");
@@ -327,7 +335,8 @@ export default function EditSessionModal({ open: isOpen, sessionId, onClose }: E
         categoryId: categoryId || undefined,
         llmProviderId: selectedTool !== "ssh" && selectedTool !== "terminal" ? llmProviderId : undefined,
         modelName: selectedTool !== "ssh" && selectedTool !== "terminal" ? modelName : undefined,
-        claudeModels: selectedTool === "claude" && Object.keys(claudeModels).length > 0 ? claudeModels : undefined,
+        // store 边界处统一序列化为字符串；Modal 始终以对象形态操作
+        claudeModels: selectedTool === "claude" ? claudeModels : undefined,
       });
       message.success("已保存会话信息");
       onClose();
@@ -514,7 +523,13 @@ export default function EditSessionModal({ open: isOpen, sessionId, onClose }: E
                   if (selectedTool === "claude" && provider) {
                     const defModel = provider.models.find((m) => m.isDefault)?.modelName;
                     const modelToUse = defModel ?? provider.models[0]?.modelName;
-                    setClaudeModels({ sonnet: modelToUse, opus: modelToUse, haiku: modelToUse });
+                    setClaudeModels({
+                      sonnet: modelToUse,
+                      opus: modelToUse,
+                      haiku: modelToUse,
+                      fable: modelToUse,
+                      subagent: modelToUse,
+                    });
                     setModelName(undefined);
                   } else if (provider) {
                     const defModel = provider.models.find((m) => m.isDefault);
@@ -544,31 +559,37 @@ export default function EditSessionModal({ open: isOpen, sessionId, onClose }: E
                   <label style={{ display: "block", fontSize: 12, color: "#aaaaaa", marginBottom: 6 }}>
                     Claude Code 模型映射
                   </label>
-                  {[
-                    { key: "sonnet" as const, label: "Sonnet" },
-                    { key: "opus" as const, label: "Opus" },
-                    { key: "haiku" as const, label: "Haiku" },
-                  ].map(({ key, label }) => {
-                    const tierModel = claudeModels[key];
+                  {CLAUDE_TIER_ENTRIES.map(({ modelKey, oneMKey, label }) => {
+                    const tierModel = claudeModels[modelKey];
+                    const oneM = claudeModels[oneMKey] ?? false;
                     const provider = llmProviders.find((p) => p.id === llmProviderId);
                     return (
-                      <div key={key} style={{ marginBottom: 6 }}>
-                        <label style={{ display: "block", fontSize: 11, color: "var(--ant-color-text-secondary)", marginBottom: 2 }}>{label}</label>
-                        <Select
-                          size="small"
-                          placeholder="选择模型"
-                          allowClear
-                          value={tierModel}
-                          onChange={(v) => setClaudeModels({ ...claudeModels, [key]: v })}
-                          style={{ width: "100%" }}
-                        >
-                          {(provider?.models ?? []).map((m) => (
-                            <Select.Option key={m.id} value={m.modelName}>
-                              {m.modelName}
-                              {m.isDefault && <span className="text-[var(--ant-color-text-quaternary)] text-[10px] ml-2">默认</span>}
-                            </Select.Option>
-                          ))}
-                        </Select>
+                      <div key={modelKey} style={{ marginBottom: 6 }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 2 }}>
+                          <label style={{ fontSize: 11, color: "var(--ant-color-text-secondary)" }}>{label}</label>
+                          <span style={{ fontSize: 11, color: "var(--ant-color-text-tertiary)" }}>1M</span>
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <Select
+                            size="small"
+                            placeholder="选择模型"
+                            allowClear
+                            value={tierModel}
+                            onChange={(v) => setClaudeModels({ ...claudeModels, [modelKey]: v })}
+                            style={{ flex: 1 }}
+                          >
+                            {(provider?.models ?? []).map((m) => (
+                              <Select.Option key={m.id} value={m.modelName}>
+                                {m.modelName}
+                                {m.isDefault && <span className="text-[var(--ant-color-text-quaternary)] text-[10px] ml-2">默认</span>}
+                              </Select.Option>
+                            ))}
+                          </Select>
+                          <Checkbox
+                            checked={oneM}
+                            onChange={(e) => setClaudeModels({ ...claudeModels, [oneMKey]: e.target.checked })}
+                          />
+                        </div>
                       </div>
                     );
                   })}

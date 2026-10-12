@@ -94,7 +94,18 @@ export interface Session {
   categoryId?: string;
   llmProviderId?: string;
   modelName?: string;
-  claudeModels?: { sonnet?: string; opus?: string; haiku?: string };
+  claudeModels?: {
+    sonnet?: string;
+    opus?: string;
+    haiku?: string;
+    fable?: string;
+    subagent?: string;
+    sonnet1M?: boolean;
+    opus1M?: boolean;
+    haiku1M?: boolean;
+    fable1M?: boolean;
+    subagent1M?: boolean;
+  };
 }
 
 export interface SessionTemplate {

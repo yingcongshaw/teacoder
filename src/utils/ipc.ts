@@ -191,14 +191,9 @@ export async function sessionCreate(input: {
   categoryId?: string;
   llmProviderId?: string;
   modelName?: string;
-  claudeModels?: { sonnet?: string; opus?: string; haiku?: string };
+  claudeModels?: string;
 }): Promise<Session> {
-  return invoke<Session>("session_create", {
-    input: {
-      ...input,
-      claudeModels: input.claudeModels ? JSON.stringify(input.claudeModels) : undefined,
-    },
-  });
+  return invoke<Session>("session_create", { input });
 }
 
 export async function sessionUpdate(
@@ -218,16 +213,10 @@ export async function sessionUpdate(
     categoryId?: string;
     llmProviderId?: string;
     modelName?: string;
-    claudeModels?: { sonnet?: string; opus?: string; haiku?: string };
+    claudeModels?: string;
   },
 ): Promise<Session> {
-  return invoke<Session>("session_update", {
-    id,
-    input: {
-      ...input,
-      claudeModels: input.claudeModels ? JSON.stringify(input.claudeModels) : undefined,
-    },
-  });
+  return invoke<Session>("session_update", { id, input });
 }
 
 export async function sessionDelete(id: string): Promise<void> {
