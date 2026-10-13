@@ -938,22 +938,26 @@ export const useAppStore = create<AppState>((set, get) => ({
       );
       // 从所有 pane 里移除该 tab；若移除后面板空了，整个面板也清掉
       const nextPanes: Pane[] = [];
-      let fallbackActiveForClosedPane: string | null = null;
       for (const p of state.panes) {
         const nextOpen = p.openTabIds.filter((tid) => tid !== id);
         if (nextOpen.length === 0) continue;
         let nextActive = p.activeTabId;
         if (p.activeTabId === id) {
+          // 当前 pane 的 active 被关掉了，切到该 pane 剩余 tab 的最后一个
           nextActive = nextOpen[nextOpen.length - 1];
-          // 记录"如果该面板的 active 被关掉了，备选 active 用于全局回退"
-          if (p.id === state.activePaneId) fallbackActiveForClosedPane = nextActive;
         }
         nextPanes.push({ ...p, openTabIds: nextOpen, activeTabId: nextActive });
       }
       const openTabIds = flattenPaneOpenIds(nextPanes);
       saveOpenTabIds(openTabIds);
-      const activeTabId = paneActiveId(nextPanes, state.activePaneId) ?? fallbackActiveForClosedPane ?? null;
-      return { sessions, panes: nextPanes, openTabIds, activeTabId };
+
+      // 全局 activePaneId：若原 activePane 已被清掉，落到第一个剩余 pane；全部清空时为 null
+      const activePaneStillExists = nextPanes.some((p) => p.id === state.activePaneId);
+      const nextActivePaneId = activePaneStillExists
+        ? state.activePaneId
+        : (nextPanes[0]?.id ?? null);
+      const activeTabId = paneActiveId(nextPanes, nextActivePaneId);
+      return { sessions, panes: nextPanes, activePaneId: nextActivePaneId, openTabIds, activeTabId };
     });
   },
 
