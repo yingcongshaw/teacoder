@@ -353,7 +353,7 @@ export default function ProjectNode({ project, sessions, categories }: ProjectNo
     let bgColor: string | undefined;
 
     if (isActive) {
-      textColor = "var(--ant-color-text)";
+      textColor = "#f5222d";
       borderStyle = "2px solid var(--ant-color-primary)";
       bgColor = "var(--ant-color-bg-elevated)";
     } else if (isOpen) {

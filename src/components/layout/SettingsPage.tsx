@@ -13,7 +13,6 @@ import {
   SyncOutlined,
   ApiOutlined,
   InfoCircleOutlined,
-  UserOutlined,
   CloudOutlined,
 } from "@ant-design/icons";
 import { CLI_TOOLS, CLI_TOOLS_IN_SETTINGS_GROUP, getCliToolIcon } from "../cli/cliTools";
@@ -45,7 +44,7 @@ function CliToolIcon({ toolKey }: { toolKey: string }) {
 
 const menuItems = [
   { key: "general", label: "通用设置", icon: <SettingOutlined /> },
-  { key: "profile-management", label: "Profile 管理", icon: <UserOutlined /> },
+  { key: "terminal", label: "终端设置", icon: <CodeOutlined /> },
   { key: "llm-providers", label: "LLM 设置", icon: <CloudOutlined /> },
   {
     key: "cli-tools-group",
@@ -57,7 +56,6 @@ const menuItems = [
       icon: <CliToolIcon toolKey={t.id} />,
     })),
   },
-  { key: "terminal", label: "终端设置", icon: <CodeOutlined /> },
   { key: "ai-assistant", label: "AI 辅助", icon: <RobotOutlined /> },
   { key: "network", label: "网络", icon: <GlobalOutlined /> },
   { key: "remote", label: "远程访问", icon: <CloudServerOutlined /> },
