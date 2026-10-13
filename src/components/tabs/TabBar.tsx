@@ -159,6 +159,12 @@ export default function TabBar({ paneId }: TabBarProps = {}) {
 
   const buildContextMenu = (tab: Session): MenuProps["items"] => [
     {
+      key: "properties",
+      label: "查看属性",
+      icon: <InfoCircleOutlined />,
+      onClick: () => setPropertiesTab(tab),
+    },
+    {
       key: "rename",
       label: "重命名",
       icon: <EditOutlined />,
@@ -174,10 +180,24 @@ export default function TabBar({ paneId }: TabBarProps = {}) {
       },
     },
     {
+      key: "delete",
+      label: "删除会话",
+      icon: <DeleteOutlined />,
+      danger: true,
+      onClick: () => handleDelete(tab),
+    },
+    { type: "divider" },
+    {
       key: "move",
       label: "移动到其他项目",
       icon: <SwapOutlined />,
       onClick: () => handleMoveToProject(tab),
+    },
+    {
+      key: "locate",
+      label: "定位到项目",
+      icon: <AimOutlined />,
+      onClick: () => locateSession(tab.id),
     },
     { type: "divider" },
     {
@@ -226,26 +246,7 @@ export default function TabBar({ paneId }: TabBarProps = {}) {
         }
       },
     },
-    {
-      key: "properties",
-      label: "查看属性",
-      icon: <InfoCircleOutlined />,
-      onClick: () => setPropertiesTab(tab),
-    },
     { type: "divider" },
-    {
-      key: "locate",
-      label: "定位到项目",
-      icon: <AimOutlined />,
-      onClick: () => locateSession(tab.id),
-    },
-    { type: "divider" },
-    {
-      key: "close",
-      label: "关闭标签",
-      icon: <CloseOutlined />,
-      onClick: () => handleClose(tab.id, tab.isRunning),
-    },
     {
       key: "closeOthers",
       label: "关闭其他标签",
@@ -258,13 +259,11 @@ export default function TabBar({ paneId }: TabBarProps = {}) {
       icon: <CloseOutlined />,
       onClick: () => closeAllTabs(),
     },
-    { type: "divider" },
     {
-      key: "delete",
-      label: "删除会话",
-      icon: <DeleteOutlined />,
-      danger: true,
-      onClick: () => handleDelete(tab),
+      key: "close",
+      label: "关闭标签",
+      icon: <CloseOutlined />,
+      onClick: () => handleClose(tab.id, tab.isRunning),
     },
   ];
 
