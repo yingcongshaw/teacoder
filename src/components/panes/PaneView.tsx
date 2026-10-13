@@ -14,10 +14,15 @@ import { openPathInFileManager, openTerminal } from "../../utils/ipc";
 
 interface PaneViewProps {
   paneId: string;
+  /** 是否全局活动面板:只有活动面板的 TerminalView 接收键盘输入(避免双开双写 PTY) */
+  isActivePane: boolean;
   terminalRefs: React.MutableRefObject<Map<string, TerminalViewHandle>>;
   onCopy: (tabId: string) => void;
   onPaste: (tabId: string) => void;
 }
+
+/** 复合 ref key: 同 tabId 在多个 pane 并存时互不覆盖 */
+const refKey = (paneId: string, tabId: string): string => `${paneId}:${tabId}`;
 
 // macOS 主修饰键是 Cmd(metaKey),其他平台是 Ctrl(ctrlKey)
 const IS_MAC = typeof navigator !== "undefined" &&
@@ -29,7 +34,7 @@ const IS_MAC = typeof navigator !== "undefined" &&
  * 终端区域：渲染面板内所有已打开 tab 的 TerminalView，visibility 切换 active tab，
  * 这样切换 tab 时 xterm 不会卸载重建，scrollback / IME 状态都保留。
  */
-export default function PaneView({ paneId, terminalRefs, onCopy, onPaste }: PaneViewProps) {
+export default function PaneView({ paneId, isActivePane, terminalRefs, onCopy, onPaste }: PaneViewProps) {
   const sessions = useAppStore((s) => s.sessions);
   const projects = useAppStore((s) => s.projects);
   const pane = useAppStore((s) => s.panes.find((p) => p.id === paneId));
@@ -71,7 +76,7 @@ export default function PaneView({ paneId, terminalRefs, onCopy, onPaste }: Pane
     >
       <TabBar paneId={paneId} />
       <div className="flex-1 relative overflow-hidden min-h-0">
-        {openTabIds.map((tabId) => {
+        {openTabIds.map((tabId, idx) => {
           const session = sessions.find((s) => s.id === tabId);
           if (!session) return null;
           const project = projects.find((p) => p.id === session.projectId);
@@ -122,7 +127,7 @@ export default function PaneView({ paneId, terminalRefs, onCopy, onPaste }: Pane
 
           return (
             <Dropdown
-              key={tabId}
+              key={`${paneId}:${tabId}#${idx}`}
               menu={{ items: contextMenu }}
               trigger={["contextMenu"]}
             >
@@ -136,9 +141,11 @@ export default function PaneView({ paneId, terminalRefs, onCopy, onPaste }: Pane
                 <TerminalView
                   tabId={tabId}
                   visible={isActive}
+                  enableInput={isActivePane}
                   ref={(handle) => {
-                    if (handle) terminalRefs.current.set(tabId, handle);
-                    else terminalRefs.current.delete(tabId);
+                    const k = refKey(paneId, tabId);
+                    if (handle) terminalRefs.current.set(k, handle);
+                    else terminalRefs.current.delete(k);
                   }}
                 />
               </div>

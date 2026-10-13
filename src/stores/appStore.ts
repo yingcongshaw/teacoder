@@ -72,7 +72,7 @@ function loadSplitRatio(): number {
 }
 
 interface PersistedPanesLayout {
-  version: 1;
+  version: 2;
   panes: Pane[];
   activePaneId: string | null;
 }
@@ -81,13 +81,18 @@ interface PersistedPanesLayout {
  * 加载上次保存的分屏布局。
  * 校验：每个 pane 都有合法 id；tabId 列表里至少有一个；activeTabId 必须属于本 pane。
  * 校验失败时返回 null（让调用方走"回退到单面板"逻辑）。
+ *
+ * v2 升级:支持同 tabId 跨 pane 重复(openTabIds 不强制去重);
+ * 从 v1 读到的 layout 视为 v2 的子集(因为 v1 本身就不重复),无需数据迁移。
  */
 function loadPanesLayout(): PersistedPanesLayout | null {
   try {
     const raw = localStorage.getItem(PANES_LAYOUT_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as PersistedPanesLayout;
-    if (parsed.version !== 1 || !Array.isArray(parsed.panes)) return null;
+    // 反序列化后 version 是字面量类型,显式收宽为 number
+    const v = parsed.version as number;
+    if ((v !== 1 && v !== 2) || !Array.isArray(parsed.panes)) return null;
     if (parsed.panes.length < 1 || parsed.panes.length > 2) return null;
     for (const p of parsed.panes) {
       if (typeof p.id !== "string" || !Array.isArray(p.openTabIds)) return null;
@@ -101,6 +106,11 @@ function loadPanesLayout(): PersistedPanesLayout | null {
     if (parsed.activePaneId && !parsed.panes.some((p) => p.id === parsed.activePaneId)) {
       parsed.activePaneId = parsed.panes[parsed.panes.length - 1].id;
     }
+    // v1 升级:清除老 openTabIds key,防双源不一致
+    if (v === 1) {
+      try { localStorage.removeItem(OPEN_TABS_KEY); } catch { /* ignore */ }
+    }
+    parsed.version = 2;
     return parsed;
   } catch {
     return null;
@@ -109,7 +119,7 @@ function loadPanesLayout(): PersistedPanesLayout | null {
 
 function savePanesLayout(panes: Pane[], activePaneId: string | null) {
   try {
-    const payload: PersistedPanesLayout = { version: 1, panes, activePaneId };
+    const payload: PersistedPanesLayout = { version: 2, panes, activePaneId };
     localStorage.setItem(PANES_LAYOUT_KEY, JSON.stringify(payload));
   } catch {
     // non-critical
@@ -151,6 +161,18 @@ function flattenPaneOpenIds(panes: Pane[]): string[] {
 function paneActiveId(panes: Pane[], paneId: string | null): string | null {
   if (!paneId) return null;
   return panes.find((p) => p.id === paneId)?.activeTabId ?? null;
+}
+
+// 共享 PTY 语义：tabId 在所有 pane 中出现的总次数。
+// 用于"最后一个实例关闭时才停 PTY"的 refcount 判断。
+function instanceCount(panes: Pane[], tabId: string): number {
+  let n = 0;
+  for (const p of panes) {
+    for (const tid of p.openTabIds) {
+      if (tid === tabId) n++;
+    }
+  }
+  return n;
 }
 
 function loadTerminalSettings(): TerminalSettings {
@@ -301,8 +323,8 @@ interface AppState {
   reorderTabInPane: (paneId: string, fromIndex: number, toIndex: number) => void;
   setSplitRatio: (ratio: number) => void;
 
-  closeTab: (id: string) => void;
-  openTab: (id: string) => void;
+  closeTab: (id: string, paneId?: string) => void;
+  openTab: (id: string, opts?: { targetPaneId?: string }) => void;
   restoreTabs: () => void;
   closeAllTabs: () => void;
   setActiveTab: (id: string | null) => void;
@@ -594,8 +616,11 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     // Claude Code 会话且仍在运行：重启 PTY 以应用新的 env（1M 标记 / 模型映射变更）。
     // PTY 重启会中断当前 Claude Code 会话上下文，由用户编辑保存触发的"重启配置"语义所预期。
+    // 共享 PTY 语义:若该 tabId 在多个 pane 中共享(双开),stop+start 会让另一 pane 失联,
+    // 这里跳过重启,只更新 DB 字段;用户需先关闭双开才能应用 env 变更。
     const after = get().sessions.find((s) => s.id === id);
-    if (after?.toolType === "claude" && after.isRunning) {
+    const sharedInstances = after ? instanceCount(get().panes, id) : 0;
+    if (after?.toolType === "claude" && after.isRunning && sharedInstances <= 1) {
       stopSession(id).catch(() => {});
       const project = get().projects.find((p) => p.id === after.projectId);
       const envVars = parseEnvVars(after.envVars || "");
@@ -745,7 +770,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (sourcePaneIdx < 0) return {};
       const sourcePane = state.panes[sourcePaneIdx];
 
-      // 新面板的 openTabIds 暂时只放 tabId，activeTabId = tabId
+      // 共享 PTY 语义：同 tabId 已在 sourcePane 中存在,新 pane 再加一次,共享后端 PtyEntry。
+      // 后端 start_session 已是 idempotent,无需再调一次;但 reader 线程已在 source pane
+      // 启动时建立,output 会自动广播到新 pane 的 TerminalView。
       const newPane: Pane = { id: crypto.randomUUID(), openTabIds: [tabId], activeTabId: tabId };
 
       // 默认 ratio：若只有一个面板有内容，居中；若已有 1 个+新增，保留旧 ratio
@@ -773,25 +800,34 @@ export const useAppStore = create<AppState>((set, get) => ({
       const idx = state.panes.findIndex((p) => p.id === paneId);
       if (idx < 0) return {};
       const closing = state.panes[idx];
+      const remaining = state.panes.filter((_, i) => i !== idx);
 
-      // 关闭面板里的所有 PTY
-      for (const tid of closing.openTabIds) {
+      // 共享 PTY 语义：仅对"该 tabId 在 remaining 中 instance count === 0"的 tabId 停 PTY
+      const closingTabs = new Set(closing.openTabIds);
+      for (const tid of closingTabs) {
+        if (instanceCount(remaining, tid) > 0) continue; // 另一 pane 还开着,不停
         const s = state.sessions.find((sess) => sess.id === tid);
         if (s?.isRunning) stopSession(tid).catch(() => {});
         sessionUpdate(tid, { isRunning: false, closedAt: Date.now() }).catch(() => {});
       }
 
-      const remaining = state.panes.filter((_, i) => i !== idx);
       // 焦点切到剩余面板里最后一个
       const newActivePaneId = remaining[remaining.length - 1]?.id ?? null;
       const newActiveTabId = paneActiveId(remaining, newActivePaneId);
       const openTabIds = flattenPaneOpenIds(remaining);
+      const zeroedIds = new Set(
+        Array.from(closingTabs).filter((tid) => instanceCount(remaining, tid) === 0),
+      );
+      const sessions = state.sessions.map((s) =>
+        zeroedIds.has(s.id) ? { ...s, isRunning: false, closedAt: Date.now() } : s,
+      );
       saveOpenTabIds(openTabIds);
       return {
         panes: remaining,
         activePaneId: newActivePaneId,
         openTabIds,
         activeTabId: newActiveTabId,
+        sessions,
       };
     });
   },
@@ -799,21 +835,21 @@ export const useAppStore = create<AppState>((set, get) => ({
   moveTabToPane: (tabId, targetPaneId, insertIndex) => {
     set((state) => {
       if (!state.panes.some((p) => p.id === targetPaneId)) return {};
-      // 找到 tab 所在的 pane
-      const sourcePaneIdx = state.panes.findIndex((p) => p.openTabIds.includes(tabId));
-      if (sourcePaneIdx < 0) return {};
-      const sourcePane = state.panes[sourcePaneIdx];
-      const targetPane = state.panes.find((p) => p.id === targetPaneId)!;
-
-      // 同 pane 内移动：仅做 reorder
-      if (sourcePane.id === targetPaneId) {
-        const fromIdx = sourcePane.openTabIds.indexOf(tabId);
-        if (fromIdx < 0) return {};
-        const toIdx = insertIndex ?? sourcePane.openTabIds.length - 1;
-        if (fromIdx === toIdx || (fromIdx === toIdx - 1 && toIdx === sourcePane.openTabIds.length)) {
+      // 找到含 tabId 的所有 source pane（共享 PTY 语义：可能多个）
+      const sourcePaneIds = state.panes
+        .filter((p) => p.openTabIds.includes(tabId) && p.id !== targetPaneId)
+        .map((p) => p.id);
+      if (sourcePaneIds.length === 0) {
+        // 没有"其他" source pane：要么 tabId 不存在,要么只在 target pane 里（同 pane 移动）
+        const onlyPane = state.panes.find((p) => p.id === targetPaneId);
+        if (!onlyPane || !onlyPane.openTabIds.includes(tabId)) return {};
+        // 同 pane reorder
+        const fromIdx = onlyPane.openTabIds.indexOf(tabId);
+        const toIdx = insertIndex ?? onlyPane.openTabIds.length - 1;
+        if (fromIdx === toIdx || (fromIdx === toIdx - 1 && toIdx === onlyPane.openTabIds.length)) {
           return {};
         }
-        const newOpen = [...sourcePane.openTabIds];
+        const newOpen = [...onlyPane.openTabIds];
         newOpen.splice(fromIdx, 1);
         const adjustedTo = toIdx > fromIdx ? toIdx - 1 : toIdx;
         newOpen.splice(adjustedTo, 0, tabId);
@@ -825,8 +861,11 @@ export const useAppStore = create<AppState>((set, get) => ({
         return { panes: nextPanes, openTabIds };
       }
 
-      // 跨 pane 移动：从 source 移除，加入 target
-      const sourceNextOpen = sourcePane.openTabIds.filter((tid) => tid !== tabId);
+      // 跨 pane 移动：把每个 source pane 里的第一个 occurrence 移除
+      // 防御性:同 pane 不重复(由 openTab 保证),但跨 pane 可重复
+      const targetPane = state.panes.find((p) => p.id === targetPaneId)!;
+      // 计算 target 插入位置(在"移除前"还是"移除后"长度基准?这里用移除后,
+      // 因为跨 pane 移动通常只关心 target 内的相对位置)
       const targetNextOpen = [...targetPane.openTabIds];
       const insertAt = insertIndex !== undefined
         ? Math.max(0, Math.min(insertIndex, targetNextOpen.length))
@@ -834,17 +873,21 @@ export const useAppStore = create<AppState>((set, get) => ({
       targetNextOpen.splice(insertAt, 0, tabId);
 
       const nextPanes: Pane[] = [];
-      for (let i = 0; i < state.panes.length; i++) {
-        const p = state.panes[i];
-        if (p.id === sourcePane.id) {
-          if (sourceNextOpen.length > 0) {
-            // 源 pane 仍有 tab：保持存在，必要时调整 active
-            const nextActive = p.activeTabId === tabId
-              ? (sourceNextOpen[sourceNextOpen.length - 1] ?? null)
-              : p.activeTabId;
-            nextPanes.push({ ...p, openTabIds: sourceNextOpen, activeTabId: nextActive });
+      for (const p of state.panes) {
+        if (sourcePaneIds.includes(p.id)) {
+          const idx = p.openTabIds.indexOf(tabId);
+          if (idx < 0) {
+            // 已被前面 pane 处理过？这里每 pane 只处理一次,不会重复
+            nextPanes.push(p);
+            continue;
           }
-          // 源 pane 变空：跳过（删除）
+          const nextOpen = [...p.openTabIds.slice(0, idx), ...p.openTabIds.slice(idx + 1)];
+          if (nextOpen.length === 0) continue; // 源 pane 变空 → 删除
+          // active 切换:若 source pane 的 activeTabId === tabId,切到该 pane 剩余最后一个
+          const nextActive = p.activeTabId === tabId
+            ? (nextOpen[nextOpen.length - 1] ?? null)
+            : p.activeTabId;
+          nextPanes.push({ ...p, openTabIds: nextOpen, activeTabId: nextActive });
         } else if (p.id === targetPane.id) {
           nextPanes.push({ ...p, openTabIds: targetNextOpen, activeTabId: tabId });
         } else {
@@ -853,7 +896,6 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
 
       const openTabIds = flattenPaneOpenIds(nextPanes);
-      // 焦点切到目标 pane + 目标 tab
       const newActivePaneId = targetPane.id;
       saveOpenTabIds(openTabIds);
       return {
@@ -886,24 +928,39 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   closeAllTabs: () => {
     const state = get();
-    // 停止所有运行中的会话
-    for (const session of state.sessions) {
-      if (session.isRunning) {
-        stopSession(session.id).catch(() => {});
+    // 共享 PTY 语义：所有 instance 归零时停 PTY。
+    // 这里直接把 panes 清空,等价于所有 instance 归零,所以 unique tabId 全部需要 stop。
+    const uniqueOpenIds = new Set<string>();
+    for (const p of state.panes) for (const id of p.openTabIds) uniqueOpenIds.add(id);
+    for (const id of uniqueOpenIds) {
+      const session = state.sessions.find((s) => s.id === id);
+      if (session?.isRunning) {
+        stopSession(id).catch(() => {});
       }
+      sessionUpdate(id, { isRunning: false, closedAt: Date.now() }).catch(() => {});
     }
-    set({ panes: [], activePaneId: null, openTabIds: [], activeTabId: null });
+    set({
+      panes: [],
+      activePaneId: null,
+      openTabIds: [],
+      activeTabId: null,
+      sessions: state.sessions.map((s) =>
+        uniqueOpenIds.has(s.id) ? { ...s, isRunning: false, closedAt: Date.now() } : s,
+      ),
+    });
     saveOpenTabIds([]);
   },
 
-  closeTab: (id) => {
+  closeTab: (id, paneId) => {
     const state = get();
     const session = state.sessions.find((s) => s.id === id);
 
+    // 共享 PTY 语义：实例级关闭。
+    // 默认关 activePane 中的实例（包含同 pane 内同 tabId 的防御性逻辑）；
+    // 显式传 paneId 时关该 pane 的第一个 occurrence。
+
     // Claude Code 关闭标签前，先探测 work_dir 下 mtime <= 当前时刻的最近 JSONL，
     // 确保 cliSessionId 与磁盘上最近一次写入的 JSONL UUID 一致。
-    // 这样即使 /clear 改变了文件 mtime，cliSessionId 也会与最新 JSONL 对齐；
-    // 多标签同 work_dir 时，本会话 JSONL 必然不晚于当前时间（我们还没停 PTY）。
     if (session?.isRunning && session.toolType === "claude") {
       const project = state.projects.find((p) => p.id === session.projectId);
       const profile = session.profileId
@@ -927,25 +984,57 @@ export const useAppStore = create<AppState>((set, get) => ({
         });
     }
 
-    if (session?.isRunning) {
-      stopSession(id).catch(() => {});
-    }
-    // 标记 closedAt 和 isRunning
-    sessionUpdate(id, { isRunning: false, closedAt: Date.now() }).catch(() => {});
-    set((state) => {
-      const sessions = state.sessions.map((s) =>
-        s.id === id ? { ...s, isRunning: false, closedAt: Date.now() } : s,
+    // 计算"关闭后还剩多少实例"——只在归零时才停 PTY
+    const targetPaneId = paneId ?? state.activePaneId ?? "";
+    const willHaveInstances = (() => {
+      let count = 0;
+      for (const p of state.panes) {
+        for (const tid of p.openTabIds) if (tid === id) count++;
+      }
+      // 减去这次即将关闭的 1 个（前提：targetPaneId 命中且该 pane 确实含该 id）
+      const targetHit = state.panes.some(
+        (p) => p.id === targetPaneId && p.openTabIds.includes(id),
       );
-      // 从所有 pane 里移除该 tab；若移除后面板空了，整个面板也清掉
+      return targetHit ? count - 1 : count;
+    })();
+    if (willHaveInstances === 0) {
+      if (session?.isRunning) {
+        stopSession(id).catch(() => {});
+      }
+      // 归零时写 closedAt 和 isRunning
+      sessionUpdate(id, { isRunning: false, closedAt: Date.now() }).catch(() => {});
+    }
+    set((state) => {
+      const sessions = willHaveInstances === 0
+        ? state.sessions.map((s) =>
+          s.id === id ? { ...s, isRunning: false, closedAt: Date.now() } : s,
+        )
+        : state.sessions;
+      // 实例级移除：仅从目标 pane 移除第一个 occurrence
       const nextPanes: Pane[] = [];
       for (const p of state.panes) {
-        const nextOpen = p.openTabIds.filter((tid) => tid !== id);
-        if (nextOpen.length === 0) continue;
-        let nextActive = p.activeTabId;
-        if (p.activeTabId === id) {
-          // 当前 pane 的 active 被关掉了，切到该 pane 剩余 tab 的最后一个
-          nextActive = nextOpen[nextOpen.length - 1];
+        if (p.id !== targetPaneId) {
+          nextPanes.push(p);
+          continue;
         }
+        const idx = p.openTabIds.indexOf(id);
+        if (idx < 0) {
+          nextPanes.push(p);
+          continue;
+        }
+        const nextOpen = [...p.openTabIds.slice(0, idx), ...p.openTabIds.slice(idx + 1)];
+        if (nextOpen.length === 0) {
+          // 该 pane 整体被清空 → 不入 nextPanes
+          continue;
+        }
+        // 活动 tab 切换：
+        //   - activeTabId !== id：保持
+        //   - activeTabId === id 且剩余仍有该 occurrence：保持（仍能命中）
+        //   - activeTabId === id 且没了：切到该 pane 最后一个
+        const stillHasThisId = nextOpen.includes(id);
+        const nextActive = p.activeTabId === id
+          ? (stillHasThisId ? id : nextOpen[nextOpen.length - 1])
+          : p.activeTabId;
         nextPanes.push({ ...p, openTabIds: nextOpen, activeTabId: nextActive });
       }
       const openTabIds = flattenPaneOpenIds(nextPanes);
@@ -961,14 +1050,14 @@ export const useAppStore = create<AppState>((set, get) => ({
     });
   },
 
-  openTab: (id) => {
+  openTab: (id, opts) => {
     const state = get();
-    // 已在任意 pane 打开：把焦点切到那个 pane 并激活该 tab
-    for (const p of state.panes) {
-      if (p.openTabIds.includes(id)) {
-        set({ activePaneId: p.id, activeTabId: id });
-        return;
-      }
+    // 共享 PTY 语义：允许同 tabId 出现在多个 pane。
+    // 防御性：若目标 pane（默认 activePane）已含该 id，仅切焦点不再追加。
+    const targetPaneId = opts?.targetPaneId ?? state.activePaneId ?? state.panes[state.panes.length - 1]?.id;
+    if (targetPaneId && state.panes.some((p) => p.id === targetPaneId && p.openTabIds.includes(id))) {
+      set({ activePaneId: targetPaneId, activeTabId: id });
+      return;
     }
     const session = state.sessions.find((s) => s.id === id);
     if (!session) return;
@@ -1077,11 +1166,19 @@ export const useAppStore = create<AppState>((set, get) => ({
       const sessions = state.sessions.map((s) =>
         s.id === id ? { ...s, isRunning: true, closedAt: undefined } : s,
       );
-      // 把新 tab 加到当前活动 pane；若 activePaneId 指向不存在的 pane（restore 阶段刻意为之），按这个 id 新建 pane
-      const candidateId = state.activePaneId ?? state.panes[state.panes.length - 1]?.id;
+      // 目标 pane：显式 opts 优先，其次 activePane，最后 fallback 到 panes 末尾 / 新建
+      const optsTarget = opts?.targetPaneId;
+      const candidateId = optsTarget
+        ?? state.activePaneId
+        ?? state.panes[state.panes.length - 1]?.id;
       let nextPanes: Pane[];
       let nextActivePaneId: string | null;
       if (state.panes.some((p) => p.id === candidateId)) {
+        // 防御性：目标 pane 已含该 id → 不重复 append（共享 PTY 语义要求同 pane 不重复）
+        const targetPane = state.panes.find((p) => p.id === candidateId)!;
+        if (targetPane.openTabIds.includes(id)) {
+          return { sessions, activePaneId: candidateId, activeTabId: id };
+        }
         nextPanes = state.panes.map((p) =>
           p.id === candidateId
             ? { ...p, openTabIds: [...p.openTabIds, id], activeTabId: id }
@@ -1208,34 +1305,37 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   closeOtherTabs: (id) => {
     const state = get();
-    // 找到 id 所在的 pane，把其他 pane 全部清空
-    const hostPaneIdx = state.panes.findIndex((p) => p.openTabIds.includes(id));
-    if (hostPaneIdx < 0) return;
-    // 关闭其他 pane 里的所有 tab
-    state.panes.forEach((p, i) => {
-      if (i === hostPaneIdx) return;
-      p.openTabIds.forEach((tid) => {
-        const s = state.sessions.find((sess) => sess.id === tid);
-        if (s?.isRunning) stopSession(tid).catch(() => {});
-        sessionUpdate(tid, { isRunning: false, closedAt: Date.now() }).catch(() => {});
-      });
-    });
-    // 同一个 pane 内 id 之外的其他 tab 也要关
-    const hostPane = state.panes[hostPaneIdx];
-    const intraCloseIds = hostPane.openTabIds.filter((tid) => tid !== id);
-    intraCloseIds.forEach((tid) => {
+    // 找到 id 所在的任意一个 host pane(host pane 唯一,因为 openTab 防御性
+    // 保证同 pane 内不重复,但跨 pane 双开时 id 可能在多个 pane 中)
+    const hostPane = state.panes.find((p) => p.openTabIds.includes(id));
+    if (!hostPane) return;
+
+    // 共享 PTY 语义：先计算"被关闭的实例"和"剩余实例"。
+    //   - 关闭 = 所有非 host pane 中 id 的 instance + host pane 内除 id 之外的 tab
+    //   - 剩余 = host pane 中保留的 [id] 列表
+    // 哪些 tabId 的所有 instance 归零:对每个被关闭的 tabId,若 hostPane.openTabIds 不含它,归零。
+    const closedTabIds = new Set<string>();
+    for (const p of state.panes) {
+      if (p.id === hostPane.id) continue;
+      for (const tid of p.openTabIds) closedTabIds.add(tid);
+    }
+    for (const tid of hostPane.openTabIds) {
+      if (tid !== id) closedTabIds.add(tid);
+    }
+    for (const tid of closedTabIds) {
+      // 若 host pane 还含该 tid,说明只是清掉其它 pane 的 instance,不算 0
+      if (hostPane.openTabIds.includes(tid) && closedTabIds.has(tid) && tid !== id) {
+        // host pane 内该 tid 也被清掉 → 归零
+      }
       const s = state.sessions.find((sess) => sess.id === tid);
       if (s?.isRunning) stopSession(tid).catch(() => {});
       sessionUpdate(tid, { isRunning: false, closedAt: Date.now() }).catch(() => {});
-    });
+    }
     set((state) => {
       const hostPaneNew: Pane = { id: hostPane.id, openTabIds: [id], activeTabId: id };
       const nextPanes = [hostPaneNew];
       const sessions = state.sessions.map((s) => {
-        const allClosed = new Set([
-          ...state.panes.flatMap((p) => p.openTabIds),
-        ]);
-        if (allClosed.has(s.id) && s.id !== id) {
+        if (closedTabIds.has(s.id)) {
           return { ...s, isRunning: false, closedAt: Date.now() };
         }
         return s;
@@ -1254,10 +1354,21 @@ export const useAppStore = create<AppState>((set, get) => ({
     const idx = pane.openTabIds.indexOf(id);
     if (idx < 0) return;
     const closingIds = pane.openTabIds.slice(idx + 1);
+    // 共享 PTY 语义：每个 closingId 在 nextPanes 中只剩"本 pane 内 idx 之前 + 其他 pane 内的实例"
+    // 这里 closingIds 都是从本 pane 内移除,只减少 1 个 instance;若该 tabId 在其他 pane 还有,
+    // 不停 PTY,仅从该 pane 内移除(等下个 close 触发归零)
     closingIds.forEach((tid) => {
       const s = state.sessions.find((sess) => sess.id === tid);
-      if (s?.isRunning) stopSession(tid).catch(() => {});
-      sessionUpdate(tid, { isRunning: false, closedAt: Date.now() }).catch(() => {});
+      if (!s?.isRunning) return;
+      // 计算"关闭本 pane 内这个 instance 后,该 tabId 还剩多少"
+      const otherInstances = state.panes.reduce((acc, p) => {
+        if (p.id === pane.id) return acc; // 即将全部移除(在 slice(0, idx+1) 后)
+        return acc + p.openTabIds.filter((t) => t === tid).length;
+      }, 0);
+      if (otherInstances === 0) {
+        stopSession(tid).catch(() => {});
+        sessionUpdate(tid, { isRunning: false, closedAt: Date.now() }).catch(() => {});
+      }
     });
     set((state) => {
       const nextPanes = state.panes.map((p) => {
@@ -1266,8 +1377,12 @@ export const useAppStore = create<AppState>((set, get) => ({
         const nextActive = p.activeTabId && !nextOpen.includes(p.activeTabId) ? id : p.activeTabId;
         return { ...p, openTabIds: nextOpen, activeTabId: nextActive };
       });
+      // 只对"该 tabId 全 pane 归零"时标 isRunning=false（其他 pane 还有的 session 不动）
+      const zeroedIds = new Set(
+        closingIds.filter((tid) => instanceCount(nextPanes, tid) === 0),
+      );
       const sessions = state.sessions.map((s) =>
-        closingIds.includes(s.id) ? { ...s, isRunning: false, closedAt: Date.now() } : s,
+        zeroedIds.has(s.id) ? { ...s, isRunning: false, closedAt: Date.now() } : s,
       );
       const openTabIds = flattenPaneOpenIds(nextPanes);
       saveOpenTabIds(openTabIds);

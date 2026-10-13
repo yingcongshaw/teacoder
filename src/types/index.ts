@@ -143,7 +143,8 @@ export interface TabState {
 /**
  * 终端分屏面板。
  * 每个 Pane 持有自己的 openTabIds + activeTabId，v0.1 最多 2 个面板（左右水平分屏）。
- * 同一个 tab 同一时刻只能归属一个 Pane，避免同一 PTY 被两个 TerminalView 重复订阅。
+ * 同一 tabId 可在多个 Pane 中并存（共享 PTY 同步输入），
+ * 但同 Pane 内不重复（由 openTab 防御性入口保证）。
  */
 export interface Pane {
   id: string;

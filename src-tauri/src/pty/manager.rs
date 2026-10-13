@@ -302,6 +302,11 @@ impl PtyManager {
         });
 
         let mut sessions = self.sessions.lock().map_err(|e| e.to_string())?;
+        // 共享 PTY 语义:同 tabId 重复 start 视为"前端显式多开或误调",
+        // 复用现有 PtyEntry,避免 kill 旧 child / 重复 reader 线程。
+        if sessions.contains_key(&tab_id) {
+            return Ok(());
+        }
         sessions.insert(
             tab_id,
             PtyEntry {

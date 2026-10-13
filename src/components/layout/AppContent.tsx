@@ -50,6 +50,7 @@ export default function AppContent() {
   const panes = useAppStore((s) => s.panes);
   const splitRatio = useAppStore((s) => s.splitRatio);
   const setSplitRatio = useAppStore((s) => s.setSplitRatio);
+  const activePaneId = useAppStore((s) => s.activePaneId);
 
   const [hoveredCardId, setHoveredCardId] = useState<string | null>(null);
   const [costModalOpen, setCostModalOpen] = useState(false);
@@ -60,7 +61,10 @@ export default function AppContent() {
   const panesContainerRef = useRef<HTMLDivElement | null>(null);
 
   const copyTerminalSelection = useCallback(async (tabId: string) => {
-    const handle = terminalRefs.current.get(tabId);
+    // 共享 PTY:同 tabId 可能在多 pane 并存,精确取 activePane 的实例
+    const paneId = useAppStore.getState().activePaneId;
+    const key = paneId ? `${paneId}:${tabId}` : tabId;
+    const handle = terminalRefs.current.get(key) ?? terminalRefs.current.get(tabId);
     if (!handle) return;
     const ok = await handle.copySelection();
     if (ok) {
@@ -71,7 +75,9 @@ export default function AppContent() {
   }, []);
 
   const pasteIntoTerminal = useCallback(async (tabId: string) => {
-    const handle = terminalRefs.current.get(tabId);
+    const paneId = useAppStore.getState().activePaneId;
+    const key = paneId ? `${paneId}:${tabId}` : tabId;
+    const handle = terminalRefs.current.get(key) ?? terminalRefs.current.get(tabId);
     if (!handle) return;
     const ok = await handle.pasteFromClipboard();
     if (!ok) {
@@ -142,6 +148,7 @@ export default function AppContent() {
             <div className="flex-1 min-w-0">
               <PaneView
                 paneId={panes[0].id}
+                isActivePane={panes[0].id === activePaneId}
                 terminalRefs={terminalRefs}
                 onCopy={copyTerminalSelection}
                 onPaste={pasteIntoTerminal}
@@ -155,6 +162,7 @@ export default function AppContent() {
               >
                 <PaneView
                   paneId={panes[0].id}
+                  isActivePane={panes[0].id === activePaneId}
                   terminalRefs={terminalRefs}
                   onCopy={copyTerminalSelection}
                   onPaste={pasteIntoTerminal}
@@ -171,6 +179,7 @@ export default function AppContent() {
               >
                 <PaneView
                   paneId={panes[1].id}
+                  isActivePane={panes[1].id === activePaneId}
                   terminalRefs={terminalRefs}
                   onCopy={copyTerminalSelection}
                   onPaste={pasteIntoTerminal}

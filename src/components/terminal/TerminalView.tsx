@@ -14,6 +14,12 @@ import "@xterm/xterm/css/xterm.css";
 interface TerminalViewProps {
   tabId: string;
   visible?: boolean;
+  /**
+   * 是否接收键盘输入(写到 PTY)。
+   * 共享 PTY 语义：双开时只有 activePane 启用,避免 onData 双写。
+   * 非 active 终端仍订阅 pty:output 同步显示,只是不能键入。
+   */
+  enableInput?: boolean;
 }
 
 export interface TerminalViewHandle {
@@ -205,7 +211,7 @@ function captureSelectionText(term: Terminal): string {
   return readSelectionFromBuffer(term, range);
 }
 
-const TerminalView = forwardRef<TerminalViewHandle, TerminalViewProps>(function TerminalView({ tabId, visible = true }, ref) {
+const TerminalView = forwardRef<TerminalViewHandle, TerminalViewProps>(function TerminalView({ tabId, visible = true, enableInput = true }, ref) {
   const termRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
@@ -257,6 +263,11 @@ const TerminalView = forwardRef<TerminalViewHandle, TerminalViewProps>(function 
       try {
         const text = await readClipboardText();
         if (text) {
+          // 共享 PTY:非 active pane 拒绝写入,避免双开双写
+          if (!enableInput) {
+            console.debug("[TerminalView.paste] skipped: enableInput=false");
+            return false;
+          }
           writeToPty(tabId, text).catch(() => {});
           console.debug(`[TerminalView.paste] OK (${text.length}B)`);
           return true;
@@ -270,7 +281,7 @@ const TerminalView = forwardRef<TerminalViewHandle, TerminalViewProps>(function 
       }
       return false;
     },
-  }), [tabId]);
+  }), [tabId, enableInput]);
 
   const terminalSettings = useAppStore((s) => s.terminalSettings);
   const appTheme = useAppStore((s) => s.theme);
@@ -339,6 +350,12 @@ const TerminalView = forwardRef<TerminalViewHandle, TerminalViewProps>(function 
     const handlePaste = async (e: ClipboardEvent) => {
       const items = e.clipboardData?.items;
       if (!items) return;
+      // 共享 PTY:非 active pane 拒绝写入,避免双开双写
+      if (!enableInput) {
+        e.preventDefault();
+        console.debug("[TerminalView.paste-image] skipped: enableInput=false");
+        return;
+      }
 
       for (const item of items) {
         if (item.type.startsWith("image/")) {
@@ -373,6 +390,8 @@ const TerminalView = forwardRef<TerminalViewHandle, TerminalViewProps>(function 
     termRef.current.addEventListener("paste", handlePaste);
 
     term.onData((data) => {
+      // 共享 PTY:非 active pane 不写 PTY,避免双开双写
+      if (!enableInput) return;
       // Track user input for message tracking
       trackerRef.current?.captureInput(data);
       // Detect Enter key (CR = carriage return, LF = line feed)
@@ -463,7 +482,7 @@ const TerminalView = forwardRef<TerminalViewHandle, TerminalViewProps>(function 
       unlisten_output.then((fn) => fn());
       unlisten_exit.then((fn) => fn());
     };
-  }, [tabId]);
+  }, [tabId, enableInput]);
 
   // 设置变更时动态更新终端
   useEffect(() => {
