@@ -12,18 +12,27 @@ import {
   CloseOutlined,
   CloseCircleOutlined,
   DeleteOutlined,
+  VerticalLeftOutlined,
+  VerticalRightOutlined,
+  CloseSquareOutlined,
 } from "@ant-design/icons";
 import { useAppStore } from "../../stores/appStore";
 import { TOOL_DISPLAY_NAMES } from "../../types";
 import type { Session } from "../../types";
 import { openPathInFileManager, openTerminal } from "../../utils/ipc";
 
-export default function TabBar() {
+interface TabBarProps {
+  /** 所属分屏面板 id；不传则退回全局视图（兼容旧用法） */
+  paneId?: string;
+}
+
+export default function TabBar({ paneId }: TabBarProps = {}) {
   const sessions = useAppStore((s) => s.sessions);
   const projects = useAppStore((s) => s.projects);
-  const openTabIds = useAppStore((s) => s.openTabIds);
-  const activeTabId = useAppStore((s) => s.activeTabId);
+  const panes = useAppStore((s) => s.panes);
+  const globalActivePaneId = useAppStore((s) => s.activePaneId);
   const setActiveTab = useAppStore((s) => s.setActiveTab);
+  const setActivePane = useAppStore((s) => s.setActivePane);
   const closeTab = useAppStore((s) => s.closeTab);
   const deleteSession = useAppStore((s) => s.deleteSession);
   const updateSession = useAppStore((s) => s.updateSession);
@@ -31,8 +40,19 @@ export default function TabBar() {
   const closeOtherTabs = useAppStore((s) => s.closeOtherTabs);
   const closeAllTabs = useAppStore((s) => s.closeAllTabs);
   const locateSession = useAppStore((s) => s.locateSession);
+  const splitPane = useAppStore((s) => s.splitPane);
+  const closePane = useAppStore((s) => s.closePane);
   const llmProviders = useAppStore((s) => s.llmProviders);
   const { message, modal } = App.useApp();
+
+  // 当前面板：若 paneId 传了就用指定面板，否则取全局活动面板，否则第一个
+  const pane = paneId
+    ? panes.find((p) => p.id === paneId)
+    : (panes.find((p) => p.id === globalActivePaneId) ?? panes[0] ?? null);
+  const openTabIds = pane?.openTabIds ?? [];
+  const activeTabId = pane?.activeTabId ?? null;
+  const canSplit = panes.length < 2;
+  const canClosePane = panes.length > 1;
 
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
@@ -41,7 +61,7 @@ export default function TabBar() {
   const [moveTargetProjectId, setMoveTargetProjectId] = useState<string | null>(null);
   const renameInputRef = useRef<InputRef | null>(null);
 
-  // 只显示已打开的标签
+  // 只显示当前面板内已打开的标签
   const openTabs = openTabIds
     .map((id) => sessions.find((s) => s.id === id))
     .filter((s): s is Session => s !== undefined);
@@ -134,6 +154,31 @@ export default function TabBar() {
       icon: <SwapOutlined />,
       onClick: () => handleMoveToProject(tab),
     },
+    { type: "divider" },
+    {
+      key: "splitLeft",
+      label: canSplit ? "向左侧分屏" : "向左侧分屏（已达 2 面板上限）",
+      icon: <VerticalLeftOutlined />,
+      disabled: !canSplit,
+      onClick: () => splitPane(tab.id, "left"),
+    },
+    {
+      key: "splitRight",
+      label: canSplit ? "向右侧分屏" : "向右侧分屏（已达 2 面板上限）",
+      icon: <VerticalRightOutlined />,
+      disabled: !canSplit,
+      onClick: () => splitPane(tab.id, "right"),
+    },
+    {
+      key: "closePane",
+      label: "关闭分屏",
+      icon: <CloseSquareOutlined />,
+      disabled: !canClosePane,
+      onClick: () => {
+        if (pane) closePane(pane.id);
+      },
+    },
+    { type: "divider" },
     {
       key: "openInFileManager",
       label: "打开文件浏览器",
@@ -218,6 +263,7 @@ export default function TabBar() {
             >
               <div
                 onClick={() => {
+                  if (pane) setActivePane(pane.id);
                   setActiveTab(tab.id);
                   locateSession(tab.id);
                 }}

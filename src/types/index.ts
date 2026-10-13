@@ -140,6 +140,17 @@ export interface TabState {
   closedAt?: number;
 }
 
+/**
+ * 终端分屏面板。
+ * 每个 Pane 持有自己的 openTabIds + activeTabId，v0.1 最多 2 个面板（左右水平分屏）。
+ * 同一个 tab 同一时刻只能归属一个 Pane，避免同一 PTY 被两个 TerminalView 重复订阅。
+ */
+export interface Pane {
+  id: string;
+  openTabIds: string[];
+  activeTabId: string | null;
+}
+
 export interface ToolSettings {
   id: string;
   profileId: string;

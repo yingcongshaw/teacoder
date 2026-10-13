@@ -1,6 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from "react";
-import { Button, Tooltip, Modal, Dropdown, App } from "antd";
-import type { MenuProps } from "antd";
+import { Button, Tooltip, Modal, App } from "antd";
 import {
   FolderOutlined,
   PlusOutlined,
@@ -10,18 +9,15 @@ import {
   CloseOutlined,
   DollarOutlined,
   ThunderboltOutlined,
-  RightSquareOutlined,
-  CopyOutlined,
-  SnippetsOutlined,
 } from "@ant-design/icons";
 import { useAppStore } from "../../stores/appStore";
-import TerminalView, { type TerminalViewHandle } from "../terminal/TerminalView";
-import TabBar from "../tabs/TabBar";
+import type { TerminalViewHandle } from "../terminal/TerminalView";
 import SettingsPage from "./SettingsPage";
 import CostDashboard from "../cost/CostDashboard";
 import QuickCommands from "../quick-commands/QuickCommands";
+import PaneView from "../panes/PaneView";
+import PaneSplitter from "../panes/PaneSplitter";
 import { TOOL_DISPLAY_NAMES } from "../../types";
-import { openPathInFileManager, openTerminal } from "../../utils/ipc";
 import type { CostSummary } from "../../types";
 
 const TOOL_COLORS: Record<string, string> = {
@@ -42,7 +38,6 @@ export default function AppContent() {
   const projects = useAppStore((s) => s.projects);
   const openTabIds = useAppStore((s) => s.openTabIds);
   const activeTabId = useAppStore((s) => s.activeTabId);
-  const activeTab = sessions.find((s) => s.id === activeTabId);
   const setNewSessionModalOpen = useAppStore((s) => s.setNewSessionModalOpen);
   const setNewProjectModalOpen = useAppStore((s) => s.setNewProjectModalOpen);
   const deleteSession = useAppStore((s) => s.deleteSession);
@@ -51,12 +46,18 @@ export default function AppContent() {
   const settingsPage = useAppStore((s) => s.settingsPage);
   const setSettingsPage = useAppStore((s) => s.setSettingsPage);
 
+  // 分屏相关
+  const panes = useAppStore((s) => s.panes);
+  const splitRatio = useAppStore((s) => s.splitRatio);
+  const setSplitRatio = useAppStore((s) => s.setSplitRatio);
+
   const [hoveredCardId, setHoveredCardId] = useState<string | null>(null);
   const [costModalOpen, setCostModalOpen] = useState(false);
   const [globalCost] = useState<CostSummary | null>(null);
   const [quickCommandsVisible, setQuickCommandsVisible] = useState(false);
   const quickCommandsBtnRef = useRef<HTMLSpanElement>(null);
   const terminalRefs = useRef<Map<string, TerminalViewHandle>>(new Map());
+  const panesContainerRef = useRef<HTMLDivElement | null>(null);
 
   const copyTerminalSelection = useCallback(async (tabId: string) => {
     const handle = terminalRefs.current.get(tabId);
@@ -126,95 +127,62 @@ export default function AppContent() {
     return "$0";
   };
 
+  // 注：分屏交互中的"焦点面板"已由 PaneView 内部 mousedown 处理；
+  // AppContent 层面只关心 panes / splitRatio 用于布局。
+
   const mainContent = (() => {
-    // 有已打开的标签时，显示终端
-    if (activeTab && openTabIds.length > 0) {
+    // 有 pane 存在（即已打开至少一个 tab）就显示分屏容器
+    if (panes.length > 0) {
       return (
-        <div className="flex-1 flex flex-col min-w-0 bg-[var(--ant-color-bg-container)]">
-          <TabBar />
-          <div className="flex-1 relative overflow-hidden min-h-0">
-            {openTabIds.map((tabId) => {
-              const session = sessions.find((s) => s.id === tabId);
-              if (!session) return null;
-              const project = projects.find((p) => p.id === session.projectId);
-              const projectPath = project?.path;
-
-              const terminalContextMenu: MenuProps["items"] = [
-                {
-                  key: "copy",
-                  label: (
-                    <span className="flex items-center justify-between gap-4">
-                      <span>复制</span>
-                      <span style={{ color: "var(--ant-color-text-tertiary)", fontSize: 11 }}>{IS_MAC ? "Cmd+Shift+C" : "Ctrl+Shift+C"}</span>
-                    </span>
-                  ),
-                  icon: <CopyOutlined />,
-                  onClick: () => copyTerminalSelection(tabId),
-                },
-                {
-                  key: "paste",
-                  label: (
-                    <span className="flex items-center justify-between gap-4">
-                      <span>粘贴</span>
-                      <span style={{ color: "var(--ant-color-text-tertiary)", fontSize: 11 }}>{IS_MAC ? "Cmd+Shift+V" : "Ctrl+Shift+V"}</span>
-                    </span>
-                  ),
-                  icon: <SnippetsOutlined />,
-                  onClick: () => pasteIntoTerminal(tabId),
-                },
-                { type: "divider" as const },
-                ...(projectPath
-                  ? [
-                      {
-                        key: "openInFileManager",
-                        label: "打开文件浏览器",
-                        icon: <FolderOutlined />,
-                        onClick: () => openPathInFileManager(projectPath),
-                      },
-                      {
-                        key: "openTerminal",
-                        label: "打开终端",
-                        icon: <RightSquareOutlined />,
-                        onClick: () => openTerminal(projectPath),
-                      },
-                    ]
-                  : []),
-              ];
-
-              return (
-                <Dropdown
-                  key={tabId}
-                  menu={{ items: terminalContextMenu }}
-                  trigger={["contextMenu"]}
-                >
-                  <div
-                    className="absolute inset-0"
-                    style={{
-                      visibility: tabId === activeTabId ? "visible" : "hidden",
-                      zIndex: tabId === activeTabId ? 1 : 0,
-                    }}
-                  >
-                    <TerminalView
-                      tabId={tabId}
-                      visible={tabId === activeTabId}
-                      ref={(handle) => {
-                        if (handle) {
-                          terminalRefs.current.set(tabId, handle);
-                        } else {
-                          terminalRefs.current.delete(tabId);
-                        }
-                      }}
-                    />
-                  </div>
-                </Dropdown>
-              );
-            })}
-          </div>
+        <div
+          ref={panesContainerRef}
+          className="flex-1 flex min-w-0 bg-[var(--ant-color-bg-container)] overflow-hidden"
+        >
+          {panes.length === 1 ? (
+            <div className="flex-1 min-w-0">
+              <PaneView
+                paneId={panes[0].id}
+                terminalRefs={terminalRefs}
+                onCopy={copyTerminalSelection}
+                onPaste={pasteIntoTerminal}
+              />
+            </div>
+          ) : (
+            <>
+              <div
+                className="min-w-0 h-full"
+                style={{ width: `${splitRatio * 100}%` }}
+              >
+                <PaneView
+                  paneId={panes[0].id}
+                  terminalRefs={terminalRefs}
+                  onCopy={copyTerminalSelection}
+                  onPaste={pasteIntoTerminal}
+                />
+              </div>
+              <PaneSplitter
+                ratio={splitRatio}
+                onRatioChange={setSplitRatio}
+                containerRef={panesContainerRef}
+              />
+              <div
+                className="min-w-0 h-full"
+                style={{ width: `${(1 - splitRatio) * 100}%` }}
+              >
+                <PaneView
+                  paneId={panes[1].id}
+                  terminalRefs={terminalRefs}
+                  onCopy={copyTerminalSelection}
+                  onPaste={pasteIntoTerminal}
+                />
+              </div>
+            </>
+          )}
         </div>
       );
     }
 
-    // 首页：卡片网格
+    // 首页：卡片网格（无任何 pane 时显示）
     return (
       <div className="flex-1 flex flex-col min-w-0 bg-[var(--ant-color-bg-layout)]">
         {/* Section header */}
@@ -388,6 +356,9 @@ export default function AppContent() {
       </div>
     );
   })();
+
+  // 注：原 right-click menu 在终端上提供"复制/粘贴/打开文件夹/外终端"，
+  // v0.1 分屏中每个面板的 TerminalView 自带这些能力，简化后此处不再重复挂全局 Dropdown。
 
   return (
     <>
