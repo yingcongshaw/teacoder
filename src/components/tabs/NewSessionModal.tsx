@@ -39,12 +39,25 @@ function buildCliArgs(toolType: ToolType, params: Record<string, unknown>): stri
   return args.length > 0 ? JSON.stringify(args) : "";
 }
 
+function buildDefaultClaudeModels(provider: LlmProvider) {
+  const defModel =
+    provider.models.find((m) => m.isDefault)?.modelName ??
+    provider.models[0]?.modelName;
+  if (!defModel) return {};
+  return {
+    sonnet: defModel,
+    opus: defModel,
+    haiku: defModel,
+    fable: defModel,
+    subagent: defModel,
+  };
+}
+
 export default function NewSessionModal({ open: isOpen, projectId, categoryId, onClose }: NewSessionModalProps) {
   const { message } = App.useApp();
   const createSession = useAppStore((s) => s.createSession);
   const cliTools = useAppStore((s) => s.cliTools);
   const setCliTools = useAppStore((s) => s.setCliTools);
-  const profiles = useAppStore((s) => s.profiles);
   const globalThinkingIntensity = useAppStore((s) => s.globalThinkingIntensity);
   const projects = useAppStore((s) => s.projects);
   const categories = useAppStore((s) => s.categories);
@@ -83,6 +96,11 @@ export default function NewSessionModal({ open: isOpen, projectId, categoryId, o
   const [sshPassword, setSshPassword] = useState("");
   const [sshIdentityFile, setSshIdentityFile] = useState("");
   const [testingConnection, setTestingConnection] = useState(false);
+
+  const project = projects.find((p) => p.id === projectId);
+  const filteredCategories = projectId
+    ? categories.filter((c) => c.projectId === projectId)
+    : [];
 
   const modalRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -142,7 +160,7 @@ export default function NewSessionModal({ open: isOpen, projectId, categoryId, o
   useEffect(() => {
     if (isOpen) {
       setSelectedTool(null);
-      setSelectedColor(COLOR_PRESETS[0]);
+      setSelectedColor(project?.color || COLOR_PRESETS[0]);
       setTitle("");
       setProfileId(undefined);
       setThinkingIntensity(globalThinkingIntensity);
@@ -160,7 +178,18 @@ export default function NewSessionModal({ open: isOpen, projectId, categoryId, o
       setClaudeModels({});
       setProfileLlmDefaults({});
     }
-  }, [isOpen, globalThinkingIntensity, categoryId]);
+  }, [isOpen, globalThinkingIntensity, categoryId, project?.color]);
+
+  // 选中分类时颜色标记继承自分类；未选中时跟随项目颜色
+  useEffect(() => {
+    if (!isOpen) return;
+    if (sessionCategoryId) {
+      const cat = categories.find((c) => c.id === sessionCategoryId);
+      if (cat?.color) setSelectedColor(cat.color);
+    } else if (project?.color) {
+      setSelectedColor(project.color);
+    }
+  }, [isOpen, sessionCategoryId, project?.color, categories]);
 
   useEffect(() => {
     if (!profileId) {
@@ -202,8 +231,12 @@ export default function NewSessionModal({ open: isOpen, projectId, categoryId, o
         compatibleProviders(selectedTool).some((cp) => cp.id === globalDefProvider.id)
       ) {
         setLlmProviderId(globalDefProvider.id);
-        const defModel = globalDefProvider.models.find((m) => m.isDefault);
-        setModelName(defModel?.modelName);
+        if (selectedTool === "claude") {
+          setClaudeModels(buildDefaultClaudeModels(globalDefProvider));
+        } else {
+          const defModel = globalDefProvider.models.find((m) => m.isDefault);
+          setModelName(defModel?.modelName);
+        }
       } else {
         setLlmProviderId(undefined);
         setModelName(undefined);
@@ -213,8 +246,12 @@ export default function NewSessionModal({ open: isOpen, projectId, categoryId, o
     const provider = llmProviders.find((p) => p.id === defId);
     if (!provider || !provider.isActive) return;
     setLlmProviderId(defId);
-    const defModel = provider.models.find((m) => m.isDefault);
-    setModelName(defModel?.modelName);
+    if (selectedTool === "claude") {
+      setClaudeModels(buildDefaultClaudeModels(provider));
+    } else {
+      const defModel = provider.models.find((m) => m.isDefault);
+      setModelName(defModel?.modelName);
+    }
   }, [profileLlmDefaults.defaultLlmProviderId, llmProviders, selectedTool]);
 
   // Clear claudeModels when switching away from claude tool
@@ -223,16 +260,6 @@ export default function NewSessionModal({ open: isOpen, projectId, categoryId, o
       setClaudeModels({});
     }
   }, [selectedTool]);
-
-  const project = projects.find((p) => p.id === projectId);
-
-  const filteredProfiles = profiles.filter((p) =>
-    selectedTool ? p.toolType === selectedTool : true,
-  );
-
-  const filteredCategories = projectId
-    ? categories.filter((c) => c.projectId === projectId)
-    : [];
 
   const sortedTools = sortCliToolsByAvailability(CLI_TOOLS, cliTools);
 
@@ -464,26 +491,6 @@ export default function NewSessionModal({ open: isOpen, projectId, categoryId, o
 
           {selectedTool !== "ssh" && selectedTool !== "terminal" && (
             <div style={{ marginBottom: 12 }}>
-              <label style={{ display: "block", fontSize: 12, color: "var(--ant-color-text-secondary)", marginBottom: 4 }}>Profile</label>
-              <Select
-                placeholder="选择 Profile（可选）"
-                allowClear
-                value={profileId}
-                onChange={setProfileId}
-                style={{ width: "100%" }}
-                size="small"
-              >
-                {filteredProfiles.map((p) => (
-                  <Select.Option key={p.id} value={p.id}>
-                    {p.name}
-                  </Select.Option>
-                ))}
-              </Select>
-            </div>
-          )}
-
-          {selectedTool !== "ssh" && selectedTool !== "terminal" && (
-            <div style={{ marginBottom: 12 }}>
               <label style={{ display: "block", fontSize: 12, color: "var(--ant-color-text-secondary)", marginBottom: 4 }}>
                 LLM 供应商
               </label>
@@ -496,16 +503,8 @@ export default function NewSessionModal({ open: isOpen, projectId, categoryId, o
                   setLlmProviderId(id);
                   const provider = llmProviders.find((p) => p.id === id);
                   if (selectedTool === "claude" && provider) {
-                    const defModel = provider.models.find((m) => m.isDefault)?.modelName;
-                    const modelToUse = defModel ?? provider.models[0]?.modelName;
-                    setClaudeModels({
-                      sonnet: modelToUse,
-                      opus: modelToUse,
-                      haiku: modelToUse,
-                      fable: modelToUse,
-                      subagent: modelToUse,
-                    });
-                    setModelName(undefined); // claude uses claudeModels instead
+                    setClaudeModels(buildDefaultClaudeModels(provider));
+                    setModelName(undefined);
                   } else if (provider) {
                     const defModel = provider.models.find((m) => m.isDefault);
                     setModelName(defModel?.modelName);
@@ -595,27 +594,29 @@ export default function NewSessionModal({ open: isOpen, projectId, categoryId, o
             </div>
           )}
 
-          <div style={{ marginBottom: 12 }}>
-            <label style={{ display: "block", fontSize: 12, color: "#aaaaaa", marginBottom: 4 }}>颜色标记</label>
-            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              {COLOR_PRESETS.map((color) => (
-                <div
-                  key={color}
-                  style={{
-                    width: 16,
-                    height: 16,
-                    borderRadius: "50%",
-                    backgroundColor: color,
-                    border: selectedColor === color ? "2px solid var(--ant-color-bg-container)" : "2px solid transparent",
-                    boxShadow: selectedColor === color ? `0 0 0 1px ${color}` : "none",
-                    cursor: "pointer",
-                    transition: "all 0.15s",
-                  }}
-                  onClick={() => setSelectedColor(color)}
-                />
-              ))}
+          {!sessionCategoryId && (
+            <div style={{ marginBottom: 12 }}>
+              <label style={{ display: "block", fontSize: 12, color: "#aaaaaa", marginBottom: 4 }}>颜色标记</label>
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                {COLOR_PRESETS.map((color) => (
+                  <div
+                    key={color}
+                    style={{
+                      width: 16,
+                      height: 16,
+                      borderRadius: "50%",
+                      backgroundColor: color,
+                      border: selectedColor === color ? "2px solid var(--ant-color-bg-container)" : "2px solid transparent",
+                      boxShadow: selectedColor === color ? `0 0 0 1px ${color}` : "none",
+                      cursor: "pointer",
+                      transition: "all 0.15s",
+                    }}
+                    onClick={() => setSelectedColor(color)}
+                  />
+                ))}
+              </div>
             </div>
-          </div>
+          )}
 
           {selectedTool !== "ssh" && (
             <div style={{ marginBottom: 12 }}>

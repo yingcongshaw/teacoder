@@ -43,12 +43,25 @@ function buildCliArgs(toolType: ToolType, params: Record<string, unknown>): stri
   return args.length > 0 ? JSON.stringify(args) : "";
 }
 
+function buildDefaultClaudeModels(provider: LlmProvider) {
+  const defModel =
+    provider.models.find((m) => m.isDefault)?.modelName ??
+    provider.models[0]?.modelName;
+  if (!defModel) return {};
+  return {
+    sonnet: defModel,
+    opus: defModel,
+    haiku: defModel,
+    fable: defModel,
+    subagent: defModel,
+  };
+}
+
 export default function EditSessionModal({ open: isOpen, sessionId, onClose }: EditSessionModalProps) {
   const { message } = App.useApp();
   const updateSession = useAppStore((s) => s.updateSession);
   const cliTools = useAppStore((s) => s.cliTools);
   const setCliTools = useAppStore((s) => s.setCliTools);
-  const profiles = useAppStore((s) => s.profiles);
   const sessions = useAppStore((s) => s.sessions);
   const categories = useAppStore((s) => s.categories);
   const projects = useAppStore((s) => s.projects);
@@ -91,6 +104,7 @@ export default function EditSessionModal({ open: isOpen, sessionId, onClose }: E
   const [testingConnection, setTestingConnection] = useState(false);
 
   const modalRef = useRef<HTMLDivElement>(null);
+  const claudeProviderSyncedRef = useRef(false);
   const [isDragging, setIsDragging] = useState(false);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
 
@@ -142,7 +156,13 @@ export default function EditSessionModal({ open: isOpen, sessionId, onClose }: E
   useEffect(() => {
     if (isOpen && session) {
       setSelectedTool(session.toolType);
-      setSelectedColor(session.color || COLOR_PRESETS[0]);
+      // 分类下：颜色完全继承自分类；未分类：保留会话颜色，否则回落至项目颜色
+      if (session.categoryId) {
+        const cat = categories.find((c) => c.id === session.categoryId);
+        setSelectedColor(cat?.color || session.color || project?.color || COLOR_PRESETS[0]);
+      } else {
+        setSelectedColor(session.color || project?.color || COLOR_PRESETS[0]);
+      }
       setTitle(session.title || "");
       setProfileId(session.profileId);
       setThinkingIntensity(session.thinkingIntensity);
@@ -191,7 +211,7 @@ export default function EditSessionModal({ open: isOpen, sessionId, onClose }: E
         setCliParams({});
       }
     }
-  }, [isOpen, session]);
+  }, [isOpen, session, categories, project?.color]);
 
   useEffect(() => {
     if (isOpen && llmProviders.length === 0) {
@@ -251,9 +271,33 @@ export default function EditSessionModal({ open: isOpen, sessionId, onClose }: E
     setModelName(defModel?.modelName);
   }, [profileLlmDefaults.defaultLlmProviderId, llmProviders, selectedTool]);
 
-  const filteredProfiles = profiles.filter((p) =>
-    selectedTool ? p.toolType === selectedTool : true,
-  );
+  // 切换 LLM 供应商时，自动带出 Claude Code 各 tier 的默认模型
+  useEffect(() => {
+    if (!isOpen) {
+      claudeProviderSyncedRef.current = false;
+      return;
+    }
+    if (selectedTool !== "claude" || !llmProviderId) return;
+    if (!claudeProviderSyncedRef.current) {
+      // 首次加载（init effect 已从 session 读取）：保留 session.claudeModels
+      claudeProviderSyncedRef.current = true;
+      return;
+    }
+    const provider = llmProviders.find((p) => p.id === llmProviderId);
+    if (!provider) return;
+    setClaudeModels(buildDefaultClaudeModels(provider));
+  }, [llmProviderId, llmProviders, selectedTool, isOpen]);
+
+  // 选中分类时颜色标记继承自分类；未选中时回落至项目颜色
+  useEffect(() => {
+    if (!isOpen) return;
+    if (categoryId) {
+      const cat = categories.find((c) => c.id === categoryId);
+      if (cat?.color) setSelectedColor(cat.color);
+    } else if (project?.color) {
+      setSelectedColor(project.color);
+    }
+  }, [isOpen, categoryId, project?.color, categories]);
 
   const filteredCategories = session
     ? categories.filter((c) => c.projectId === session.projectId)
@@ -489,26 +533,6 @@ export default function EditSessionModal({ open: isOpen, sessionId, onClose }: E
 
           {selectedTool !== "ssh" && selectedTool !== "terminal" && (
             <div style={{ marginBottom: 12 }}>
-              <label style={{ display: "block", fontSize: 12, color: "var(--ant-color-text-secondary)", marginBottom: 4 }}>Profile</label>
-              <Select
-                placeholder="选择 Profile（可选）"
-                allowClear
-                value={profileId}
-                onChange={setProfileId}
-                style={{ width: "100%" }}
-                size="small"
-              >
-                {filteredProfiles.map((p) => (
-                  <Select.Option key={p.id} value={p.id}>
-                    {p.name}
-                  </Select.Option>
-                ))}
-              </Select>
-            </div>
-          )}
-
-          {selectedTool !== "ssh" && selectedTool !== "terminal" && (
-            <div style={{ marginBottom: 12 }}>
               <label style={{ display: "block", fontSize: 12, color: "var(--ant-color-text-secondary)", marginBottom: 4 }}>
                 LLM 供应商
               </label>
@@ -521,15 +545,7 @@ export default function EditSessionModal({ open: isOpen, sessionId, onClose }: E
                   setLlmProviderId(id);
                   const provider = llmProviders.find((p) => p.id === id);
                   if (selectedTool === "claude" && provider) {
-                    const defModel = provider.models.find((m) => m.isDefault)?.modelName;
-                    const modelToUse = defModel ?? provider.models[0]?.modelName;
-                    setClaudeModels({
-                      sonnet: modelToUse,
-                      opus: modelToUse,
-                      haiku: modelToUse,
-                      fable: modelToUse,
-                      subagent: modelToUse,
-                    });
+                    setClaudeModels(buildDefaultClaudeModels(provider));
                     setModelName(undefined);
                   } else if (provider) {
                     const defModel = provider.models.find((m) => m.isDefault);
@@ -620,27 +636,29 @@ export default function EditSessionModal({ open: isOpen, sessionId, onClose }: E
             </div>
           )}
 
-          <div style={{ marginBottom: 12 }}>
-            <label style={{ display: "block", fontSize: 12, color: "#aaaaaa", marginBottom: 4 }}>颜色标记</label>
-            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              {COLOR_PRESETS.map((color) => (
-                <div
-                  key={color}
-                  style={{
-                    width: 16,
-                    height: 16,
-                    borderRadius: "50%",
-                    backgroundColor: color,
-                    border: selectedColor === color ? "2px solid var(--ant-color-bg-container)" : "2px solid transparent",
-                    boxShadow: selectedColor === color ? `0 0 0 1px ${color}` : "none",
-                    cursor: "pointer",
-                    transition: "all 0.15s",
-                  }}
-                  onClick={() => setSelectedColor(color)}
-                />
-              ))}
+          {!categoryId && (
+            <div style={{ marginBottom: 12 }}>
+              <label style={{ display: "block", fontSize: 12, color: "#aaaaaa", marginBottom: 4 }}>颜色标记</label>
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                {COLOR_PRESETS.map((color) => (
+                  <div
+                    key={color}
+                    style={{
+                      width: 16,
+                      height: 16,
+                      borderRadius: "50%",
+                      backgroundColor: color,
+                      border: selectedColor === color ? "2px solid var(--ant-color-bg-container)" : "2px solid transparent",
+                      boxShadow: selectedColor === color ? `0 0 0 1px ${color}` : "none",
+                      cursor: "pointer",
+                      transition: "all 0.15s",
+                    }}
+                    onClick={() => setSelectedColor(color)}
+                  />
+                ))}
+              </div>
             </div>
-          </div>
+          )}
 
           {selectedTool !== "ssh" && (
             <div style={{ marginBottom: 12 }}>
