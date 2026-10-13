@@ -98,6 +98,17 @@ export default function TabBar({ paneId }: TabBarProps = {}) {
   }, [renamingId]);
 
   const handleClose = (tabId: string, isRunning: boolean) => {
+    // 共享 PTY 语义:同一 tabId 在多 pane 并存(双开)时,关一端仅移除该 pane
+    // 的实例,后端 PTY 仍由另一 pane 持有——不弹"终止 CLI 进程"提示。
+    let totalInstances = 0;
+    for (const p of panes) {
+      for (const tid of p.openTabIds) if (tid === tabId) totalInstances++;
+    }
+    const isShared = totalInstances > 1;
+    if (isShared) {
+      closeTab(tabId, pane?.id);
+      return;
+    }
     if (isRunning) {
       modal.confirm({
         title: "关闭标签",
@@ -105,10 +116,10 @@ export default function TabBar({ paneId }: TabBarProps = {}) {
         okText: "关闭标签",
         cancelText: "取消",
         okButtonProps: { danger: true },
-        onOk: () => closeTab(tabId),
+        onOk: () => closeTab(tabId, pane?.id),
       });
     } else {
-      closeTab(tabId);
+      closeTab(tabId, pane?.id);
     }
   };
 
