@@ -64,11 +64,15 @@ const QUICK_ACTIONS = [
   { key: "submit", label: "提交", text: "请提交代码", icon: <SendOutlined /> },
 ];
 
-export default function BottomPanel() {
+interface BottomPanelProps {
+  collapsed: boolean;
+  onCollapsedChange: (next: boolean) => void;
+}
+
+export default function BottomPanel({ collapsed, onCollapsedChange }: BottomPanelProps) {
   const sessions = useAppStore((s) => s.sessions);
   const projects = useAppStore((s) => s.projects);
   const activeTabId = useAppStore((s) => s.activeTabId);
-  const [collapsed, setCollapsed] = useState(false);
   const [activeTab, setActiveTab] = useState("files");
   const [inputValue, setInputValue] = useState("");
 
@@ -135,7 +139,7 @@ export default function BottomPanel() {
           size="small"
           type="text"
           icon={<UpOutlined />}
-          onClick={() => setCollapsed(false)}
+          onClick={() => onCollapsedChange(false)}
         />
       </div>
     );
@@ -170,7 +174,7 @@ export default function BottomPanel() {
             size="small"
             type="text"
             icon={<DownOutlined />}
-            onClick={() => setCollapsed(true)}
+            onClick={() => onCollapsedChange(true)}
           />
         </div>
       </div>

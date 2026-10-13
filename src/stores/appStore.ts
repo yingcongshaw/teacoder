@@ -40,6 +40,7 @@ const OPEN_TABS_KEY = "teacoder_open_tabs";
 const TERMINAL_SETTINGS_KEY = "teacoder_terminal_settings";
 const QUICK_COMMANDS_KEY = "teacoder_quick_commands";
 const SPLIT_RATIO_KEY = "teacoder_split_ratio";
+const PANES_LAYOUT_KEY = "teacoder_panes_layout";
 
 function loadOpenTabIds(): string[] {
   try {
@@ -68,6 +69,59 @@ function loadSplitRatio(): number {
     // ignore
   }
   return 0.5;
+}
+
+interface PersistedPanesLayout {
+  version: 1;
+  panes: Pane[];
+  activePaneId: string | null;
+}
+
+/**
+ * 加载上次保存的分屏布局。
+ * 校验：每个 pane 都有合法 id；tabId 列表里至少有一个；activeTabId 必须属于本 pane。
+ * 校验失败时返回 null（让调用方走"回退到单面板"逻辑）。
+ */
+function loadPanesLayout(): PersistedPanesLayout | null {
+  try {
+    const raw = localStorage.getItem(PANES_LAYOUT_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as PersistedPanesLayout;
+    if (parsed.version !== 1 || !Array.isArray(parsed.panes)) return null;
+    if (parsed.panes.length < 1 || parsed.panes.length > 2) return null;
+    for (const p of parsed.panes) {
+      if (typeof p.id !== "string" || !Array.isArray(p.openTabIds)) return null;
+      if (p.openTabIds.length === 0) return null;
+      if (p.activeTabId && !p.openTabIds.includes(p.activeTabId)) {
+        // activeTabId 失效时回退到最后一个
+        p.activeTabId = p.openTabIds[p.openTabIds.length - 1];
+      }
+      if (!p.activeTabId) p.activeTabId = p.openTabIds[p.openTabIds.length - 1] ?? null;
+    }
+    if (parsed.activePaneId && !parsed.panes.some((p) => p.id === parsed.activePaneId)) {
+      parsed.activePaneId = parsed.panes[parsed.panes.length - 1].id;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function savePanesLayout(panes: Pane[], activePaneId: string | null) {
+  try {
+    const payload: PersistedPanesLayout = { version: 1, panes, activePaneId };
+    localStorage.setItem(PANES_LAYOUT_KEY, JSON.stringify(payload));
+  } catch {
+    // non-critical
+  }
+}
+
+function clearPanesLayout() {
+  try {
+    localStorage.removeItem(PANES_LAYOUT_KEY);
+  } catch {
+    // ignore
+  }
 }
 
 function saveSplitRatio(ratio: number) {
@@ -237,6 +291,14 @@ interface AppState {
   setActivePane: (paneId: string) => void;
   splitPane: (tabId: string, direction: "left" | "right") => void;
   closePane: (paneId: string) => void;
+  /**
+   * 跨面板移动 tab。
+   * - sourcePaneId 不传时自动定位 tab 所在 pane
+   * - targetPaneId 不传时移动到当前 activePane
+   * - insertIndex 不传时追加到目标 pane 末尾
+   */
+  moveTabToPane: (tabId: string, targetPaneId: string, insertIndex?: number) => void;
+  reorderTabInPane: (paneId: string, fromIndex: number, toIndex: number) => void;
   setSplitRatio: (ratio: number) => void;
 
   closeTab: (id: string) => void;
@@ -386,9 +448,14 @@ const initialOpenTabIds = loadOpenTabIds();
 
 // 模块加载时即确定初始 pane id，避免在 store 初始 state 中调用 crypto.randomUUID()。
 const INITIAL_PANE_ID = crypto.randomUUID();
-const initialPanes: Pane[] = initialOpenTabIds.length > 0
-  ? [{ id: INITIAL_PANE_ID, openTabIds: initialOpenTabIds, activeTabId: initialOpenTabIds[initialOpenTabIds.length - 1] }]
-  : [];
+
+// 优先用持久化的分屏布局；回退到旧的 openTabIds 单面板
+const persistedLayout = loadPanesLayout();
+const initialPanes: Pane[] = persistedLayout
+  ? persistedLayout.panes
+  : (initialOpenTabIds.length > 0
+    ? [{ id: INITIAL_PANE_ID, openTabIds: initialOpenTabIds, activeTabId: initialOpenTabIds[initialOpenTabIds.length - 1] }]
+    : []);
 
 export const useAppStore = create<AppState>((set, get) => ({
   cliTools: [],
@@ -648,15 +715,12 @@ export const useAppStore = create<AppState>((set, get) => ({
     }));
   },
 
-  openTabIds: initialOpenTabIds,
-  activeTabId: initialOpenTabIds.length > 0
-    ? initialOpenTabIds[initialOpenTabIds.length - 1]
-    : null,
+  openTabIds: flattenPaneOpenIds(initialPanes),
+  activeTabId: paneActiveId(initialPanes, persistedLayout?.activePaneId ?? (initialPanes[0]?.id ?? null)),
 
-  // 初始分屏结构：v0.1 启动时所有已恢复的标签放进一个面板。
-  // 启动后用户可以右键 Split Left/Right 再创建第二个面板。
+  // 初始分屏结构：优先用持久化布局；否则 v0.1 启动时所有已恢复的标签放进一个面板。
   panes: initialPanes,
-  activePaneId: initialPanes.length > 0 ? INITIAL_PANE_ID : null,
+  activePaneId: persistedLayout?.activePaneId ?? (initialPanes[0]?.id ?? null),
   splitRatio: loadSplitRatio(),
 
   setActivePane: (paneId) => {
@@ -729,6 +793,94 @@ export const useAppStore = create<AppState>((set, get) => ({
         openTabIds,
         activeTabId: newActiveTabId,
       };
+    });
+  },
+
+  moveTabToPane: (tabId, targetPaneId, insertIndex) => {
+    set((state) => {
+      if (!state.panes.some((p) => p.id === targetPaneId)) return {};
+      // 找到 tab 所在的 pane
+      const sourcePaneIdx = state.panes.findIndex((p) => p.openTabIds.includes(tabId));
+      if (sourcePaneIdx < 0) return {};
+      const sourcePane = state.panes[sourcePaneIdx];
+      const targetPane = state.panes.find((p) => p.id === targetPaneId)!;
+
+      // 同 pane 内移动：仅做 reorder
+      if (sourcePane.id === targetPaneId) {
+        const fromIdx = sourcePane.openTabIds.indexOf(tabId);
+        if (fromIdx < 0) return {};
+        const toIdx = insertIndex ?? sourcePane.openTabIds.length - 1;
+        if (fromIdx === toIdx || (fromIdx === toIdx - 1 && toIdx === sourcePane.openTabIds.length)) {
+          return {};
+        }
+        const newOpen = [...sourcePane.openTabIds];
+        newOpen.splice(fromIdx, 1);
+        const adjustedTo = toIdx > fromIdx ? toIdx - 1 : toIdx;
+        newOpen.splice(adjustedTo, 0, tabId);
+        const nextPanes = state.panes.map((p) =>
+          p.id === targetPaneId ? { ...p, openTabIds: newOpen } : p,
+        );
+        const openTabIds = flattenPaneOpenIds(nextPanes);
+        saveOpenTabIds(openTabIds);
+        return { panes: nextPanes, openTabIds };
+      }
+
+      // 跨 pane 移动：从 source 移除，加入 target
+      const sourceNextOpen = sourcePane.openTabIds.filter((tid) => tid !== tabId);
+      const targetNextOpen = [...targetPane.openTabIds];
+      const insertAt = insertIndex !== undefined
+        ? Math.max(0, Math.min(insertIndex, targetNextOpen.length))
+        : targetNextOpen.length;
+      targetNextOpen.splice(insertAt, 0, tabId);
+
+      const nextPanes: Pane[] = [];
+      for (let i = 0; i < state.panes.length; i++) {
+        const p = state.panes[i];
+        if (p.id === sourcePane.id) {
+          if (sourceNextOpen.length > 0) {
+            // 源 pane 仍有 tab：保持存在，必要时调整 active
+            const nextActive = p.activeTabId === tabId
+              ? (sourceNextOpen[sourceNextOpen.length - 1] ?? null)
+              : p.activeTabId;
+            nextPanes.push({ ...p, openTabIds: sourceNextOpen, activeTabId: nextActive });
+          }
+          // 源 pane 变空：跳过（删除）
+        } else if (p.id === targetPane.id) {
+          nextPanes.push({ ...p, openTabIds: targetNextOpen, activeTabId: tabId });
+        } else {
+          nextPanes.push(p);
+        }
+      }
+
+      const openTabIds = flattenPaneOpenIds(nextPanes);
+      // 焦点切到目标 pane + 目标 tab
+      const newActivePaneId = targetPane.id;
+      saveOpenTabIds(openTabIds);
+      return {
+        panes: nextPanes,
+        activePaneId: newActivePaneId,
+        openTabIds,
+        activeTabId: tabId,
+      };
+    });
+  },
+
+  reorderTabInPane: (paneId, fromIndex, toIndex) => {
+    set((state) => {
+      const pane = state.panes.find((p) => p.id === paneId);
+      if (!pane) return {};
+      if (fromIndex < 0 || fromIndex >= pane.openTabIds.length) return {};
+      const clampedTo = Math.max(0, Math.min(toIndex, pane.openTabIds.length - 1));
+      if (fromIndex === clampedTo) return {};
+      const newOpen = [...pane.openTabIds];
+      const [moved] = newOpen.splice(fromIndex, 1);
+      newOpen.splice(clampedTo, 0, moved);
+      const nextPanes = state.panes.map((p) =>
+        p.id === paneId ? { ...p, openTabIds: newOpen } : p,
+      );
+      const openTabIds = flattenPaneOpenIds(nextPanes);
+      saveOpenTabIds(openTabIds);
+      return { panes: nextPanes, openTabIds };
     });
   },
 
@@ -921,21 +1073,23 @@ export const useAppStore = create<AppState>((set, get) => ({
       const sessions = state.sessions.map((s) =>
         s.id === id ? { ...s, isRunning: true, closedAt: undefined } : s,
       );
-      // 把新 tab 加到当前活动 pane；若无 pane 则新建一个
+      // 把新 tab 加到当前活动 pane；若 activePaneId 指向不存在的 pane（restore 阶段刻意为之），按这个 id 新建 pane
+      const candidateId = state.activePaneId ?? state.panes[state.panes.length - 1]?.id;
       let nextPanes: Pane[];
       let nextActivePaneId: string | null;
-      if (state.panes.length === 0) {
-        const newPane: Pane = { id: crypto.randomUUID(), openTabIds: [id], activeTabId: id };
-        nextPanes = [newPane];
-        nextActivePaneId = newPane.id;
-      } else {
-        const targetPaneId = state.activePaneId ?? state.panes[state.panes.length - 1].id;
+      if (state.panes.some((p) => p.id === candidateId)) {
         nextPanes = state.panes.map((p) =>
-          p.id === targetPaneId
+          p.id === candidateId
             ? { ...p, openTabIds: [...p.openTabIds, id], activeTabId: id }
             : p,
         );
-        nextActivePaneId = targetPaneId;
+        nextActivePaneId = candidateId;
+      } else {
+        // panes 为空 或 activePaneId 指向不存在 pane → 按 candidateId（或新 uuid）新建 pane
+        const newId = candidateId ?? crypto.randomUUID();
+        const newPane: Pane = { id: newId, openTabIds: [id], activeTabId: id };
+        nextPanes = [...state.panes, newPane];
+        nextActivePaneId = newId;
       }
       const openTabIds = flattenPaneOpenIds(nextPanes);
       saveOpenTabIds(openTabIds);
@@ -945,16 +1099,49 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   restoreTabs: () => {
     const state = get();
+    // 1) 优先恢复分屏布局
+    const persisted = loadPanesLayout();
+    if (persisted) {
+      // 过滤仍存在的 tab
+      const validPanes: Pane[] = persisted.panes
+        .map((p): Pane | null => {
+          const openTabIds = p.openTabIds.filter((tid) => state.sessions.some((s) => s.id === tid));
+          if (openTabIds.length === 0) return null;
+          const activeTabId = p.activeTabId && openTabIds.includes(p.activeTabId)
+            ? p.activeTabId
+            : openTabIds[openTabIds.length - 1];
+          return { id: p.id, openTabIds, activeTabId };
+        })
+        .filter((p): p is Pane => p !== null);
+      if (validPanes.length === 0) {
+        set({ openTabIds: [], activeTabId: null, panes: [], activePaneId: null });
+        saveOpenTabIds([]);
+        clearPanesLayout();
+        return;
+      }
+      // 清空后按 pane 顺序逐个回放：activePaneId 指向不存在 pane 时，openTab 会按该 id 新建
+      set({ openTabIds: [], activeTabId: null, panes: [], activePaneId: null });
+      for (const p of validPanes) {
+        // 预设 activePaneId = p.id（p.id 当前不在 panes 里），openTab 看到后会按这个 id 新建 pane
+        set((s) => ({ ...s, activePaneId: p.id }));
+        for (const tabId of p.openTabIds) {
+          get().openTab(tabId);
+        }
+      }
+      // 最后切回保存的 activePaneId
+      set({ activePaneId: persisted.activePaneId ?? validPanes[validPanes.length - 1].id });
+      return;
+    }
+
+    // 2) 兼容旧版本：只持久化了 openTabIds
     const tabIds = state.openTabIds;
     if (tabIds.length === 0) return;
-    // 过滤出仍存在于 sessions 中的 ID
     const validIds = tabIds.filter((id) => state.sessions.some((s) => s.id === id));
     if (validIds.length === 0) {
       set({ openTabIds: [], activeTabId: null, panes: [], activePaneId: null });
       saveOpenTabIds([]);
       return;
     }
-    // 先清空 openTabIds/panes，再逐个调用 openTab 以触发 PTY 启动和 --resume
     set({ openTabIds: [], activeTabId: null, panes: [], activePaneId: null });
     for (const id of validIds) {
       get().openTab(id);
@@ -991,21 +1178,22 @@ export const useAppStore = create<AppState>((set, get) => ({
     }).then((newSession) => {
       set((state) => {
         const sessions = [...state.sessions, newSession];
-        // 把新 tab 加到当前活动 pane；若无 pane 则新建一个
+        // 把新 tab 加到当前活动 pane；若 activePaneId 指向不存在的 pane，按该 id 新建
+        const candidateId = state.activePaneId ?? state.panes[state.panes.length - 1]?.id;
         let nextPanes: Pane[];
         let nextActivePaneId: string | null;
-        if (state.panes.length === 0) {
-          const newPane: Pane = { id: crypto.randomUUID(), openTabIds: [newSession.id], activeTabId: newSession.id };
-          nextPanes = [newPane];
-          nextActivePaneId = newPane.id;
-        } else {
-          const targetPaneId = state.activePaneId ?? state.panes[state.panes.length - 1].id;
+        if (state.panes.some((p) => p.id === candidateId)) {
           nextPanes = state.panes.map((p) =>
-            p.id === targetPaneId
+            p.id === candidateId
               ? { ...p, openTabIds: [...p.openTabIds, newSession.id], activeTabId: newSession.id }
               : p,
           );
-          nextActivePaneId = targetPaneId;
+          nextActivePaneId = candidateId;
+        } else {
+          const newId = candidateId ?? crypto.randomUUID();
+          const newPane: Pane = { id: newId, openTabIds: [newSession.id], activeTabId: newSession.id };
+          nextPanes = [...state.panes, newPane];
+          nextActivePaneId = newId;
         }
         const openTabIds = flattenPaneOpenIds(nextPanes);
         saveOpenTabIds(openTabIds);
@@ -1285,6 +1473,13 @@ export const useAppStore = create<AppState>((set, get) => ({
       return { quickCommandsByToolType: next };
     }),
 }));
+
+// 订阅：panes 或 activePaneId 变化时自动持久化分屏布局
+useAppStore.subscribe((state, prev) => {
+  if (state.panes !== prev.panes || state.activePaneId !== prev.activePaneId) {
+    savePanesLayout(state.panes, state.activePaneId);
+  }
+});
 
 function parseEnvVars(text: string): Record<string, string> {
   const result: Record<string, string> = {};

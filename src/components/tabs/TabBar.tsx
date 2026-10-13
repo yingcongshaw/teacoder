@@ -26,6 +26,29 @@ interface TabBarProps {
   paneId?: string;
 }
 
+// HTML5 DnD payload：跨面板拖拽 tab 使用。源 pane 存 dataTransfer，drop 端用 onDragOver 的目标
+// tab 索引决定插入位置（空面板直接追加到末尾）。
+const DND_MIME_TAB = "application/x-teacoder-tab";
+
+interface DragPayload {
+  tabId: string;
+  sourcePaneId: string;
+}
+
+function readDragPayload(dt: DataTransfer): DragPayload | null {
+  const raw = dt.getData(DND_MIME_TAB);
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as DragPayload;
+    if (typeof parsed.tabId === "string" && typeof parsed.sourcePaneId === "string") {
+      return parsed;
+    }
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
 export default function TabBar({ paneId }: TabBarProps = {}) {
   const sessions = useAppStore((s) => s.sessions);
   const projects = useAppStore((s) => s.projects);
@@ -42,6 +65,8 @@ export default function TabBar({ paneId }: TabBarProps = {}) {
   const locateSession = useAppStore((s) => s.locateSession);
   const splitPane = useAppStore((s) => s.splitPane);
   const closePane = useAppStore((s) => s.closePane);
+  const moveTabToPane = useAppStore((s) => s.moveTabToPane);
+  const reorderTabInPane = useAppStore((s) => s.reorderTabInPane);
   const llmProviders = useAppStore((s) => s.llmProviders);
   const { message, modal } = App.useApp();
 
@@ -252,8 +277,30 @@ export default function TabBar({ paneId }: TabBarProps = {}) {
           backgroundColor: "var(--ant-color-bg-container)",
           borderBottom: "1px solid var(--ant-color-border-secondary)",
         }}
+        onDragOver={(e) => {
+          if (!pane) return;
+          const payload = readDragPayload(e.dataTransfer);
+          if (!payload) return;
+          e.preventDefault();
+          e.dataTransfer.dropEffect = payload.sourcePaneId === pane.id ? "move" : "move";
+        }}
+        onDrop={(e) => {
+          if (!pane) return;
+          const payload = readDragPayload(e.dataTransfer);
+          if (!payload) return;
+          e.preventDefault();
+          // 在空 tab strip 上 drop：直接追加到末尾
+          if (openTabIds.length === 0) {
+            if (payload.sourcePaneId !== pane.id) {
+              moveTabToPane(payload.tabId, pane.id);
+            } else {
+              reorderTabInPane(pane.id, pane.openTabIds.indexOf(payload.tabId), 0);
+            }
+          }
+          // 非空时由具体 tab 的 onDropHandler 决定插入位置（光标所在 tab 的左侧/右侧）
+        }}
       >
-        {openTabs.map((tab) => {
+        {openTabs.map((tab, index) => {
           const isActive = tab.id === activeTabId;
           return (
             <Dropdown
@@ -262,6 +309,45 @@ export default function TabBar({ paneId }: TabBarProps = {}) {
               trigger={["contextMenu"]}
             >
               <div
+                draggable
+                onDragStart={(e) => {
+                  if (!pane) return;
+                  e.dataTransfer.effectAllowed = "move";
+                  // dragstart 里直接放 dataTransfer，drop 端才能读到
+                  e.dataTransfer.setData(
+                    DND_MIME_TAB,
+                    JSON.stringify({ tabId: tab.id, sourcePaneId: pane.id } satisfies DragPayload),
+                  );
+                  // 部分浏览器需要 text/plain 才允许 drop
+                  e.dataTransfer.setData("text/plain", tab.id);
+                }}
+                onDragOver={(e) => {
+                  if (!pane) return;
+                  const payload = readDragPayload(e.dataTransfer);
+                  if (!payload) return;
+                  e.preventDefault();
+                  e.stopPropagation();
+                }}
+                onDrop={(e) => {
+                  if (!pane) return;
+                  const payload = readDragPayload(e.dataTransfer);
+                  if (!payload) return;
+                  e.preventDefault();
+                  e.stopPropagation();
+                  // 根据光标 X 落在 tab 左半 / 右半决定插入到该 tab 左侧还是右侧
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  const insertAfter = e.clientX > rect.left + rect.width / 2;
+                  let insertIndex = insertAfter ? index + 1 : index;
+                  if (payload.sourcePaneId === pane.id) {
+                    const fromIdx = pane.openTabIds.indexOf(payload.tabId);
+                    if (fromIdx < 0) return;
+                    if (insertIndex > fromIdx) insertIndex -= 1;
+                    if (fromIdx === insertIndex) return;
+                    reorderTabInPane(pane.id, fromIdx, insertIndex);
+                  } else {
+                    moveTabToPane(payload.tabId, pane.id, insertIndex);
+                  }
+                }}
                 onClick={() => {
                   if (pane) setActivePane(pane.id);
                   setActiveTab(tab.id);

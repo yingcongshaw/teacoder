@@ -9,12 +9,14 @@ import {
   CloseOutlined,
   DollarOutlined,
   ThunderboltOutlined,
+  UnorderedListOutlined,
 } from "@ant-design/icons";
 import { useAppStore } from "../../stores/appStore";
 import type { TerminalViewHandle } from "../terminal/TerminalView";
 import SettingsPage from "./SettingsPage";
 import CostDashboard from "../cost/CostDashboard";
 import QuickCommands from "../quick-commands/QuickCommands";
+import BottomPanel from "./BottomPanel";
 import PaneView from "../panes/PaneView";
 import PaneSplitter from "../panes/PaneSplitter";
 import { TOOL_DISPLAY_NAMES } from "../../types";
@@ -55,6 +57,7 @@ export default function AppContent() {
   const [costModalOpen, setCostModalOpen] = useState(false);
   const [globalCost] = useState<CostSummary | null>(null);
   const [quickCommandsVisible, setQuickCommandsVisible] = useState(false);
+  const [bottomPanelCollapsed, setBottomPanelCollapsed] = useState(false);
   const quickCommandsBtnRef = useRef<HTMLSpanElement>(null);
   const terminalRefs = useRef<Map<string, TerminalViewHandle>>(new Map());
   const panesContainerRef = useRef<HTMLDivElement | null>(null);
@@ -364,6 +367,12 @@ export default function AppContent() {
     <>
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {mainContent}
+        {/* 底部面板（文件树/Git/指令/任务），受控折叠；其 activeTabId 由 store 提供，
+            已自动跟随 activePane 的活动 tab —— 切换面板时面板内 active 同步给全局 */}
+        <BottomPanel
+          collapsed={bottomPanelCollapsed}
+          onCollapsedChange={setBottomPanelCollapsed}
+        />
         {/* Bottom cost bar */}
         <div className="flex-shrink-0 relative border-t border-[var(--ant-color-border)] bg-[var(--ant-color-bg-container)]">
           <div
@@ -382,6 +391,20 @@ export default function AppContent() {
               )}
             </div>
             <div className="flex items-center gap-2">
+              <span
+                className="flex items-center gap-1 text-xs cursor-pointer px-2 py-1 rounded transition-colors"
+                style={{ color: bottomPanelCollapsed ? "var(--ant-color-text-secondary)" : "var(--ant-color-text)" }}
+                onClick={() => setBottomPanelCollapsed((v) => !v)}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = "var(--ant-color-bg-elevated)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = "transparent";
+                }}
+              >
+                <UnorderedListOutlined style={{ fontSize: 12 }} />
+                <span>底部面板</span>
+              </span>
               <span
                 ref={quickCommandsBtnRef}
                 className="flex items-center gap-1 text-xs cursor-pointer px-2 py-1 rounded transition-colors"
