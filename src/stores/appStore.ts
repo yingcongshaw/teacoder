@@ -16,6 +16,7 @@ import { DEFAULT_TERMINAL_SETTINGS, BUILTIN_SESSION_TEMPLATES } from "../types";
 import {
   stopSession,
   startSession,
+  writeToPty,
   projectList,
   projectCreate,
   projectUpdate,
@@ -28,7 +29,7 @@ import {
   categoryCreate,
   categoryUpdate,
   categoryDelete,
-  findLatestClaudeSession,
+  claudeJsonlExists,
   listLlmProviders,
   createLlmProvider as createLlmProviderIpc,
   updateLlmProvider as updateLlmProviderIpc,
@@ -324,7 +325,7 @@ interface AppState {
   setSplitRatio: (ratio: number) => void;
 
   closeTab: (id: string, paneId?: string) => void;
-  openTab: (id: string, opts?: { targetPaneId?: string }) => void;
+  openTab: (id: string, opts?: { targetPaneId?: string }) => Promise<void>;
   restoreTabs: () => void;
   closeAllTabs: () => void;
   setActiveTab: (id: string | null) => void;
@@ -566,6 +567,16 @@ export const useAppStore = create<AppState>((set, get) => ({
       modelName: input.modelName,
       claudeModels: serializeClaudeModels(input.claudeModels),
     });
+    // Claude Code：等 PTY 稳定后用 /rename 把 TeaCoder 标题同步过去。
+    // 固定 3 秒延迟：用户实测启动 + 写首个 JSONL 平均 < 2s；/rename 是交互式命令，
+    // 必须在 Claude Code 提示符出现后才能正确消费，太早会被吞进 stdin 缓冲。
+    if (input.toolType === "claude" && title) {
+      const tabId = session.id;
+      const safeTitle = title.replace(/[\r\n]+/g, " ").trim();
+      setTimeout(() => {
+        if (safeTitle) writeToPty(tabId, `/rename ${safeTitle}\r`).catch(() => {});
+      }, 3000);
+    }
     const updatedSession = {
       ...session,
       isRunning: true,
@@ -618,58 +629,37 @@ export const useAppStore = create<AppState>((set, get) => ({
     // PTY 重启会中断当前 Claude Code 会话上下文，由用户编辑保存触发的"重启配置"语义所预期。
     // 共享 PTY 语义:若该 tabId 在多个 pane 中共享(双开),stop+start 会让另一 pane 失联,
     // 这里跳过重启,只更新 DB 字段;用户需先关闭双开才能应用 env 变更。
+    // 重启时直接使用 DB 中的 cliSessionId（TeaCoder 预分配 + --session-id 注入），
+    // 不再探测 find_latest_claude_session；JSONL 是否存在由下次 openTab 的预检负责。
     const after = get().sessions.find((s) => s.id === id);
     const sharedInstances = after ? instanceCount(get().panes, id) : 0;
     if (after?.toolType === "claude" && after.isRunning && sharedInstances <= 1) {
       stopSession(id).catch(() => {});
       const project = get().projects.find((p) => p.id === after.projectId);
       const envVars = parseEnvVars(after.envVars || "");
-      const claudeConfigDir = (() => {
-        const profile = after.profileId
-          ? get().profiles.find((p) => p.id === after.profileId)
-          : undefined;
-        return profile?.appDataRoot ?? null;
-      })();
-      findLatestClaudeSession(project?.path || "~", claudeConfigDir, Date.now())
-        .then((detected) => {
-          const cliSessionId = detected ?? after.cliSessionId ?? undefined;
-          let cliArgs = after.cliArgs || "[]";
-          if (cliSessionId) {
-            try {
-              const args = JSON.parse(cliArgs) as string[];
-              const hasResume = args.some((a) => a === "--resume" || a === "-r");
-              if (!hasResume) cliArgs = JSON.stringify(["--resume", cliSessionId, ...args]);
-            } catch {
-              cliArgs = JSON.stringify(["--resume", cliSessionId]);
-            }
-          }
-          startSession({
-            toolType: after.toolType,
-            profileId: after.profileId || "",
-            workDir: project?.path || "~",
-            tabId: id,
-            envVars,
-            cliArgs,
-            cliSessionId: cliSessionId ?? undefined,
-            llmProviderId: after.llmProviderId,
-            modelName: after.modelName,
-            claudeModels: serializeClaudeModels(after.claudeModels),
-          }).catch(() => {});
-        })
-        .catch(() => {
-          startSession({
-            toolType: after.toolType,
-            profileId: after.profileId || "",
-            workDir: project?.path || "~",
-            tabId: id,
-            envVars,
-            cliArgs: after.cliArgs || "[]",
-            cliSessionId: after.cliSessionId ?? undefined,
-            llmProviderId: after.llmProviderId,
-            modelName: after.modelName,
-            claudeModels: serializeClaudeModels(after.claudeModels),
-          }).catch(() => {});
-        });
+      const cliSessionId = after.cliSessionId ?? undefined;
+      let cliArgs = after.cliArgs || "[]";
+      if (cliSessionId) {
+        try {
+          const args = JSON.parse(cliArgs) as string[];
+          const hasResume = args.some((a) => a === "--resume" || a === "-r");
+          if (!hasResume) cliArgs = JSON.stringify(["--resume", cliSessionId, ...args]);
+        } catch {
+          cliArgs = JSON.stringify(["--resume", cliSessionId]);
+        }
+      }
+      startSession({
+        toolType: after.toolType,
+        profileId: after.profileId || "",
+        workDir: project?.path || "~",
+        tabId: id,
+        envVars,
+        cliArgs,
+        cliSessionId,
+        llmProviderId: after.llmProviderId,
+        modelName: after.modelName,
+        claudeModels: serializeClaudeModels(after.claudeModels),
+      }).catch(() => {});
     }
   },
   deleteSession: async (id) => {
@@ -959,31 +949,6 @@ export const useAppStore = create<AppState>((set, get) => ({
     // 默认关 activePane 中的实例（包含同 pane 内同 tabId 的防御性逻辑）；
     // 显式传 paneId 时关该 pane 的第一个 occurrence。
 
-    // Claude Code 关闭标签前，先探测 work_dir 下 mtime <= 当前时刻的最近 JSONL，
-    // 确保 cliSessionId 与磁盘上最近一次写入的 JSONL UUID 一致。
-    if (session?.isRunning && session.toolType === "claude") {
-      const project = state.projects.find((p) => p.id === session.projectId);
-      const profile = session.profileId
-        ? state.profiles.find((p) => p.id === session.profileId)
-        : undefined;
-      const workDir = project?.path || "~";
-      const claudeConfigDir = profile?.appDataRoot ?? null;
-      findLatestClaudeSession(workDir, claudeConfigDir, Date.now())
-        .then((detected) => {
-          if (detected && detected !== session.cliSessionId) {
-            sessionUpdate(id, { cliSessionId: detected }).catch(() => {});
-            set((s) => ({
-              sessions: s.sessions.map((sess) =>
-                sess.id === id ? { ...sess, cliSessionId: detected } : sess,
-              ),
-            }));
-          }
-        })
-        .catch(() => {
-          // 探测失败时不影响关闭流程
-        });
-    }
-
     // 计算"关闭后还剩多少实例"——只在归零时才停 PTY
     const targetPaneId = paneId ?? state.activePaneId ?? "";
     const willHaveInstances = (() => {
@@ -1050,30 +1015,67 @@ export const useAppStore = create<AppState>((set, get) => ({
     });
   },
 
-  openTab: (id, opts) => {
+  openTab: async (id, opts) => {
     const state = get();
     // 共享 PTY 语义：允许同 tabId 出现在多个 pane。
     // 防御性：若目标 pane（默认 activePane）已含该 id，仅切焦点不再追加。
+    // 例外：tab 已在 pane 中但 isRunning=false（之前启动失败留下的僵尸状态），
+    // 必须继续走完整路径重新启动 PTY，否则用户看到"已打开但终端空白"且无法恢复。
     const targetPaneId = opts?.targetPaneId ?? state.activePaneId ?? state.panes[state.panes.length - 1]?.id;
-    if (targetPaneId && state.panes.some((p) => p.id === targetPaneId && p.openTabIds.includes(id))) {
+    const targetSession = state.sessions.find((s) => s.id === id);
+    const tabInTargetPane =
+      targetPaneId && state.panes.some((p) => p.id === targetPaneId && p.openTabIds.includes(id));
+    if (tabInTargetPane && targetSession?.isRunning) {
       set({ activePaneId: targetPaneId, activeTabId: id });
       return;
     }
-    const session = state.sessions.find((s) => s.id === id);
-    if (!session) return;
+    if (!targetSession) return;
+    const session = targetSession;
     // 从 projects 查找 workDir
     const project = state.projects.find((p) => p.id === session.projectId);
     const envVars = parseEnvVars(session.envVars || "");
+
+    // Claude Code 预检：若 DB 里的 cliSessionId 在本地 JSONL 不存在，
+    // 说明用户已清理 ~/.claude/projects/<workdir>/<cliSessionId>.jsonl，
+    // --resume 会失败 → 提前拒绝，由 UI 显示"会话被删除或不存在"。
+    // 探测本身抛错时 fail-open：允许继续启动，让 Claude Code 报更明确的错误。
+    if (session.toolType === "claude" && session.cliSessionId) {
+      const workDir = project?.path || "~";
+      const profile = session.profileId
+        ? state.profiles.find((p) => p.id === session.profileId)
+        : undefined;
+      const claudeConfigDir = profile?.appDataRoot ?? null;
+      try {
+        const exists = await claudeJsonlExists(
+          session.cliSessionId,
+          workDir,
+          claudeConfigDir,
+        );
+        if (!exists) {
+          throw new Error("SESSION_DELETED");
+        }
+      } catch (e) {
+        if (e instanceof Error && e.message === "SESSION_DELETED") throw e;
+        // 其他错误（IPC 失败等）:放行,让 startSession 自己报
+      }
+    }
+
     // 重新打开 Claude Code 会话时恢复对话
     let cliArgs = session.cliArgs || "[]";
     let args: string[] = [];
     try { args = JSON.parse(cliArgs); } catch { /* ignore */ }
+    // SSH 的 cli_args 是 JSON 对象（如 {"hostname":"...","port":22,...}），
+    // JSON.parse 成功但 .some 不是函数会抛 TypeError,这里防御性规整为数组。
+    // 同样避免空对象 / null 等被当成数组时静默抛错导致 openTab 整个 reject。
+    if (!Array.isArray(args)) args = [];
     // 检查是否已有恢复参数
     const hasResume = args.some((a) => a === "--resume" || a === "-r");
     const hasContinue = args.some((a) => a === "--continue" || a === "-c");
     let willResumeSessionId: string | undefined;
-    // Terminal 类型不支持 --resume/--continue，保持原样启动
-    if (session.toolType !== "terminal") {
+    // Terminal / SSH 类型不支持 --resume/--continue，保持原样启动。
+    // SSH 的 cli_args 是 JSON 对象（如 {"hostname":"...","port":22,...}），
+    // 不能按 Vec<String> 反序列化，也不能注入 Claude 专属恢复参数。
+    if (session.toolType !== "terminal" && session.toolType !== "ssh") {
       if (session.cliSessionId && !hasResume && !hasContinue) {
         // 有 cliSessionId：精确恢复到特定对话
         args = ["--resume", session.cliSessionId, ...args];
@@ -1085,7 +1087,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         cliArgs = JSON.stringify(args);
       }
     }
-    // 启动会话，失败时回退到新会话
+    // 启动会话。CLI 启动失败时静默：终端会显示具体错误（如工作目录不存在、可执行文件缺失），
+    // 重复探测/回退反而会污染用户看到的内容。
     startSession({
       toolType: session.toolType,
       profileId: session.profileId || "",
@@ -1097,69 +1100,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       llmProviderId: session.llmProviderId,
       modelName: session.modelName,
       claudeModels: serializeClaudeModels(session.claudeModels),
-    }).catch((err) => {
-      // --resume 在交互模式下因跟踪文件被清理而失败。
-      // 主动探测 work_dir 下最近的 JSONL：若存在，则用其 UUID + --session-id
-      // 重新启动，让 Claude Code 继续现有 JSONL 而不是从空白开始。
-      if (!willResumeSessionId || !String(err).includes("No conversation found")) {
-        return;
-      }
-      const workDir = project?.path || "~";
-      const profile = session.profileId
-        ? state.profiles.find((p) => p.id === session.profileId)
-        : undefined;
-      const claudeConfigDir = profile?.appDataRoot ?? null;
-      findLatestClaudeSession(workDir, claudeConfigDir, Date.now())
-        .then((detected) => {
-          if (!detected) {
-            // 工作目录下没有任何 JSONL：保持原回退，从空白会话启动
-            sessionUpdate(id, { cliSessionId: undefined }).catch(() => {});
-            startSession({
-              toolType: session.toolType,
-              profileId: session.profileId || "",
-              workDir,
-              tabId: id,
-              envVars,
-              cliArgs: "[]",
-              cliSessionId: undefined,
-              llmProviderId: session.llmProviderId,
-              modelName: session.modelName,
-              claudeModels: serializeClaudeModels(session.claudeModels),
-            }).catch(() => {});
-            return;
-          }
-          // 用探测到的 UUID + --session-id 启动 Claude Code，让其继续现有 JSONL
-          sessionUpdate(id, { cliSessionId: detected }).catch(() => {});
-          startSession({
-            toolType: session.toolType,
-            profileId: session.profileId || "",
-            workDir,
-            tabId: id,
-            envVars,
-            cliArgs: JSON.stringify(["--session-id", detected]),
-            cliSessionId: detected,
-            llmProviderId: session.llmProviderId,
-            modelName: session.modelName,
-            claudeModels: serializeClaudeModels(session.claudeModels),
-          }).catch(() => {});
-        })
-        .catch(() => {
-          // 探测本身失败时仍走原始回退路径，避免卡死
-          sessionUpdate(id, { cliSessionId: undefined }).catch(() => {});
-          startSession({
-            toolType: session.toolType,
-            profileId: session.profileId || "",
-            workDir,
-            tabId: id,
-            envVars,
-            cliArgs: "[]",
-            cliSessionId: undefined,
-            llmProviderId: session.llmProviderId,
-            modelName: session.modelName,
-            claudeModels: serializeClaudeModels(session.claudeModels),
-          }).catch(() => {});
-        });
-    });
+    }).catch(() => {});
     // 标记 isRunning，清除 closedAt
     sessionUpdate(id, { isRunning: true, closedAt: 0 }).catch(() => {});
     set((state) => {
@@ -1226,7 +1167,10 @@ export const useAppStore = create<AppState>((set, get) => ({
         // 预设 activePaneId = p.id（p.id 当前不在 panes 里），openTab 看到后会按这个 id 新建 pane
         set((s) => ({ ...s, activePaneId: p.id }));
         for (const tabId of p.openTabIds) {
-          get().openTab(tabId);
+          // 启动期静默吞掉 SESSION_DELETED：用户首次启动 app 不在屏幕前,
+          // 立即弹"会话被删除"会骚扰；该 tab 会以"未打开"呈现,
+          // 后续在侧边栏点击时会再次触发预检并正常提示。
+          get().openTab(tabId).catch(() => {});
         }
       }
       // 最后切回保存的 activePaneId
@@ -1245,7 +1189,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
     set({ openTabIds: [], activeTabId: null, panes: [], activePaneId: null });
     for (const id of validIds) {
-      get().openTab(id);
+      get().openTab(id).catch(() => {});
     }
   },
 

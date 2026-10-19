@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::io::{Read, Write};
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::Mutex;
 
@@ -10,11 +11,18 @@ use tauri::Emitter;
 
 use super::ToolType;
 
+/// SSH 密码认证辅助脚本和密码文件的路径。
+/// stop_session 时清理。
+#[cfg(unix)]
+type SshAskpassPaths = Option<(PathBuf, PathBuf)>;
+
 struct PtyEntry {
     master: Box<dyn MasterPty + Send>,
     writer: Mutex<Box<dyn std::io::Write + Send>>,
     reader_handle: Option<std::thread::JoinHandle<()>>,
     child: Box<dyn Child + Send>,
+    #[cfg(unix)]
+    ssh_askpass_paths: SshAskpassPaths,
 }
 
 /// SSH 连接参数
@@ -27,12 +35,12 @@ struct SshArgs {
     identity_file: String,
 }
 
-/// 解析 SSH 参数（从 cli_args JSON 数组中提取第一个 JSON 对象）
-fn parse_ssh_args(args: &[String]) -> Option<SshArgs> {
-    if args.len() != 1 {
-        return None;
-    }
-    let json_str = &args[0];
+/// 解析 SSH 参数（从前端传入的 JSON 对象字符串）
+/// 前端 buildSshArgs() 返回的 JSON 形如：
+///   {"hostname":"...","port":22,"username":"root","password":"...","identityFile":"..."}
+/// 注意:SSH 的 cli_args 始终是 JSON 对象,不能用 `Vec<String>` 反序列化,
+/// 否则会被静默丢弃(unwrap_or_default() → 空 vec),导致 ssh 以零参数启动。
+fn parse_ssh_args(json_str: &str) -> Option<SshArgs> {
     let json: serde_json::Value = serde_json::from_str(json_str).ok()?;
     let obj = json.as_object()?;
 
@@ -43,6 +51,40 @@ fn parse_ssh_args(args: &[String]) -> Option<SshArgs> {
         password: obj.get("password").and_then(|v| v.as_str()).unwrap_or("").to_string(),
         identity_file: obj.get("identityFile").and_then(|v| v.as_str()).unwrap_or("").to_string(),
     })
+}
+
+/// 创建 SSH_ASKPASS 辅助脚本与密码文件。
+/// 脚本读取密码文件并打印到 stdout;密码文件权限 0600,脚本权限 0755。
+/// 调用方负责在会话关闭时清理(`remove_ssh_askpass`)。
+#[cfg(unix)]
+fn create_ssh_askpass(password: &str) -> Result<(PathBuf, PathBuf), String> {
+    use std::os::unix::fs::PermissionsExt;
+
+    let pid = std::process::id();
+    let tmp_dir = std::env::temp_dir();
+    let script_path = tmp_dir.join(format!("teacoder-ssh-askpass-{pid}.sh"));
+    let pwd_file = tmp_dir.join(format!("teacoder-ssh-pwd-{pid}.txt"));
+
+    std::fs::write(&pwd_file, password)
+        .map_err(|e| format!("写入 SSH 密码临时文件失败: {e}"))?;
+    std::fs::set_permissions(&pwd_file, std::fs::Permissions::from_mode(0o600))
+        .map_err(|e| format!("设置 SSH 密码文件权限失败: {e}"))?;
+
+    let script = format!("#!/bin/sh\ncat '{path}'\n", path = pwd_file.display());
+    std::fs::write(&script_path, script)
+        .map_err(|e| format!("写入 SSH askpass 脚本失败: {e}"))?;
+    std::fs::set_permissions(&script_path, std::fs::Permissions::from_mode(0o755))
+        .map_err(|e| format!("设置 SSH askpass 脚本权限失败: {e}"))?;
+
+    Ok((script_path, pwd_file))
+}
+
+#[cfg(unix)]
+fn remove_ssh_askpass(paths: &SshAskpassPaths) {
+    if let Some((script, pwd)) = paths {
+        let _ = std::fs::remove_file(script);
+        let _ = std::fs::remove_file(pwd);
+    }
 }
 
 pub struct PtyManager {
@@ -104,6 +146,7 @@ impl PtyManager {
         }
     }
 
+    #[allow(clippy::too_many_arguments)] // Tauri 命令参数由 IPC schema 决定，无法拆分
     pub fn start_session(
         &self,
         app: tauri::AppHandle,
@@ -112,6 +155,7 @@ impl PtyManager {
         work_dir: String,
         env_vars: HashMap<String, String>,
         args: Vec<String>,
+        cli_args_raw: Option<String>,
     ) -> Result<(), String> {
         let pty_system = native_pty_system();
 
@@ -135,6 +179,10 @@ impl PtyManager {
         };
 
         let mut cmd = CommandBuilder::new(&cmd_name);
+
+        // SSH 密码认证时保存 askpass 路径,会话关闭时清理
+        #[cfg(unix)]
+        let mut ssh_askpass_paths: SshAskpassPaths = None;
         // SSH 不需要本地 work_dir，但 PTY 需要一个有效的目录
         #[cfg(unix)]
         cmd.cwd(if work_dir == "~" || work_dir.is_empty() {
@@ -184,44 +232,73 @@ impl PtyManager {
         }
 
         // SSH 类型：从 cli_args 解析连接参数
+        // cli_args 是 JSON 对象字符串（前端 buildSshArgs() 输出）,
+        // 不能走 Vec<String> 反序列化路径,这里直接传入原始 JSON。
         if matches!(tool_type, ToolType::Ssh) {
-            if let Some(ssh_args) = parse_ssh_args(&args) {
-                // 添加用户@主机
-                let user_host = if ssh_args.username.is_empty() {
-                    ssh_args.hostname.clone()
+            if let Some(ref json) = cli_args_raw {
+                if let Some(ssh_args) = parse_ssh_args(json) {
+                    eprintln!("[PTY] SSH 启动 cli_args 解析成功: {}", json);
+                    if ssh_args.hostname.is_empty() {
+                        return Err("SSH 会话缺少主机名".to_string());
+                    }
+
+                    // 添加用户@主机
+                    let user_host = if ssh_args.username.is_empty() {
+                        ssh_args.hostname.clone()
+                    } else {
+                        format!("{}@{}", ssh_args.username, ssh_args.hostname)
+                    };
+                    cmd.arg(&user_host);
+
+                    // 添加端口（如果不是默认22）
+                    if ssh_args.port != 22 {
+                        cmd.arg("-p");
+                        cmd.arg(ssh_args.port.to_string());
+                    }
+
+                    // PublicKey 优先于 Password
+                    if !ssh_args.identity_file.is_empty() {
+                        // 使用公钥认证
+                        cmd.arg("-i");
+                        cmd.arg(&ssh_args.identity_file);
+                        cmd.arg("-o");
+                        cmd.arg("PreferredAuthentications=publickey");
+                    } else if !ssh_args.password.is_empty() {
+                        // 使用密码认证
+                        cmd.arg("-o");
+                        cmd.arg("PreferredAuthentications=password");
+                        cmd.arg("-o");
+                        cmd.arg("PubkeyAuthentication=no");
+
+                        // 通过 SSH_ASKPASS 设置密码(动态生成辅助脚本与 0600 密码文件)
+                        match create_ssh_askpass(&ssh_args.password) {
+                            Ok((script_path, _pwd_file)) => {
+                                cmd.env("SSH_ASKPASS", &script_path);
+                                cmd.env("SSH_ASKPASS_REQUIRE", "force");
+                                #[cfg(unix)]
+                                {
+                                    ssh_askpass_paths = Some((script_path, _pwd_file));
+                                }
+                            }
+                            Err(e) => {
+                                eprintln!("[PTY] 创建 SSH_ASKPASS 失败: {e}");
+                                return Err(e);
+                            }
+                        }
+                    }
+
+                    // 禁用严格的主机密钥检查（首次连接友好）
+                    cmd.arg("-o");
+                    cmd.arg("StrictHostKeyChecking=no");
+                    cmd.arg("-o");
+                    cmd.arg("UserKnownHostsFile=/dev/null");
                 } else {
-                    format!("{}@{}", ssh_args.username, ssh_args.hostname)
-                };
-                cmd.arg(&user_host);
-
-                // 添加端口（如果不是默认22）
-                if ssh_args.port != 22 {
-                    cmd.arg("-p");
-                    cmd.arg(ssh_args.port.to_string());
+                    eprintln!("[PTY] SSH 参数 JSON 解析失败，原始 cli_args: {}", json);
+                    return Err("SSH 参数 JSON 解析失败".to_string());
                 }
-
-                // PublicKey 优先于 Password
-                if !ssh_args.identity_file.is_empty() {
-                    // 使用公钥认证
-                    cmd.arg("-i");
-                    cmd.arg(&ssh_args.identity_file);
-                    cmd.arg("-o");
-                    cmd.arg("PreferredAuthentications=publickey");
-                } else if !ssh_args.password.is_empty() {
-                    // 使用密码认证
-                    cmd.arg("-o");
-                    cmd.arg("PreferredAuthentications=password");
-                    // 通过 SSH_ASKPASS 设置密码
-                    cmd.env("SSH_ASKPASS", "/usr/bin/ssh-askpass-helper");
-                    cmd.env("SSH_ASKPASS_REQUIRE", "force");
-                    cmd.env("DISPLAY", ":0");
-                }
-
-                // 禁用严格的主机密钥检查（首次连接友好）
-                cmd.arg("-o");
-                cmd.arg("StrictHostKeyChecking=no");
-                cmd.arg("-o");
-                cmd.arg("UserKnownHostsFile=/dev/null");
+            } else {
+                eprintln!("[PTY] SSH 会话缺少 cli_args（PTY 连接参数等）");
+                return Err("SSH 会话缺少连接参数".to_string());
             }
         } else {
             for arg in args {
@@ -265,7 +342,6 @@ impl PtyManager {
 
         let app_arc = Arc::new(app);
         let tab_id_clone = tab_id.clone();
-        let tab_id_for_log = tab_id.clone();
         let tab_id_for_emit = tab_id.clone();
 
         let reader_handle = std::thread::spawn(move || {
@@ -291,7 +367,6 @@ impl PtyManager {
                         let data = String::from_utf8_lossy(&pending[..valid_end]).to_string();
                         pending = pending[valid_end..].to_vec();
 
-                        eprintln!("[PTY-OUTPUT] tab={} data={:?} len={}", tab_id_for_log, data, data.len());
                         let _ = app_arc.emit("pty:output", serde_json::json!({
                             "tabId": tab_id,
                             "data": data,
@@ -302,11 +377,30 @@ impl PtyManager {
         });
 
         let mut sessions = self.sessions.lock().map_err(|e| e.to_string())?;
-        // 共享 PTY 语义:同 tabId 重复 start 视为"前端显式多开或误调",
-        // 复用现有 PtyEntry,避免 kill 旧 child / 重复 reader 线程。
-        if sessions.contains_key(&tab_id) {
-            return Ok(());
+        // 共享 PTY 语义:同 tabId 重复 start 通常视为"前端显式多开或误调",
+        // 复用现有 PtyEntry。但若旧 child 已退出(僵尸 PTY:之前启动失败 / 外部信号终止),
+        // 必须先清理再启动新的,否则用户看到"已打开但终端空白"且无法恢复。
+        if let Some(existing) = sessions.get_mut(&tab_id) {
+            let child_alive = existing
+                .child
+                .try_wait()
+                .ok()
+                .map(|status| status.is_none())
+                .unwrap_or(false);
+            if child_alive {
+                eprintln!("[PTY] tab={} 旧 PTY 仍运行,复用(共享 PTY 语义)", tab_id);
+                return Ok(());
+            }
+            eprintln!("[PTY] tab={} 检测到僵尸 PTY,清理并重启", tab_id);
+            // reader_handle 是 Option,可 take;writer / master 通过 sessions.remove
+            // 触发 entry 整体 drop,避免 move 出 &mut 借用的所有权错误。
+            if let Some(handle) = existing.reader_handle.take() {
+                let _ = handle.join();
+            }
+            #[cfg(unix)]
+            remove_ssh_askpass(&existing.ssh_askpass_paths);
         }
+        sessions.remove(&tab_id);
         sessions.insert(
             tab_id,
             PtyEntry {
@@ -314,6 +408,8 @@ impl PtyManager {
                 writer: Mutex::new(writer),
                 reader_handle: Some(reader_handle),
                 child,
+                #[cfg(unix)]
+                ssh_askpass_paths,
             },
         );
 
@@ -321,6 +417,7 @@ impl PtyManager {
     }
 
     pub fn write_to_pty(&self, tab_id: &str, data: &str) -> Result<(), String> {
+        eprintln!("[PTY-WRITE] tab={} data={:?} len={}", tab_id, data, data.len());
         let sessions = self.sessions.lock().map_err(|e| e.to_string())?;
         let entry = sessions
             .get(tab_id)
@@ -340,6 +437,7 @@ impl PtyManager {
         cols: u16,
         rows: u16,
     ) -> Result<(), String> {
+        eprintln!("[PTY-RESIZE] tab={} cols={} rows={}", tab_id, cols, rows);
         let sessions = self.sessions.lock().map_err(|e| e.to_string())?;
         let entry = sessions
             .get(tab_id)
@@ -365,6 +463,9 @@ impl PtyManager {
             if let Some(handle) = entry.reader_handle.take() {
                 let _ = handle.join();
             }
+            // 清理 SSH askpass 临时文件
+            #[cfg(unix)]
+            remove_ssh_askpass(&entry.ssh_askpass_paths);
         }
         Ok(())
     }
@@ -435,6 +536,42 @@ fn find_valid_utf8_boundary(data: &[u8]) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_parse_ssh_args_valid() {
+        let json = r#"{"hostname":"192.168.1.1","port":2222,"username":"admin","password":"secret","identityFile":""}"#;
+        let parsed = parse_ssh_args(json).expect("should parse valid SSH JSON");
+        assert_eq!(parsed.hostname, "192.168.1.1");
+        assert_eq!(parsed.port, 2222);
+        assert_eq!(parsed.username, "admin");
+        assert_eq!(parsed.password, "secret");
+        assert_eq!(parsed.identity_file, "");
+    }
+
+    #[test]
+    fn test_parse_ssh_args_defaults() {
+        // 缺省字段应使用默认值
+        let json = r#"{"hostname":"host"}"#;
+        let parsed = parse_ssh_args(json).expect("should parse minimal SSH JSON");
+        assert_eq!(parsed.hostname, "host");
+        assert_eq!(parsed.port, 22);
+        assert_eq!(parsed.username, "root");
+        assert_eq!(parsed.password, "");
+        assert_eq!(parsed.identity_file, "");
+    }
+
+    #[test]
+    fn test_parse_ssh_args_rejects_array() {
+        // 数组形式(其他工具的 cli_args)不能作为 SSH 参数解析
+        let json = r#"["--some-arg","value"]"#;
+        assert!(parse_ssh_args(json).is_none());
+    }
+
+    #[test]
+    fn test_parse_ssh_args_rejects_invalid_json() {
+        assert!(parse_ssh_args("not-json").is_none());
+        assert!(parse_ssh_args("").is_none());
+    }
 
     #[test]
     fn test_valid_utf8_boundary_ascii() {

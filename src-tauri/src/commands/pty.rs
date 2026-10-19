@@ -161,8 +161,13 @@ pub fn start_session(
         }
     }
 
-    let mut args: Vec<String> = if let Some(json) = cli_args {
-        serde_json::from_str(&json).unwrap_or_default()
+    let mut args: Vec<String> = if matches!(tool_type, ToolType::Ssh) {
+        // SSH 的 cli_args 是 JSON 对象(如 {"hostname":"...","port":22,...}),
+        // 不能按 `Vec<String>` 反序列化(会失败并被 unwrap_or_default() 静默吞掉),
+        // 交给 PtyManager 直接解析原始 JSON 字符串。
+        Vec::new()
+    } else if let Some(ref json) = cli_args {
+        serde_json::from_str(json).unwrap_or_default()
     } else {
         vec![]
     };
@@ -195,7 +200,9 @@ pub fn start_session(
         }
     }
 
-    pty_manager.start_session(app, tab_id, tool_type, work_dir, env_vars, args)
+    pty_manager.start_session(app.clone(), tab_id.clone(), tool_type.clone(), work_dir.clone(), env_vars, args, cli_args)?;
+
+    Ok(())
 }
 
 #[tauri::command]
