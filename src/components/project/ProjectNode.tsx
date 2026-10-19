@@ -379,7 +379,11 @@ export default function ProjectNode({ project, sessions, categories }: ProjectNo
             if (isOpen) {
               setActiveTab(session.id);
             } else {
-              openTab(session.id);
+              openTab(session.id).catch((err) => {
+                if (err?.message === "SESSION_DELETED") {
+                  message.error("会话被删除或不存在");
+                }
+              });
             }
           }}
           onMouseEnter={() => setHoveredSessionId(session.id)}

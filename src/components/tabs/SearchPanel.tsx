@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Modal, Input, List } from "antd";
+import { App, Modal, Input, List } from "antd";
 import type { InputRef } from "antd";
 import { useAppStore } from "../../stores/appStore";
 import { TOOL_DISPLAY_NAMES } from "../../types";
@@ -12,6 +12,7 @@ export default function SearchPanel() {
   const openTab = useAppStore((s) => s.openTab);
   const setActiveTab = useAppStore((s) => s.setActiveTab);
   const openTabIds = useAppStore((s) => s.openTabIds);
+  const { message } = App.useApp();
   const [query, setQuery] = useState("");
   const inputRef = useRef<InputRef>(null);
 
@@ -38,7 +39,11 @@ export default function SearchPanel() {
     if (openTabIds.includes(tabId)) {
       setActiveTab(tabId);
     } else {
-      openTab(tabId);
+      openTab(tabId).catch((err) => {
+        if (err?.message === "SESSION_DELETED") {
+          message.error("会话被删除或不存在");
+        }
+      });
     }
     setSearchOpen(false);
   };

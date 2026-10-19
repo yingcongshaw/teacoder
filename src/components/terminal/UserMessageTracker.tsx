@@ -16,11 +16,26 @@ interface UserMessageTrackerProps {
   tabId: string;
   xtermRef: React.RefObject<Terminal | null>;
   trackerRef?: React.MutableRefObject<{
-    captureInput: (text: string) => void;
+    // 普通按键(含 ASCII 字符):xterm 的 onKey 派发,e.key 已是 DOM 逻辑按键
+    captureKey: (key: string) => void;
+    // IME 上屏字符(中文/日文等):xterm 不为 IME 派发 onKey,
+    // 由 TerminalView 监听 textarea 的 input 事件 + compositionend 标记后转发
+    captureImeText: (text: string) => void;
     flushInput: () => void;
     handleEnter: () => void;
   } | null>;
 }
+
+// DOM KeyboardEvent.key 中属于"控制/导航/功能键"的集合。
+// 这些键不应进入消息内容,只有可打印字符(含 IME 上屏的中文)和 Enter 会改变捕捉状态。
+const CONTROL_KEYS = new Set([
+  "Backspace", "Tab", "Escape", "Delete", "Insert",
+  "CapsLock", "NumLock", "ScrollLock", "Pause",
+  "Shift", "Control", "Alt", "AltGraph", "Meta", "OS",
+  "ContextMenu", "Print", "PrintScreen",
+  "PageUp", "PageDown", "Home", "End",
+  "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight",
+]);
 
 export default function UserMessageTracker({ tabId, xtermRef, trackerRef }: UserMessageTrackerProps) {
   const [messages, setMessages] = useState<TrackedMessage[]>([]);
@@ -30,8 +45,6 @@ export default function UserMessageTracker({ tabId, xtermRef, trackerRef }: User
   const pendingInputRef = useRef<string>("");
   const [loaded, setLoaded] = useState(false);
   const messageIndexRef = useRef(0);
-  const isComposingRef = useRef(false);
-  const [imeTextarea, setImeTextarea] = useState<HTMLTextAreaElement | null>(null);
 
   // 加载历史消息
   useEffect(() => {
@@ -56,40 +69,6 @@ export default function UserMessageTracker({ tabId, xtermRef, trackerRef }: User
         });
     }
   }, [tabId, loaded]);
-
-  // 等待 xterm 初始化完成,获取内部 textarea 用于挂载 IME 合成事件。
-  // TerminalView 的 useEffect 在子组件 effect 之后才跑,xtermRef.current 初始为 null,需要轮询。
-  useEffect(() => {
-    let rafId: number | null = null;
-    const check = () => {
-      const textarea = xtermRef.current?.element?.querySelector("textarea") as HTMLTextAreaElement | null;
-      if (textarea) {
-        setImeTextarea(textarea);
-        return;
-      }
-      rafId = requestAnimationFrame(check);
-    };
-    check();
-    return () => {
-      if (rafId !== null) cancelAnimationFrame(rafId);
-    };
-  }, [tabId, xtermRef]);
-
-  useEffect(() => {
-    if (!imeTextarea) return;
-    const onCompositionStart = () => {
-      isComposingRef.current = true;
-    };
-    const onCompositionEnd = () => {
-      isComposingRef.current = false;
-    };
-    imeTextarea.addEventListener("compositionstart", onCompositionStart, true);
-    imeTextarea.addEventListener("compositionend", onCompositionEnd, true);
-    return () => {
-      imeTextarea.removeEventListener("compositionstart", onCompositionStart, true);
-      imeTextarea.removeEventListener("compositionend", onCompositionEnd, true);
-    };
-  }, [imeTextarea]);
 
   const handleMessageSend = useCallback((text: string) => {
     if (!text.trim()) return;
@@ -136,51 +115,19 @@ export default function UserMessageTracker({ tabId, xtermRef, trackerRef }: User
       });
   }, [tabId, xtermRef]);
 
-  // 过滤掉终端转义序列，保留纯用户输入
-  // 转义序列通常以 ESC (0x1b) 或 [ 开头，后跟特定模式
-  const isLikelyEscapeSequence = (text: string): boolean => {
-    // 如果整个字符串以 ESC 开头，很可能是终端响应
-    if (text.charCodeAt(0) === 0x1b) {
-      return true;
-    }
-    // 常见终端响应模式：以 [ 开头，以字母结尾
-    if (/^\[[\?;\d]*[a-zA-Z~]$/.test(text)) {
-      return true;
-    }
-    // 以 [O 开头的是终端响应
-    if (/^\[O/.test(text)) {
-      return true;
-    }
-    return false;
-  };
-
   // 清理文本中的转义序列残留
+  // captureKey 接收的是 DOM KeyboardEvent.key 的字符串,本身不含 ESC 字节,
+  // 但历史消息可能从旧路径写入,这里做一次规范化(去除控制字符和 Unicode 替代字符)。
   const cleanMessage = (text: string): string => {
     if (!text) return "";
-
-    // 只移除必须以 ESC 起头的转义序列,避免误伤中文/英文混排中的 `[数字字母]` 文本
     return text
-      .replace(/\x1b\[[\?;\d]*[a-zA-Z~]/g, "")                                 // CSI 序列
-      .replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, "")                        // OSC 序列
-      .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "")                          // 控制字符
-      .replace(/�/g, "")                                                          // Unicode 替代字符
+      .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "")  // 控制字符
+      .replace(/�/g, "")                                  // Unicode 替代字符
       .trim();
   };
 
-  const captureInput = useCallback((text: string) => {
-    // IME 合成期间跳过:WebKitGTK 上 onData 会泄漏中间状态字节,导致字节错位拼接
-    if (isComposingRef.current) {
-      return;
-    }
-    if (isLikelyEscapeSequence(text)) {
-      return;
-    }
-    pendingInputRef.current += text;
-  }, []);
-
   const flushInput = useCallback(() => {
     const input = pendingInputRef.current;
-    // 清空前先清理可能混入的转义序列
     const cleaned = cleanMessage(input);
     pendingInputRef.current = "";
     if (cleaned) {
@@ -188,7 +135,7 @@ export default function UserMessageTracker({ tabId, xtermRef, trackerRef }: User
     }
   }, [handleMessageSend]);
 
-  // 处理 Enter 键时，确保所有字节都已到达
+  // 处理 Enter 键时,确保所有字节都已到达
   const handleFlushWithDelay = useCallback(() => {
     // 延迟 50ms 确保 IME/输入法完成组合
     setTimeout(() => {
@@ -197,19 +144,48 @@ export default function UserMessageTracker({ tabId, xtermRef, trackerRef }: User
   }, [flushInput]);
 
   const handleEnter = useCallback(() => {
-    // 延迟 flush 确保 IME/输入法完成组合（如 emoji）
+    // 延迟 flush 确保 IME/输入法完成组合(如 emoji)
     handleFlushWithDelay();
   }, [handleFlushWithDelay]);
+
+  // 接收 xterm 的 onKey 派发的普通按键(DOM KeyboardEvent.key 字符串)。
+  // IME 上屏字符不走 onKey,所以走 captureImeText 路径。
+  const captureKey = useCallback((key: string) => {
+    if (!key) return;
+
+    if (key === "Enter") {
+      // 延迟 flush,给浏览器/IME 一帧时间把上一字符叠加上屏
+      setTimeout(() => flushInput(), 50);
+      return;
+    }
+
+    // 控制/功能键过滤
+    if (CONTROL_KEYS.has(key)) return;
+    if (/^F\d{1,2}$/.test(key)) return; // F1..F12
+
+    pendingInputRef.current += key;
+  }, [flushInput]);
+
+  // 接收 IME 上屏字符(由 TerminalView 在 textarea input 事件 +
+  // compositionend 标记检测后转发)。
+  // 关键:不在 onKey 路径上派发,以避开 onData 派发顺序错位问题。
+  const captureImeText = useCallback((text: string) => {
+    if (!text) return;
+    // IME 上屏字符串不应包含 ESC/控制字符,但为防御性保留过滤
+    const clean = text.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F�]/g, "");
+    if (clean) pendingInputRef.current += clean;
+  }, []);
 
   useEffect(() => {
     if (trackerRef) {
       trackerRef.current = {
-        captureInput,
+        captureKey,
+        captureImeText,
         flushInput,
         handleEnter,
       };
     }
-  }, [trackerRef, captureInput, flushInput, handleEnter]);
+  }, [trackerRef, captureKey, captureImeText, flushInput, handleEnter]);
 
   const scrollToMessage = useCallback((message: TrackedMessage) => {
     const term = xtermRef.current;

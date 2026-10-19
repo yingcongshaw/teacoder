@@ -241,7 +241,11 @@ export default function AppContent() {
                       if (isOpen) {
                         setActiveTab(session.id);
                       } else {
-                        openTab(session.id);
+                        openTab(session.id).catch((err) => {
+                          if (err?.message === "SESSION_DELETED") {
+                            message.error("会话被删除或不存在");
+                          }
+                        });
                       }
                     }}
                     onMouseEnter={() => setHoveredCardId(session.id)}
@@ -308,7 +312,11 @@ export default function AppContent() {
                               if (isOpen) {
                                 setActiveTab(session.id);
                               } else {
-                                openTab(session.id);
+                                openTab(session.id).catch((err) => {
+                                  if (err?.message === "SESSION_DELETED") {
+                                    message.error("会话被删除或不存在");
+                                  }
+                                });
                               }
                             }}
                             style={{ width: 24, height: 24, padding: 0, minWidth: 24 }}

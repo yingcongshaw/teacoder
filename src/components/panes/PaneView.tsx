@@ -142,6 +142,7 @@ export default function PaneView({ paneId, isActivePane, terminalRefs, onCopy, o
                   tabId={tabId}
                   visible={isActive}
                   enableInput={isActivePane}
+                  enableResize={isActivePane}
                   ref={(handle) => {
                     const k = refKey(paneId, tabId);
                     if (handle) terminalRefs.current.set(k, handle);

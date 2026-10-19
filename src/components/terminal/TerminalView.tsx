@@ -2,6 +2,7 @@ import { useEffect, useRef, useCallback, useState, forwardRef, useImperativeHand
 import { Terminal, type IBufferRange } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { listen } from "@tauri-apps/api/event";
 import { writeToPty, resizePty, readClipboardText, writeClipboardText } from "../../utils/ipc";
 import { useAppStore } from "../../stores/appStore";
@@ -20,6 +21,13 @@ interface TerminalViewProps {
    * 非 active 终端仍订阅 pty:output 同步显示,只是不能键入。
    */
   enableInput?: boolean;
+  /**
+   * 是否负责 fit + resize_pty。
+   * 共享 PTY 语义：双开时只有 activePane 推 SIGWINCH,否则两路 xterm 各自
+   * 推 resize 同一 PTY,后端反复收到 SIGWINCH,Claude Code 重排版导致
+   * 屏幕抖动 / 历史被吐。非 active pane 仍订阅 pty:output 同步显示。
+   */
+  enableResize?: boolean;
 }
 
 export interface TerminalViewHandle {
@@ -211,11 +219,19 @@ function captureSelectionText(term: Terminal): string {
   return readSelectionFromBuffer(term, range);
 }
 
-const TerminalView = forwardRef<TerminalViewHandle, TerminalViewProps>(function TerminalView({ tabId, visible = true, enableInput = true }, ref) {
+const TerminalView = forwardRef<TerminalViewHandle, TerminalViewProps>(function TerminalView({ tabId, visible = true, enableInput = true, enableResize = true }, ref) {
   const termRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
-  const trackerRef = useRef<{ captureInput: (text: string) => void; flushInput: () => void; handleEnter: () => void } | null>(null);
+  const trackerRef = useRef<{ captureKey: (key: string) => void; captureImeText: (text: string) => void; flushInput: () => void; handleEnter: () => void } | null>(null);
+  // 共享 PTY 语义: enableInput / enableResize 切到非 active 时不应重建 xterm 实例,
+  // 否则 useEffect 重跑会触发新的 focus 协议 (ESC [O) + 老的 onData 还没 dispose,
+  // 导致一次按键被多个 onData 监听器处理,PTY 收到 N 次写入。用 ref 让 onData /
+  // handleResize 在不重建 xterm 的前提下读最新值。
+  const enableInputRef = useRef(enableInput);
+  const enableResizeRef = useRef(enableResize);
+  enableInputRef.current = enableInput;
+  enableResizeRef.current = enableResize;
   // 缓存最近一次的有效选中内容。xterm.js 在右键打开自定义菜单后偶发会清空内部选中状态，
   // 这里用 onSelectionChange 持续记录，可作为 getSelection() 失效时的回退值。
   const cachedSelectionRef = useRef<string>("");
@@ -263,8 +279,8 @@ const TerminalView = forwardRef<TerminalViewHandle, TerminalViewProps>(function 
       try {
         const text = await readClipboardText();
         if (text) {
-          // 共享 PTY:非 active pane 拒绝写入,避免双开双写
-          if (!enableInput) {
+          // 共享 PTY:非 active pane 拒绝写入,避免双开双写(读最新 ref)
+          if (!enableInputRef.current) {
             console.debug("[TerminalView.paste] skipped: enableInput=false");
             return false;
           }
@@ -281,7 +297,7 @@ const TerminalView = forwardRef<TerminalViewHandle, TerminalViewProps>(function 
       }
       return false;
     },
-  }), [tabId, enableInput]);
+  }), [tabId]);
 
   const terminalSettings = useAppStore((s) => s.terminalSettings);
   const appTheme = useAppStore((s) => s.theme);
@@ -301,12 +317,15 @@ const TerminalView = forwardRef<TerminalViewHandle, TerminalViewProps>(function 
     : terminalSettings.colorTheme;
 
   const handleResize = useCallback(() => {
-    if (visible && fitAddonRef.current && xtermRef.current) {
-      fitAddonRef.current.fit();
-      const { cols, rows } = xtermRef.current;
-      resizePty(tabId, cols, rows).catch(() => {});
-    }
-  }, [tabId, visible]);
+    // 共享 PTY 语义:非 active pane 仍 fit xterm 到容器(显示对齐),
+    // 但不调 resizePty —— 避免双开时两路各自推 SIGWINCH 风暴,
+    // 触发 Claude Code 反复重排版 / 历史被吐。
+    if (!visible || !fitAddonRef.current || !xtermRef.current) return;
+    fitAddonRef.current.fit();
+    if (!enableResize) return;
+    const { cols, rows } = xtermRef.current;
+    resizePty(tabId, cols, rows).catch(() => {});
+  }, [tabId, visible, enableResize]);
 
   // 初始化终端
   useEffect(() => {
@@ -323,7 +342,16 @@ const TerminalView = forwardRef<TerminalViewHandle, TerminalViewProps>(function 
     });
 
     const fitAddon = new FitAddon();
-    const webLinksAddon = new WebLinksAddon();
+    // 自定义 click handler:把 URL 交给 Tauri opener 在系统浏览器打开。
+    // 默认 WebLinksAddon 走 window.open(),在 Tauri webview 里默认被拦截(返回 null),
+    // 不会真正打开,只在 console 输出一行 warn。
+    const webLinksAddon = new WebLinksAddon(async (_event, uri) => {
+      try {
+        await openUrl(uri);
+      } catch (e) {
+        console.error("[TerminalView] failed to open URL:", e);
+      }
+    });
 
     term.loadAddon(fitAddon);
     term.loadAddon(webLinksAddon);
@@ -350,8 +378,8 @@ const TerminalView = forwardRef<TerminalViewHandle, TerminalViewProps>(function 
     const handlePaste = async (e: ClipboardEvent) => {
       const items = e.clipboardData?.items;
       if (!items) return;
-      // 共享 PTY:非 active pane 拒绝写入,避免双开双写
-      if (!enableInput) {
+      // 共享 PTY:非 active pane 拒绝写入,避免双开双写(读最新 ref)
+      if (!enableInputRef.current) {
         e.preventDefault();
         console.debug("[TerminalView.paste-image] skipped: enableInput=false");
         return;
@@ -390,16 +418,46 @@ const TerminalView = forwardRef<TerminalViewHandle, TerminalViewProps>(function 
     termRef.current.addEventListener("paste", handlePaste);
 
     term.onData((data) => {
-      // 共享 PTY:非 active pane 不写 PTY,避免双开双写
-      if (!enableInput) return;
-      // Track user input for message tracking
-      trackerRef.current?.captureInput(data);
-      // Detect Enter key (CR = carriage return, LF = line feed)
-      if (data === "\r" || data === "\n") {
-        trackerRef.current?.handleEnter();
-      }
+      // 共享 PTY:非 active pane 不写 PTY,避免双开双写(读最新 ref)
+      if (!enableInputRef.current) return;
+      // 仅负责写入 PTY(直通,不动 XML 拦截)。
+      // 用户输入追踪走两路:onKey 接收普通按键,textarea 的 input 事件 +
+      // compositionend 标记捕获 IME 上屏字符。
       writeToPty(tabId, data).catch(() => {});
     });
+
+    term.onKey((e) => {
+      // DOM KeyboardEvent.key 的字符串,不含 ESC/CSI/IME 中间态字节
+      trackerRef.current?.captureKey(e.key);
+    });
+
+    // IME 上屏字符捕获。
+    // xterm.js 6.x 的 _inputEvent 只 fire onData 不 fire onKey,导致 onKey 路径
+    // 永远收不到 IME 上屏的中文。直接监听 xterm 内部 textarea 的 input 事件,
+    // 通过 compositionend 时间戳区分 IME 上屏与普通按键的 input 事件。
+    // (普通按键 input 事件由 onKey 处理,这里不重复累积)
+    const textarea = term.element?.querySelector("textarea") as HTMLTextAreaElement | null;
+    let lastCompositionEndTs = 0;
+    let removeImeListeners: (() => void) | null = null;
+    if (textarea) {
+      const onCompositionEnd = () => {
+        lastCompositionEndTs = Date.now();
+      };
+      const onInput = (e: Event) => {
+        const inputEvent = e as InputEvent;
+        if (inputEvent.inputType !== "insertText" || !inputEvent.data) return;
+        // IME 上屏:compositionend 后 500ms 内的 input 事件视为 IME 上屏字符
+        if (Date.now() - lastCompositionEndTs < 500) {
+          trackerRef.current?.captureImeText(inputEvent.data);
+        }
+      };
+      textarea.addEventListener("compositionend", onCompositionEnd, true);
+      textarea.addEventListener("input", onInput, true);
+      removeImeListeners = () => {
+        textarea.removeEventListener("compositionend", onCompositionEnd, true);
+        textarea.removeEventListener("input", onInput, true);
+      };
+    }
 
     // 持续记录终端选中内容，作为右键菜单复制时的回退值。
     // 右键打开 Dropdown 时，Ant Design 接管 contextmenu，xterm 的 textarea 失焦
@@ -476,13 +534,14 @@ const TerminalView = forwardRef<TerminalViewHandle, TerminalViewProps>(function 
       term.element?.removeEventListener("contextmenu", onContextMenuCaptureSelection);
       term.element?.removeEventListener("mousemove", onMouseMoveCaptureSelection);
       if (moveRafId !== null) cancelAnimationFrame(moveRafId);
+      removeImeListeners?.();
       resizeObserver.disconnect();
       selectionDisposable.dispose();
       term.dispose();
       unlisten_output.then((fn) => fn());
       unlisten_exit.then((fn) => fn());
     };
-  }, [tabId, enableInput]);
+  }, [tabId]);
 
   // 设置变更时动态更新终端
   useEffect(() => {
@@ -514,17 +573,38 @@ const TerminalView = forwardRef<TerminalViewHandle, TerminalViewProps>(function 
     }
   }, [terminalSettings, effectiveThemeName]);
 
+  // 共享 PTY 语义:非 active pane 立即 blur xterm,阻止 xterm 内部
+  // focus 协议 (ESC [O / ESC [?1;2c) 写入 PTY,避免双开双写。
+  // 也避免 mouse-tracking 协议被启用导致 Claude 进入全屏输入态。
+  useEffect(() => {
+    const term = xtermRef.current;
+    if (!term) return;
+    if (!enableInput) {
+      try { term.blur(); } catch { /* ignore */ }
+      if (term.element) {
+        term.element.setAttribute("tabindex", "-1");
+      }
+    } else {
+      if (term.element) {
+        term.element.setAttribute("tabindex", "0");
+      }
+      // 注意:不要自动 focus,让用户点击触发(避免 mount 时与另一 pane 抢焦点)
+    }
+  }, [enableInput, visible]);
+
   // 可见性变更时重新 fit
   useEffect(() => {
-    if (visible && fitAddonRef.current && xtermRef.current) {
-      requestAnimationFrame(() => {
-        fitAddonRef.current?.fit();
-        if (xtermRef.current) {
-          const { cols, rows } = xtermRef.current;
-          resizePty(tabId, cols, rows).catch(() => {});
-        }
-      });
-    }
+    // 共享 PTY 语义:非 active pane 仍 fit xterm 到容器(显示对齐),
+    // 但不调 resizePty —— 同 handleResize(读最新 ref 避免重建 xterm)。
+    if (!visible || !fitAddonRef.current || !xtermRef.current) return;
+    requestAnimationFrame(() => {
+      fitAddonRef.current?.fit();
+      if (!enableResizeRef.current) return;
+      if (xtermRef.current) {
+        const { cols, rows } = xtermRef.current;
+        resizePty(tabId, cols, rows).catch(() => {});
+      }
+    });
   }, [visible, tabId]);
 
   const themeColors = getThemeColors(effectiveThemeName);
