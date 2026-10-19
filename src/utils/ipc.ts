@@ -223,15 +223,15 @@ export async function sessionDelete(id: string): Promise<void> {
   return invoke("session_delete", { id });
 }
 
-export async function findLatestClaudeSession(
+export async function claudeJsonlExists(
+  cliSessionId: string,
   workDir: string,
   claudeConfigDir: string | null,
-  beforeTsMs: number,
-): Promise<string | null> {
-  return invoke<string | null>("find_latest_claude_session", {
+): Promise<boolean> {
+  return invoke<boolean>("claude_jsonl_exists", {
+    cliSessionId,
     workDir,
     claudeConfigDir,
-    beforeTsMs,
   });
 }
 
