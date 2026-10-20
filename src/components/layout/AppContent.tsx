@@ -7,18 +7,15 @@ import {
   DeleteOutlined,
   ClockCircleOutlined,
   CloseOutlined,
-  DollarOutlined,
   ThunderboltOutlined,
 } from "@ant-design/icons";
 import { useAppStore } from "../../stores/appStore";
 import type { TerminalViewHandle } from "../terminal/TerminalView";
 import SettingsPage from "./SettingsPage";
-import CostDashboard from "../cost/CostDashboard";
 import QuickCommands from "../quick-commands/QuickCommands";
 import PaneView from "../panes/PaneView";
 import PaneSplitter from "../panes/PaneSplitter";
 import { TOOL_DISPLAY_NAMES } from "../../types";
-import type { CostSummary } from "../../types";
 
 const TOOL_COLORS: Record<string, string> = {
   claude: "#9254de",
@@ -53,8 +50,6 @@ export default function AppContent() {
   const activePaneId = useAppStore((s) => s.activePaneId);
 
   const [hoveredCardId, setHoveredCardId] = useState<string | null>(null);
-  const [costModalOpen, setCostModalOpen] = useState(false);
-  const [globalCost] = useState<CostSummary | null>(null);
   const [quickCommandsVisible, setQuickCommandsVisible] = useState(false);
   const quickCommandsBtnRef = useRef<HTMLSpanElement>(null);
   const terminalRefs = useRef<Map<string, TerminalViewHandle>>(new Map());
@@ -125,13 +120,6 @@ export default function AppContent() {
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [activeTabId, copyActiveTerminal, pasteToActiveTerminal]);
-
-  const formatCost = (usd: number): string => {
-    if (usd >= 1) return `$${usd.toFixed(2)}`;
-    if (usd >= 0.01) return `$${usd.toFixed(3)}`;
-    if (usd > 0) return `$${usd.toFixed(4)}`;
-    return "$0";
-  };
 
   // 注：分屏交互中的"焦点面板"已由 PaneView 内部 mousedown 处理；
   // AppContent 层面只关心 panes / splitRatio 用于布局。
@@ -381,23 +369,12 @@ export default function AppContent() {
     <>
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {mainContent}
-        {/* Bottom cost bar */}
+        {/* Bottom quick-commands bar */}
         <div className="flex-shrink-0 relative border-t border-[var(--ant-color-border)] bg-[var(--ant-color-bg-container)]">
           <div
-            className="flex items-center justify-between px-3 py-1.5 transition-colors"
+            className="flex items-center justify-end px-3 py-1.5 transition-colors"
             style={{ backgroundColor: "var(--ant-color-bg-container)" }}
           >
-            <div
-              className="flex items-center gap-2 text-xs cursor-pointer"
-              style={{ color: "var(--ant-color-text-secondary)" }}
-              onClick={() => setCostModalOpen(true)}
-            >
-              <DollarOutlined style={{ fontSize: 12 }} />
-              <span>费用统计</span>
-              {globalCost && globalCost.costUsd > 0 && (
-                <span style={{ color: "var(--ant-color-text)" }}>{formatCost(globalCost.costUsd)}</span>
-              )}
-            </div>
             <div className="flex items-center gap-2">
               <span
                 ref={quickCommandsBtnRef}
@@ -431,13 +408,6 @@ export default function AppContent() {
         title="设置"
       >
         <SettingsPage />
-      </DraggableModal>
-      <DraggableModal
-        open={costModalOpen}
-        onClose={() => setCostModalOpen(false)}
-        title="费用统计"
-      >
-        <CostDashboard />
       </DraggableModal>
     </>
   );

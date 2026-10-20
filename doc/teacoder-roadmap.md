@@ -46,11 +46,9 @@ v0.1.0 已实现完整覆盖以下领域，每个领域在 `requirements.md` 中
 | 功能领域 | 优先级 |
 | --- | --- |
 | **CostProvider 完整覆盖**（Codex / Gemini / OpenCode / Antigravity 解析） | 高 |
-| **Token 费用仪表板**（每日趋势、月度、180 天热力图、预算告警） | 高 |
 | **MCP Server 可视化管理**（图形化添加/启用/禁用 MCP Server，stdio / HTTP / SSE） | 中 |
 | **代码片段库**（常用 Prompt 存为片段，模板变量，Ctrl+K 一键插入） | 中 |
 | **全局搜索与命令面板**（Ctrl+K 整合内置指令/项目命令/代码片段） | 中 |
-| **WebDAV 云同步**（选择性同步设置/Profile/片段，走用户自己的网盘） | 低 |
 | **思考强度热切换**（状态栏 Tag 切换 effort，运行中瞬时生效） | 中 |
 | **国内厂商端点支持**（智谱 AI / 通义千问 / Kimi Code / 硅基流动 / DeepSeek 等预设） | 中 |
 | **远端 SSH 工作区配置化**（v0.1.0 已支持 SSH 会话，v0.2 提供配置面板与密钥管理） | 中 |
@@ -67,8 +65,6 @@ v0.1.0 已实现完整覆盖以下领域，每个领域在 `requirements.md` 中
 
 | 功能领域 |
 | --- |
-| **移动端伴侣 (Android)**（手机远程查看 AI 实时输出、补发指令、设备配对） |
-| **axum HTTP/WS 网关**（监听 127.0.0.1，为手机伴侣提供 daemon 端） |
 | **工作区编辑器**（内置文件树、语法高亮编辑器、代码大纲、Git 面板） |
 | **本地 LLM 后端**（Ollama / vLLM / LM Studio 预设，探活拉取本地模型列表） |
 | **Responses ↔ Chat 转换代理**（为 Codex 内置协议转换代理） |
@@ -108,27 +104,15 @@ v0.1.0 已实现完整覆盖以下领域，每个领域在 `requirements.md` 中
 - 时间处理：`chrono = "0.4"`
 - 凭据：`keyring = "3"`（Profile 的 Keychain）+ `base64` 编码（LlmProvider 备用）
 
-### 4. 移动端：Tauri Mobile（v1.0+）
-
-- React SPA in Tauri Mobile WebView
-- Android APK + AAB 格式
-- 通过本地 axum 网关（127.0.0.1:49999）连接桌面端 PTY
-- 注意：Tauri Mobile iOS 仍不成熟，暂不纳入规划
-
-### 5. 文档站：VitePress（远期）
+### 4. 文档站：VitePress（远期）
 
 - 标准路径结构：`/guide/`、`/features/`、`/mobile/`
 - Ctrl+K 搜索、暗色主题、sidebar 导航
 
-### 6. 语音识别：阿里云 DashScope ASR（v0.3）
+### 5. 语音识别：阿里云 DashScope ASR（v0.3）
 
 - 使用 `qwen3-asr-flash` 模型
 - 支持提示词术语词典、PTT 去重、灵动岛 Overlay UI
-
-### 7. 同步方案：WebDAV（v0.2）
-
-- 支持用户自有的 Nextcloud / 坚果云 / NAS
-- 选择性同步，默认不同步凭据
 
 ---
 
@@ -197,26 +181,16 @@ pub trait CostProvider: Send + Sync {
 │         │   cost:updated) │  ToolSettings          │ │
 │         ▼                  │  托盘 + 系统设置       │ │
 │  ┌──────────────────────┐  └──────────────────────┘  │
-│  │   CLI 工具 (PTY)     │         ▲                  │
-│  │   Claude Code        │         │                  │
-│  │   Codex CLI          │         │ WSS/HTTPS        │
-│  │   Gemini CLI         │         │ (v1.0+, axum 网关)│
-│  │   OpenCode           │         │                  │
-│  │   Antigravity        │         │                  │
-│  │   裸终端 (terminal)  │         │                  │
-│  │   SSH (ssh, askpass) │         │                  │
-│  └──────────────────────┘         │                  │
-│                                    │                  │
-└────────────────────────────────────┼──────────────────┘
-                                     │
-                            ┌────────▼────────┐
-                            │  移动端伴侣      │
-                            │  React SPA       │
-                            │  (Tauri Mobile   │
-                            │   WebView)       │
-                            │  Android APK/AAB │
-                            │  (v1.0+ 远期)    │
-                            └─────────────────┘
+│  │   CLI 工具 (PTY)     │                              │
+│  │   Claude Code        │                              │
+│  │   Codex CLI          │                              │
+│  │   Gemini CLI         │                              │
+│  │   OpenCode           │                              │
+│  │   Antigravity        │                              │
+│  │   裸终端 (terminal)  │                              │
+│  │   SSH (ssh, askpass) │                              │
+│  └──────────────────────┘                              │
+└──────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -228,7 +202,6 @@ pub trait CostProvider: Send + Sync {
 | CLI 工具输出格式/数据结构频繁变动 | CostProvider trait 抽象层，每个 CLI 独立解析，变动只改对应 Provider |
 | 多账号隔离需逐个 CLI 适配 | v0.1.0 先支持 Claude Code 的 `CLAUDE_CONFIG_DIR` 隔离，其他工具逐步适配 |
 | API Key 存储安全（Linux Keychain 不稳定） | Profile 仍走系统 Keychain（macOS/Windows 强一致）；同时引入 LlmProvider 走 Base64 编码 SQLite 备用 |
-| axum 本地服务安全风险 | 仅监听 127.0.0.1，移动端连接需设备配对 + 鉴权熔断 |
 | Tauri Mobile iOS 不成熟 | 暂不纳入规划，专注 Android + 桌面端 |
 | 分屏双开 PTY 同步抖动 | v0.1.0 实现共享 PTY 语义（一个 PtyEntry / 多个 xterm），后续版本继续打磨同步延迟 |
 
@@ -237,5 +210,4 @@ pub trait CostProvider: Send + Sync {
 ## 七、可持续性
 
 - **开源核心**：v0.1.0 核心功能完全开源，建立社区
-- **高级功能付费**：Token 分析仪表板、云同步、移动端伴侣等高级功能考虑付费
 - **赞助模式**：GitHub Sponsors / 爱发电，服务深度用户

@@ -4,22 +4,9 @@ import {
   GithubOutlined,
 } from "@ant-design/icons";
 import { useAppStore } from "../../stores/appStore";
-import { getProfileCost, getGlobalCost, getToolSettings, upsertToolSettings } from "../../utils/ipc";
+import { getToolSettings, upsertToolSettings } from "../../utils/ipc";
 import { TOOL_DISPLAY_NAMES } from "../../types";
-import type { CostSummary, Profile, ToolSettings } from "../../types";
-
-function formatTokens(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
-  return String(n);
-}
-
-function formatCost(usd: number): string {
-  if (usd >= 1) return `$${usd.toFixed(2)}`;
-  if (usd >= 0.01) return `$${usd.toFixed(3)}`;
-  if (usd > 0) return `$${usd.toFixed(4)}`;
-  return "$0";
-}
+import type { Profile, ToolSettings } from "../../types";
 
 const CLAUDE_MODELS = [
   { value: "claude-opus-4", label: "Opus 4" },
@@ -37,11 +24,8 @@ export default function AppStatusBar() {
   const sessions = useAppStore((s) => s.sessions);
   const activeTabId = useAppStore((s) => s.activeTabId);
   const profiles = useAppStore((s) => s.profiles);
-  const costTick = useAppStore((s) => s.costTick);
   const activeTab = sessions.find((t) => t.id === activeTabId);
 
-  const [profileCost, setProfileCost] = useState<CostSummary | null>(null);
-  const [globalCost, setGlobalCost] = useState<CostSummary | null>(null);
   const [toolSettings, setToolSettings] = useState<ToolSettings | null>(null);
   const [model, setModel] = useState<string>("claude-sonnet-4");
   const [thinkingIntensity, setThinkingIntensity] = useState<string>("medium");
@@ -49,22 +33,6 @@ export default function AppStatusBar() {
   const activeProfile: Profile | undefined = activeTab
     ? profiles.find((p) => p.id === activeTab.profileId)
     : undefined;
-
-  useEffect(() => {
-    if (activeTab?.profileId) {
-      getProfileCost(activeTab.profileId)
-        .then(setProfileCost)
-        .catch(() => {});
-    } else {
-      setProfileCost(null);
-    }
-  }, [activeTab?.profileId, costTick]);
-
-  useEffect(() => {
-    getGlobalCost()
-      .then(setGlobalCost)
-      .catch(() => {});
-  }, [costTick]);
 
   useEffect(() => {
     if (activeProfile?.id) {
@@ -110,10 +78,6 @@ export default function AppStatusBar() {
     }
   };
 
-  const totalTokens = profileCost
-    ? profileCost.inputTokens + profileCost.outputTokens + profileCost.cacheCreationTokens + profileCost.cacheReadTokens
-    : 0;
-
   const isClaude = activeTab?.toolType === "claude";
 
   return (
@@ -128,21 +92,6 @@ export default function AppStatusBar() {
           </div>
 
           <span className="mx-2 text-[var(--ant-color-border)]">|</span>
-
-          {/* Center: token stats */}
-          <div className="flex items-center gap-2 flex-1">
-            {profileCost && totalTokens > 0 ? (
-              <>
-                <span>
-                  In: {formatTokens(profileCost.inputTokens)} Out: {formatTokens(profileCost.outputTokens)} Cache: {formatTokens(profileCost.cacheCreationTokens + profileCost.cacheReadTokens)}
-                </span>
-                <span className="text-[var(--ant-color-border)]">|</span>
-                <span>{formatCost(profileCost.costUsd)}</span>
-              </>
-            ) : (
-              <span>Token: --</span>
-            )}
-          </div>
 
           {/* Right: model selector + actions */}
           <div className="flex items-center gap-2 flex-shrink-0">
@@ -181,15 +130,10 @@ export default function AppStatusBar() {
             <span className="text-[var(--ant-color-border)]">|</span>
             <GithubOutlined className="cursor-pointer hover:text-[var(--ant-color-text)]" />
           </div>
-
-          {/* Far right: global cost */}
-          {globalCost && globalCost.costUsd > 0 && (
-            <span className="ml-4 flex-shrink-0">本月累计: {formatCost(globalCost.costUsd)}</span>
-          )}
         </>
       ) : (
         <Typography.Text type="secondary" className="text-xs">
-          茶码 TeaCoder v0.1
+          TeaCoder v0.1
         </Typography.Text>
       )}
     </div>

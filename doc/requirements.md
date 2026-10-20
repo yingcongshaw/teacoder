@@ -64,7 +64,6 @@ v0.1.0（已发布）
 | `chrono 0.4` | 时间处理 |
 | `walkdir` | Claude JSONL 目录遍历 |
 | `async-trait` | 异步 trait |
-| `axum 0.8` | （预留，v0.1.0 暂未启用监听） |
 
 ### 2.3 打包产物
 
@@ -898,7 +897,6 @@ on("cost:updated", (payload: { sessionId: string; cost: SessionCost }) => void)
 - [x] 冷启动 < 2 秒（本地测试通过）
 - [x] API Key 不在 SQLite 中以明文存储（Profile Keychain / LlmProvider Base64）
 - [x] 日志中 API Key 全部脱敏
-- [ ] axum 网关：v0.1.0 未启用（v1.0+）
 - [x] SQLite 操作使用事务
 - [x] Schema 版本化迁移（v1 → v12 已成功）
 
@@ -911,9 +909,7 @@ on("cost:updated", (payload: { sessionId: string; cost: SessionCost }) => void)
 ### v0.2 待实现
 
 - Codex / Gemini / OpenCode / Antigravity 的 CostProvider 完整解析
-- Token 费用仪表板（每日趋势、月度、180 天热力图、预算告警）
 - MCP Server 可视化管理（仅提供 `McpAccessPage` 入口）
-- WebDAV 云同步（仅提供 `SyncPage` 入口）
 - 代码片段库（仅提供 Ctrl+K 入口）
 - 思考强度热切换（字段已建，运行中瞬时生效未做）
 - 国内厂商端点预设（DeepSeek/智谱/通义/Kimi/硅基流动 已在 LlmProvider 预设中部分覆盖）
@@ -927,11 +923,9 @@ on("cost:updated", (payload: { sessionId: string; cost: SessionCost }) => void)
 
 ### v1.0+ 远期
 
-- 移动端伴侣 Android
 - 工作区编辑器
 - 本地 LLM 后端
 - Responses ↔ Chat 转换代理
-- axum HTTP/WS 网关（依赖已在 Cargo.toml 声明，v1.0+ 启用）
 
 ---
 
