@@ -175,5 +175,5 @@ TeaCoder 是一款 AI 编程 CLI 工具的桌面管理客户端（Tauri 2.x）�
 
 1. 每个 Tauri IPC 命令先在 Rust 侧实现，再在 TS 侧封装调用
 2. 每个功能模块完成后立即手动验证，不累积到最终
-3. 使用 `cargo clippy` + `cargo test` + `npm run typecheck` 作为提交前检查
+3. 使用 `cargo clippy` + `cargo test` + `pnpm exec tsc --noEmit` 作为提交前检查
 4. 遇到跨平台问题时，优先在 Linux 上验证，再考虑 Windows/macOS 差异

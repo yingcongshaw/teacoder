@@ -124,7 +124,7 @@ pnpm tauri dev
 ```bash
 pnpm tauri dev          # 启动开发模式(热重载)
 pnpm tauri build        # 构建发布版本
-pnpm typecheck          # TypeScript 类型检查
+pnpm exec tsc --noEmit  # TypeScript 类型检查
 cargo clippy            # Rust lint(在 src-tauri/ 下)
 cargo test              # Rust 单元测试(在 src-tauri/ 下)
 ```
