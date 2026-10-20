@@ -1,0 +1,180 @@
+- generic [ref=f5e5]:
+  - generic [ref=f5e7]:
+    - generic [ref=f5e8]: 茶码 CodingTea
+    - generic [ref=f5e14]:
+      - button [ref=f5e15] [cursor=pointer]:
+        - img "tool" [ref=f5e18]
+      - button [ref=f5e21] [cursor=pointer]:
+        - img "reload" [ref=f5e23]
+      - button [ref=f5e26] [cursor=pointer]:
+        - img "search" [ref=f5e28]
+      - button [active] [ref=f5e31] [cursor=pointer]:
+        - img "setting" [ref=f5e33]
+  - generic [ref=f5e37]:
+    - generic [ref=f5e39]:
+      - generic [ref=f5e41]:
+        - img "search" [ref=f5e43]
+        - textbox "搜索会话..." [ref=f5e46]
+      - generic [ref=f5e48]:
+        - generic [ref=f5e49]:
+          - img "message" [ref=f5e50]
+          - generic [ref=f5e53]: 会话
+        - button [ref=f5e54] [cursor=pointer]:
+          - img "plus" [ref=f5e56]
+      - generic [ref=f5e61]:
+        - paragraph [ref=f5e62]: 暂无会话
+        - button "plus 新建会话" [ref=f5e63] [cursor=pointer]:
+          - img "plus" [ref=f5e65]
+          - generic [ref=f5e69]: 新建会话
+      - generic [ref=f5e70]:
+        - generic [ref=f5e72]:
+          - generic [ref=f5e73]: 已检测工具
+          - img "reload" [ref=f5e74] [cursor=pointer]
+        - generic [ref=f5e77] [cursor=pointer]:
+          - img "dollar" [ref=f5e78]
+          - generic [ref=f5e81]: 费用统计
+        - generic [ref=f5e82] [cursor=pointer]:
+          - img "setting" [ref=f5e83]
+          - generic [ref=f5e86]: 设置
+    - generic [ref=f5e87]:
+      - generic [ref=f5e88]:
+        - heading "最近会话" [level=2] [ref=f5e90]
+        - generic [ref=f5e92]:
+          - generic [ref=f5e93]: 茶
+          - generic [ref=f5e94]:
+            - paragraph [ref=f5e95]: 暂无会话，点击「新建会话」开始
+            - button [ref=f5e96]:
+              - img "plus" [ref=f5e97]
+              - text: 新建会话
+      - generic [ref=f5e102]:
+        - generic [ref=f5e103]:
+          - generic [ref=f5e104]: 设置
+          - button [ref=f5e105] [cursor=pointer]:
+            - img "close" [ref=f5e106]
+        - generic [ref=f5e110]:
+          - menu [ref=f5e113]:
+            - text: 通用
+            - group [ref=f5e114]:
+              - menuitem "通用设置" [ref=f5e115] [cursor=pointer]
+            - text: AI 工具
+            - group [ref=f5e117]:
+              - menuitem "Claude Code" [ref=f5e118] [cursor=pointer]
+              - menuitem "Codex CLI" [ref=f5e120] [cursor=pointer]
+              - menuitem "Gemini CLI" [ref=f5e122] [cursor=pointer]
+              - menuitem "Antigravity" [ref=f5e124] [cursor=pointer]
+              - menuitem "OpenCode" [ref=f5e126] [cursor=pointer]
+            - text: 终端
+            - group [ref=f5e128]:
+              - menuitem "终端设置" [ref=f5e129] [cursor=pointer]
+            - text: AI 辅助
+            - group [ref=f5e131]:
+              - menuitem "AI 辅助" [ref=f5e132] [cursor=pointer]
+            - text: 网络
+            - group [ref=f5e134]:
+              - menuitem "网络" [ref=f5e135] [cursor=pointer]
+            - text: 远程
+            - group [ref=f5e137]:
+              - menuitem "远程访问" [ref=f5e138] [cursor=pointer]
+            - text: 快捷键
+            - group [ref=f5e140]:
+              - menuitem "快捷键" [ref=f5e141] [cursor=pointer]
+            - text: 通知
+            - group [ref=f5e143]:
+              - menuitem "通知" [ref=f5e144] [cursor=pointer]
+            - text: 数据
+            - group [ref=f5e146]:
+              - menuitem "数据管理" [ref=f5e147] [cursor=pointer]
+              - menuitem "同步" [ref=f5e149] [cursor=pointer]
+            - text: MCP
+            - group [ref=f5e151]:
+              - menuitem "MCP 接入" [ref=f5e152] [cursor=pointer]
+            - text: 关于
+            - group [ref=f5e154]:
+              - menuitem "关于" [ref=f5e155] [cursor=pointer]
+          - generic [ref=f5e157]:
+            - generic [ref=f5e158]:
+              - generic [ref=f5e159]: 通用设置
+              - generic [ref=f5e160]:
+                - img "search" [ref=f5e162]
+                - textbox "搜索设置..." [ref=f5e165]
+            - generic [ref=f5e169]:
+              - generic [ref=f5e170]: 外观
+              - generic [ref=f5e171]:
+                - generic [ref=f5e172]:
+                  - generic [ref=f5e173]: 语言
+                  - generic [ref=f5e174]: 选择界面显示语言
+                - generic [ref=f5e176] [cursor=pointer]:
+                  - generic "简体中文" [ref=f5e177]:
+                    - text: 简体中文
+                    - combobox [ref=f5e178]
+                  - img "down" [ref=f5e180]
+              - generic [ref=f5e183]:
+                - generic [ref=f5e184]:
+                  - generic [ref=f5e185]: 主题
+                  - generic [ref=f5e186]: 选择应用主题外观
+                - generic [ref=f5e188] [cursor=pointer]:
+                  - generic "跟随系统" [ref=f5e189]:
+                    - text: 跟随系统
+                    - combobox [ref=f5e190]
+                  - img "down" [ref=f5e192]
+              - generic [ref=f5e195]:
+                - generic [ref=f5e196]:
+                  - generic [ref=f5e197]: 字体大小
+                  - generic [ref=f5e198]: 调整界面字体大小
+                - generic [ref=f5e200]:
+                  - slider [ref=f5e204] [cursor=pointer]
+                  - generic [ref=f5e205]: "19"
+              - generic [ref=f5e206]:
+                - generic [ref=f5e207]:
+                  - generic [ref=f5e208]: 界面缩放
+                  - generic [ref=f5e209]: 调整整体界面缩放比例
+                - generic [ref=f5e211]:
+                  - slider [ref=f5e215] [cursor=pointer]
+                  - generic [ref=f5e216]: 100%
+              - generic [ref=f5e217]: 启动与关闭
+              - generic [ref=f5e218]:
+                - generic [ref=f5e219]:
+                  - generic [ref=f5e220]: 启动时恢复上次会话
+                  - generic [ref=f5e221]: 重新打开上次关闭时的会话标签页
+                - switch [checked] [ref=f5e223] [cursor=pointer]
+              - generic [ref=f5e226]:
+                - generic [ref=f5e227]:
+                  - generic [ref=f5e228]: 关闭窗口行为
+                  - generic [ref=f5e229]: 点击关闭按钮时的行为
+                - generic [ref=f5e231] [cursor=pointer]:
+                  - generic "最小化到托盘" [ref=f5e232]:
+                    - text: 最小化到托盘
+                    - combobox [ref=f5e233]
+                  - img "down" [ref=f5e235]
+              - generic [ref=f5e238]:
+                - generic [ref=f5e239]:
+                  - generic [ref=f5e240]: 显示托盘图标
+                  - generic [ref=f5e241]: 在系统托盘显示应用图标
+                - switch [checked] [ref=f5e243] [cursor=pointer]
+              - generic [ref=f5e246]:
+                - generic [ref=f5e247]:
+                  - generic [ref=f5e248]: 开机自启动
+                  - generic [ref=f5e249]: 系统启动时自动运行应用
+                - switch [ref=f5e251] [cursor=pointer]
+              - generic [ref=f5e254]: 更新
+              - generic [ref=f5e255]:
+                - generic [ref=f5e256]:
+                  - generic [ref=f5e257]: 自动检查更新
+                  - generic [ref=f5e258]: 定期检查新版本
+                - switch [checked] [ref=f5e260] [cursor=pointer]
+              - generic [ref=f5e263]:
+                - generic [ref=f5e264]:
+                  - generic [ref=f5e265]: 自动下载更新
+                  - generic [ref=f5e266]: 发现新版本时自动下载
+                - switch [ref=f5e268] [cursor=pointer]
+              - generic [ref=f5e271]: 布局
+              - generic [ref=f5e272]:
+                - generic [ref=f5e273]:
+                  - generic [ref=f5e274]: 紧凑模式
+                  - generic [ref=f5e275]: 减小间距和圆角，更接近 IDE 风格
+                - switch [ref=f5e277] [cursor=pointer]
+              - generic [ref=f5e280]:
+                - generic [ref=f5e281]:
+                  - generic [ref=f5e282]: 显示状态栏
+                  - generic [ref=f5e283]: 在窗口底部显示状态信息栏
+                - switch [checked] [ref=f5e285] [cursor=pointer]

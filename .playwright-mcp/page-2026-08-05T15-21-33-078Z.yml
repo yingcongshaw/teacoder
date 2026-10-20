@@ -1,0 +1,42 @@
+- generic [ref=f17e4]:
+  - generic [ref=f17e6]:
+    - generic [ref=f17e7]: 茶码 CodingTea
+    - generic [ref=f17e13]:
+      - button [ref=f17e14] [cursor=pointer]:
+        - img "tool" [ref=f17e17]
+      - button [ref=f17e20] [cursor=pointer]:
+        - img "reload" [ref=f17e22]
+      - button [ref=f17e25] [cursor=pointer]:
+        - img "search" [ref=f17e27]
+      - button [ref=f17e30] [cursor=pointer]:
+        - img "setting" [ref=f17e32]
+  - generic [ref=f17e36]:
+    - generic [ref=f17e38]:
+      - img "reload" [ref=f17e40] [cursor=pointer]
+      - generic [ref=f17e44]:
+        - img "search" [ref=f17e46]
+        - textbox "搜索会话..." [ref=f17e49]
+      - generic [ref=f17e51]:
+        - generic [ref=f17e52]:
+          - img "message" [ref=f17e53]
+          - generic [ref=f17e56]: 会话
+        - button [ref=f17e57] [cursor=pointer]:
+          - img "plus" [ref=f17e59]
+      - generic [ref=f17e64]:
+        - paragraph [ref=f17e65]: 暂无会话
+        - button "plus 新建会话" [ref=f17e66] [cursor=pointer]:
+          - img "plus" [ref=f17e68]
+          - generic [ref=f17e72]: 新建会话
+    - generic [ref=f17e74]:
+      - generic [ref=f17e75]:
+        - heading "最近会话" [level=2] [ref=f17e77]
+        - generic [ref=f17e79]:
+          - generic [ref=f17e80]: 茶
+          - generic [ref=f17e81]:
+            - paragraph [ref=f17e82]: 暂无会话，点击「新建会话」开始
+            - button [ref=f17e83]:
+              - img "plus" [ref=f17e84]
+              - text: 新建会话
+      - generic [ref=f17e90] [cursor=pointer]:
+        - img "dollar" [ref=f17e91]
+        - generic [ref=f17e94]: 费用统计

@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Tauri + React + Typescript</title>
+  </head>
+
+  <body>
+    <div id="root"></div>
+    <script>
+      window.__TAURI_ERRORS__ = [];
+      window.addEventListener('error', (e) => {
+        window.__TAURI_ERRORS__.push({ type: 'error', message: e.message, filename: e.filename, lineno: e.lineno, colno: e.colno, error: e.error?.stack });
+        console.error('[Global Error]', e.message, e.filename, e.lineno);
+      });
+      window.addEventListener('unhandledrejection', (e) => {
+        window.__TAURI_ERRORS__.push({ type: 'unhandledrejection', reason: String(e.reason), stack: e.reason?.stack });
+        console.error('[Unhandled Rejection]', e.reason);
+      });
+    </script>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

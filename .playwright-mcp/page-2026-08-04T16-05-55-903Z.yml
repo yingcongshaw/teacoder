@@ -1,0 +1,109 @@
+- generic [ref=e4]:
+  - generic [ref=e5]:
+    - generic [ref=e7]:
+      - generic [ref=e8]: 茶码 CodingTea
+      - generic [ref=e14]:
+        - button [ref=e15] [cursor=pointer]:
+          - img "tool" [ref=e18]
+        - button [ref=e21] [cursor=pointer]:
+          - img "reload" [ref=e23]
+        - button [ref=e26] [cursor=pointer]:
+          - img "search" [ref=e28]
+        - button [ref=e31] [cursor=pointer]:
+          - img "setting" [ref=e33]
+    - generic [ref=e37]:
+      - generic [ref=e39]:
+        - generic [ref=e41]:
+          - img "search" [ref=e43]
+          - textbox "搜索会话..." [ref=e46]
+        - generic [ref=e48]:
+          - generic [ref=e49]:
+            - img "message" [ref=e50]
+            - generic [ref=e53]: 会话
+          - button [active] [ref=e54] [cursor=pointer]:
+            - img "plus" [ref=e56]
+        - generic [ref=e61]:
+          - paragraph [ref=e62]: 暂无会话
+          - button "plus 新建会话" [ref=e63] [cursor=pointer]:
+            - img "plus" [ref=e65]
+            - generic [ref=e69]: 新建会话
+        - generic [ref=e70]:
+          - generic [ref=e72]:
+            - generic [ref=e73]: 已检测工具
+            - img "reload" [ref=e74] [cursor=pointer]
+          - generic [ref=e77] [cursor=pointer]:
+            - img "dollar" [ref=e78]
+            - generic [ref=e81]: 费用统计
+          - generic [ref=e82] [cursor=pointer]:
+            - img "setting" [ref=e83]
+            - generic [ref=e86]: 设置
+      - generic [ref=e88]:
+        - heading "最近会话" [level=2] [ref=e90]
+        - generic [ref=e92]:
+          - generic [ref=e93]: 茶
+          - generic [ref=e94]:
+            - paragraph [ref=e95]: 暂无会话，点击「新建会话」开始
+            - button [ref=e96]:
+              - img "plus" [ref=e97]
+              - text: 新建会话
+  - generic [ref=e222]:
+    - generic [ref=e223]:
+      - heading "新建会话" [level=3] [ref=e224]
+      - button "✕" [ref=e225] [cursor=pointer]
+    - generic [ref=e227]:
+      - generic [ref=e228]:
+        - generic [ref=e229]: CLI 工具 *
+        - generic [ref=e230]:
+          - generic [ref=e232] [cursor=pointer]:
+            - img "robot" [ref=e234]
+            - generic [ref=e237]:
+              - generic [ref=e238]:
+                - generic [ref=e239]: Claude Code
+                - img "close-circle" [ref=e240]
+              - generic [ref=e243]: Anthropic 官方 CLI
+          - generic [ref=e245] [cursor=pointer]:
+            - img "thunderbolt" [ref=e247]
+            - generic [ref=e250]:
+              - generic [ref=e251]:
+                - generic [ref=e252]: Codex CLI
+                - img "close-circle" [ref=e253]
+              - generic [ref=e256]: OpenAI Codex CLI
+          - generic [ref=e258] [cursor=pointer]:
+            - img "api" [ref=e260]
+            - generic [ref=e263]:
+              - generic [ref=e264]:
+                - generic [ref=e265]: Gemini CLI
+                - img "close-circle" [ref=e266]
+              - generic [ref=e269]: Google Gemini CLI
+          - generic [ref=e271] [cursor=pointer]:
+            - img "code" [ref=e273]
+            - generic [ref=e276]:
+              - generic [ref=e277]:
+                - generic [ref=e278]: OpenCode
+                - img "close-circle" [ref=e279]
+              - generic [ref=e282]: 开源编码助手
+      - generic [ref=e284]:
+        - generic [ref=e285]: Profile
+        - generic [ref=e291] [cursor=pointer]:
+          - generic [ref=e292]:
+            - generic: 选择 Profile（可选）
+            - combobox "Profile" [ref=e293]
+          - img "down" [ref=e295]
+      - generic [ref=e299]:
+        - generic [ref=e300]: 工作目录
+        - generic [ref=e306]:
+          - textbox "工作目录" [ref=e307]:
+            - /placeholder: ~/projects/my-app
+            - text: ~
+          - img "folder-open" [ref=e309] [cursor=pointer]
+      - generic [ref=e313]:
+        - generic [ref=e314]: 标签页标题
+        - textbox "标签页标题" [ref=e320]:
+          - /placeholder: 可选，默认自动生成
+      - generic [ref=e321]: 颜色标记
+      - generic [ref=e333] [cursor=pointer]:
+        - img "down" [ref=e334]
+        - generic [ref=e337]: 高级选项
+    - generic [ref=e338]:
+      - button "取消" [ref=e339] [cursor=pointer]
+      - button "创建" [disabled] [ref=e340] [cursor=pointer]
