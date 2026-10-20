@@ -1,5 +1,4 @@
 import { useEffect, useRef } from "react";
-import { Modal } from "antd";
 import { useAppStore } from "../stores/appStore";
 
 export default function useKeyboardShortcuts() {
@@ -32,19 +31,7 @@ export default function useKeyboardShortcuts() {
         e.preventDefault();
         const tabId = activeTabIdRef.current;
         if (!tabId) return;
-        const session = sessionsRef.current.find((s) => s.id === tabId);
-        if (session?.isRunning) {
-          Modal.confirm({
-            title: "关闭标签",
-            content: "关闭将终止 CLI 进程，会话记录将保留在左侧列表中。",
-            okText: "关闭标签",
-            cancelText: "取消",
-            okButtonProps: { danger: true },
-            onOk: () => closeTab(tabId),
-          });
-        } else {
-          closeTab(tabId);
-        }
+        closeTab(tabId);
         return;
       }
 
