@@ -1,6 +1,6 @@
 [Desktop Entry]
 Type=Application
-Name=茶码TeaCoder
+Name=TeaCoder
 Exec=@EXE@
 Icon=@ICON@
 Comment=TeaCoder 代码编辑器

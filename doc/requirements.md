@@ -1,20 +1,16 @@
-# 茶码 TeaCoder — 需求说明书 v0.1.0
+# TeaCoder — 需求说明书 v0.1.0
 
 > 本文档面向 Claude Code 开发实现，描述 v0.1.0 已发布版本的完整需求与功能明细。
->
+> 
 > **版本统一**：原 v0.1 (MVP) 规划已实现落地，代码当前版本为 **v0.1.0**（`tauri.conf.json` `version: "0.1.0"`、`identifier: com.codingtea.teacoder`）。
->
-> **命名历史**：项目早期名为 `aicode` / `aicoder`，现统一为 **TeaCoder**（中文品牌：茶码）。本文档以 TeaCoder 为唯一表述。
-
----
 
 ## 1. 项目概述
 
 ### 1.1 项目名称
 
-茶码 **TeaCoder**
+**TeaCoder**
 
-- 产品名（display）：`茶码 TeaCoder`
+- 产品名（display）：`TeaCoder`
 - Tauri `productName`：`teacoder`
 - 包标识符（identifier）：`com.codingtea.teacoder`
 
@@ -50,20 +46,20 @@ v0.1.0（已发布）
 
 ### 2.2 关键 Rust 依赖
 
-| Crate | 用途 |
-| --- | --- |
-| `tauri 2.x` | 桌面框架 |
-| `tokio` (feature = full) | 异步运行时 |
-| `portable-pty 0.8` | PTY 伪终端 |
-| `rusqlite 0.35` (bundled) | SQLite 操作 |
-| `keyring 3` | 系统 Keychain |
-| `base64` | LlmProvider 凭据编码 |
-| `serde + serde_json` | 序列化 |
-| `thiserror 2` | 错误类型 |
-| `uuid 1` (v4) | ID 生成 |
-| `chrono 0.4` | 时间处理 |
-| `walkdir` | Claude JSONL 目录遍历 |
-| `async-trait` | 异步 trait |
+| Crate                     | 用途                |
+| ------------------------- | ----------------- |
+| `tauri 2.x`               | 桌面框架              |
+| `tokio` (feature = full)  | 异步运行时             |
+| `portable-pty 0.8`        | PTY 伪终端           |
+| `rusqlite 0.35` (bundled) | SQLite 操作         |
+| `keyring 3`               | 系统 Keychain       |
+| `base64`                  | LlmProvider 凭据编码  |
+| `serde + serde_json`      | 序列化               |
+| `thiserror 2`             | 错误类型              |
+| `uuid 1` (v4)             | ID 生成             |
+| `chrono 0.4`              | 时间处理              |
+| `walkdir`                 | Claude JSONL 目录遍历 |
+| `async-trait`             | 异步 trait          |
 
 ### 2.3 打包产物
 
@@ -380,13 +376,13 @@ pub trait CostProvider: Send + Sync {
 
 #### 3.8.3 各 CLI 数据来源
 
-| CLI 工具 | 数据来源 | v0.1.0 实现 |
-| --- | --- | --- |
+| CLI 工具      | 数据来源                                        | v0.1.0 实现                               |
+| ----------- | ------------------------------------------- | --------------------------------------- |
 | Claude Code | `~/.claude/projects/*/conversation_*.jsonl` | ✅ 完整（`cost/claude.rs`，walkdir 逐行 JSONL） |
-| Codex CLI | 本地会话日志 | ⏸ 框架（`#[allow(dead_code)]`） |
-| Gemini CLI | 本地会话日志 | ⏸ 框架 |
-| OpenCode | 本地会话日志 | ⏸ 框架 |
-| Antigravity | 本地会话日志 | ⏸ 框架 |
+| Codex CLI   | 本地会话日志                                      | ⏸ 框架（`#[allow(dead_code)]`）             |
+| Gemini CLI  | 本地会话日志                                      | ⏸ 框架                                    |
+| OpenCode    | 本地会话日志                                      | ⏸ 框架                                    |
+| Antigravity | 本地会话日志                                      | ⏸ 框架                                    |
 
 #### 3.8.4 IPC 命令 ✅
 
@@ -459,20 +455,20 @@ pub trait CostProvider: Send + Sync {
 
 v0.1.0 当前已发布 12 个 schema 版本（迁移脚本位于 `src-tauri/migrations/`）：
 
-| 版本 | 内容 |
-| --- | --- |
-| v1 | 初始表：`schema_version` / `profiles` / `cli_tools` / `session_costs` / `pricing_config` / `settings` |
-| v2 | `tool_settings`（per-tool 配置） |
-| v3 | `projects` + `sessions` |
-| v4 | `sessions.cli_session_id`（CLI 工具内部 session ID，用于 `--resume`） |
-| v5 | `session_categories`（项目内二级分组） |
-| v6 | `session_messages`（用户手动记录的消息） |
-| v7 | `app_settings`（应用级 KV） |
-| v8 | `llm_providers`（多供应商系统） |
-| v9 | `llm_providers.is_default`（全局默认供应商标记） |
-| v10 | `llm_providers.auth_type` |
-| v11 | `llm_providers.api_key`（Base64 编码） |
-| v12 | `llm_providers.oauth_token`（Base64 编码） |
+| 版本  | 内容                                                                                                |
+| --- | ------------------------------------------------------------------------------------------------- |
+| v1  | 初始表：`schema_version` / `profiles` / `cli_tools` / `session_costs` / `pricing_config` / `settings` |
+| v2  | `tool_settings`（per-tool 配置）                                                                      |
+| v3  | `projects` + `sessions`                                                                           |
+| v4  | `sessions.cli_session_id`（CLI 工具内部 session ID，用于 `--resume`）                                      |
+| v5  | `session_categories`（项目内二级分组）                                                                     |
+| v6  | `session_messages`（用户手动记录的消息）                                                                     |
+| v7  | `app_settings`（应用级 KV）                                                                            |
+| v8  | `llm_providers`（多供应商系统）                                                                           |
+| v9  | `llm_providers.is_default`（全局默认供应商标记）                                                             |
+| v10 | `llm_providers.auth_type`                                                                         |
+| v11 | `llm_providers.api_key`（Base64 编码）                                                                |
+| v12 | `llm_providers.oauth_token`（Base64 编码）                                                            |
 
 ### 4.2 关键表字段
 
@@ -726,26 +722,26 @@ on("cost:updated", (payload: { sessionId: string; cost: SessionCost }) => void)
 
 通过 `SettingsPage` 左侧菜单路由：
 
-| Key | 标签 | 组件 |
-| --- | --- | --- |
-| general | 通用设置 | `GeneralSettingsPage` |
-| terminal | 终端设置 | `TerminalSettingsPage` |
-| llm-providers | LLM 设置 | `LlmProvidersPage` |
-| claude | Claude 设置 | `ClaudeSettingsPage` |
-| codex | Codex 设置 | `CodexSettingsPage` |
-| gemini | Gemini 设置 | `GeminiSettingsPage` |
-| antigravity | Antigravity 设置 | `AntigravitySettingsPage` |
-| opencode | OpenCode 设置 | `OpenCodeSettingsPage` |
-| network | 网络设置 | `NetworkSettingsPage` |
-| notification | 通知 | `NotificationPage` |
-| data-management | 数据管理 | `DataManagementPage` |
-| about | 关于 | `AboutPage` |
-| profile-management | Profile 管理 | `ProfileManagementPage` |
-| keybindings | 快捷键 | `KeybindingsPage` |
-| mcp-access | MCP 访问 | `McpAccessPage`（v0.1.0 入口） |
-| sync | 同步 | `SyncPage`（v0.1.0 入口） |
-| remote-access | 远程访问 | `RemoteAccessPage`（v0.1.0 入口） |
-| ai-assistant | AI 助手 | `AIAssistantPage` |
+| Key                | 标签             | 组件                            |
+| ------------------ | -------------- | ----------------------------- |
+| general            | 通用设置           | `GeneralSettingsPage`         |
+| terminal           | 终端设置           | `TerminalSettingsPage`        |
+| llm-providers      | LLM 设置         | `LlmProvidersPage`            |
+| claude             | Claude 设置      | `ClaudeSettingsPage`          |
+| codex              | Codex 设置       | `CodexSettingsPage`           |
+| gemini             | Gemini 设置      | `GeminiSettingsPage`          |
+| antigravity        | Antigravity 设置 | `AntigravitySettingsPage`     |
+| opencode           | OpenCode 设置    | `OpenCodeSettingsPage`        |
+| network            | 网络设置           | `NetworkSettingsPage`         |
+| notification       | 通知             | `NotificationPage`            |
+| data-management    | 数据管理           | `DataManagementPage`          |
+| about              | 关于             | `AboutPage`                   |
+| profile-management | Profile 管理     | `ProfileManagementPage`       |
+| keybindings        | 快捷键            | `KeybindingsPage`             |
+| mcp-access         | MCP 访问         | `McpAccessPage`（v0.1.0 入口）    |
+| sync               | 同步             | `SyncPage`（v0.1.0 入口）         |
+| remote-access      | 远程访问           | `RemoteAccessPage`（v0.1.0 入口） |
+| ai-assistant       | AI 助手          | `AIAssistantPage`             |
 
 ### 6.8 主题
 
@@ -764,14 +760,14 @@ on("cost:updated", (payload: { sessionId: string; cost: SessionCost }) => void)
 
 ### 7.1 性能指标（v0.1.0 验收）
 
-| 指标 | 目标 |
-| --- | --- |
-| 冷启动 | < 2 秒 |
-| CLI 工具检测 | < 3 秒 |
-| PTY 输出延迟 | < 50 ms |
+| 指标          | 目标       |
+| ----------- | -------- |
+| 冷启动         | < 2 秒    |
+| CLI 工具检测    | < 3 秒    |
+| PTY 输出延迟    | < 50 ms  |
 | SQLite 查询响应 | < 100 ms |
-| 空闲内存 | < 200 MB |
-| 单会话运行内存 | < 400 MB |
+| 空闲内存        | < 200 MB |
+| 单会话运行内存     | < 400 MB |
 
 ### 7.2 安全
 
@@ -936,6 +932,7 @@ on("cost:updated", (payload: { sessionId: string; cost: SessionCost }) => void)
 2. **CostProvider 可扩展性**：trait 设计要预留扩展性，新增 CLI 工具只需实现 trait；v0.2 补全 codex/gemini/opencode。
 
 3. **凭据分层**：
+   
    - Profile 走 Keychain（macOS / Windows 强一致）
    - LlmProvider 走 SQLite Base64（Linux 上避免 keychain 不稳定问题）
    - 两套并行，不互相依赖
@@ -943,18 +940,20 @@ on("cost:updated", (payload: { sessionId: string; cost: SessionCost }) => void)
 4. **PTY 跨平台差异**：`portable-pty` 在 Windows 下行为与 Unix 不同，需充分测试 resize、双开同步。
 
 5. **Ant Design + TailwindCSS 共存**：
+   
    - AntD 负责组件、styles、配置
    - Tailwind 仅用于 layout（flex/grid）、spacing（p/m）、自定义样式
    - 禁止 Tailwind 覆盖 AntD 组件样式
    - `preflight: false` 避免基础样式冲突
 
 6. **xterm.js 性能**：
+   
    - 大量输出时启用 `scrollback` 限制（建议 10000 行）
    - 分屏双开时只有 activePane 触发 `resizeToPty`（避免 SIGWINCH 风暴）
    - xterm 焦点协议（`ESC [O` / `ESC [?1;2c`）只由 enableInput=true 的实例发送
 
 7. **数据迁移**：schema 版本化从 v1 开始已建立 12 个版本，避免后期迁移痛苦。
 
-9. **提交标签 / commit 信息**：使用中文，格式：`<类型>: <描述>`，如 `feat: 添加 Profile 管理界面`。
+8. **提交标签 / commit 信息**：使用中文，格式：`<类型>: <描述>`，如 `feat: 添加 Profile 管理界面`。
 
-10. **关闭 Tab 直接关闭**：v0.1.0 调整——不再弹确认框，避免打断心流。删除会话记录等不可恢复操作仍保留确认框。
+9. **关闭 Tab 直接关闭**：v0.1.0 调整——不再弹确认框，避免打断心流。删除会话记录等不可恢复操作仍保留确认框。

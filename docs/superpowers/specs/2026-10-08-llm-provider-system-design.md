@@ -5,7 +5,7 @@
 
 ## 背景
 
-茶码 TeaCoder 当前通过 Profile 同时承担三件事：CLI 工具选择、认证凭据、数据隔离目录。每个 Profile 强绑一个 CLI 工具和一个上游 LLM 供应商（如 Claude Profile → Anthropic），导致：
+TeaCoder 当前通过 Profile 同时承担三件事：CLI 工具选择、认证凭据、数据隔离目录。每个 Profile 强绑一个 CLI 工具和一个上游 LLM 供应商（如 Claude Profile → Anthropic），导致：
 
 1. 无法在一个 CLI 工具下灵活切换 LLM 供应商（例如让 Claude Code 既能用 Anthropic 也能用 GLM/Kimi）
 2. 同一供应商无法被多个 Profile 复用

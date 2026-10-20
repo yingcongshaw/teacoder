@@ -427,33 +427,57 @@ const TerminalView = forwardRef<TerminalViewHandle, TerminalViewProps>(function 
     });
 
     term.onKey((e) => {
-      // DOM KeyboardEvent.key 的字符串,不含 ESC/CSI/IME 中间态字节
+      // xterm 派发的 e.key 是 evaluateEscapeSequence 结果:
+      //   - 可打印 ASCII   -> 字符本身("a", "A", "0")
+      //   - Enter           -> "\r"
+      //   - Backspace       -> "\x7f"(DEL) 或 "\b"
+      //   - Delete          -> "\x1b[3~"
+      //   - 方向键/F1..F12  -> "\x1b[A" 等转义序列
+      // 不含 IME 中间态字节(IME 走下方 textarea input + compositionend 路径)。
       trackerRef.current?.captureKey(e.key);
     });
 
     // IME 上屏字符捕获。
     // xterm.js 6.x 的 _inputEvent 只 fire onData 不 fire onKey,导致 onKey 路径
     // 永远收不到 IME 上屏的中文。直接监听 xterm 内部 textarea 的 input 事件,
-    // 通过 compositionend 时间戳区分 IME 上屏与普通按键的 input 事件。
-    // (普通按键 input 事件由 onKey 处理,这里不重复累积)
+    // 通过 compositionend 时间戳或 inputType 包含 Composition 识别 IME 上屏字符。
     const textarea = term.element?.querySelector("textarea") as HTMLTextAreaElement | null;
     let lastCompositionEndTs = 0;
     let removeImeListeners: (() => void) | null = null;
     if (textarea) {
+      let isComposing = false;
+      const onCompositionStart = () => {
+        isComposing = true;
+      };
       const onCompositionEnd = () => {
+        isComposing = false;
         lastCompositionEndTs = Date.now();
       };
       const onInput = (e: Event) => {
         const inputEvent = e as InputEvent;
-        if (inputEvent.inputType !== "insertText" || !inputEvent.data) return;
-        // IME 上屏:compositionend 后 500ms 内的 input 事件视为 IME 上屏字符
-        if (Date.now() - lastCompositionEndTs < 500) {
-          trackerRef.current?.captureImeText(inputEvent.data);
+        const data = inputEvent.data;
+        if (!data) return;
+        const it = inputEvent.inputType || "";
+        // IME 上屏字符判定(只取最终上屏的中文/日文/韩文等,
+        // 不取 pinyin 中间态):
+        //   - insertFromComposition:IME 最终上屏事件,捕获
+        //   - 兜底:compositionend 之后 500ms 内的 input 事件
+        //     (部分平台 inputType 不规范,区分不出 Composition)
+        //   - 排除:compositionend 之前的 input 事件(中间态),
+        //     以及 isComposing=true 期间的所有 input(中间态)
+        if (it === "insertFromComposition") {
+          trackerRef.current?.captureImeText(data);
+          return;
+        }
+        if (!isComposing && lastCompositionEndTs > 0 && Date.now() - lastCompositionEndTs < 500) {
+          trackerRef.current?.captureImeText(data);
         }
       };
+      textarea.addEventListener("compositionstart", onCompositionStart, true);
       textarea.addEventListener("compositionend", onCompositionEnd, true);
       textarea.addEventListener("input", onInput, true);
       removeImeListeners = () => {
+        textarea.removeEventListener("compositionstart", onCompositionStart, true);
         textarea.removeEventListener("compositionend", onCompositionEnd, true);
         textarea.removeEventListener("input", onInput, true);
       };

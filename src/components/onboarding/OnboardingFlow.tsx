@@ -2,9 +2,11 @@ import { useState, useEffect } from "react";
 import { Modal, Button, Typography, Checkbox } from "antd";
 import {
   CheckCircleOutlined,
+  CloudOutlined,
+  FolderAddOutlined,
   MessageOutlined,
-  SettingOutlined,
-  PlusCircleOutlined,
+  ArrowRightOutlined,
+  ArrowLeftOutlined,
 } from "@ant-design/icons";
 
 const ONBOARDING_KEY = "teacoder_onboarding_completed";
@@ -77,9 +79,9 @@ export function AgreementModal({
       width={600}
     >
       <div className="max-h-80 overflow-y-auto pr-2 text-sm space-y-3">
-        <Typography.Title level={5}>茶码 TeaCoder 用户协议</Typography.Title>
+        <Typography.Title level={5}>TeaCoder 用户协议</Typography.Title>
         <p>
-          欢迎使用茶码 TeaCoder（以下简称"本软件"）。在使用本软件之前，请您仔细阅读以下协议内容。
+          欢迎使用TeaCoder（以下简称"本软件"）。在使用本软件之前，请您仔细阅读以下协议内容。
         </p>
         <Typography.Title level={5}>1. 软件许可</Typography.Title>
         <p>
@@ -118,30 +120,59 @@ export function OnboardingGuide({
 }) {
   const [current, setCurrent] = useState(0);
 
+  // 三步：橙(LLM) → 蓝(项目) → 紫(会话)，呼应顶部渐变 accent bar
   const steps = [
     {
+      title: "添加 LLM 供应商",
+      subtitle: "为你的 AI 工具接入可用模型",
+      icon: <CloudOutlined />,
+      accent: "#fa8c16",
+      accentSoft: "rgba(250, 140, 22, 0.10)",
+      description:
+        "在「设置 → 模型服务」中添加 LLM 供应商，填写 API Key、Base URL 等连接信息。不存明文，统一由系统钥匙串加密保存。",
+      tips: [
+        { label: "入口", value: "右上角 ⚙ 设置 → 模型服务" },
+        { label: "支持", value: "Anthropic / OpenAI / Gemini / 兼容 OpenAI 协议的服务" },
+      ],
+    },
+    {
+      title: "新建项目",
+      subtitle: "把代码目录变成你的工作区",
+      icon: <FolderAddOutlined />,
+      accent: "#3b82f6",
+      accentSoft: "rgba(59, 130, 246, 0.10)",
+      description:
+        "点击左侧栏顶部的「新建项目」，选择本地代码目录并命名。项目会把同一目录下的会话聚合在一起，按代码库隔离上下文。",
+      tips: [
+        { label: "入口", value: "左侧栏顶部 ＋按钮" },
+        { label: "建议", value: "按仓库根目录划分项目，便于切换与归档" },
+      ],
+    },
+    {
       title: "新建会话",
-      description: "点击左侧「新建会话」按钮，选择 CLI 工具、Profile 和工作目录，即可开始一个 AI 编程会话。",
-      icon: <PlusCircleOutlined />,
-    },
-    {
-      title: "侧边栏功能",
-      description: "左侧边栏可以搜索、排序、过滤会话，收藏常用会话，按项目分组管理。点击项目名可折叠/展开。",
+      subtitle: "开始一次 AI 编程对话",
       icon: <MessageOutlined />,
-    },
-    {
-      title: "设置入口",
-      description: "点击顶部工具栏的设置图标，可以配置通用设置、终端参数、各工具的模型和 API Key 等。",
-      icon: <SettingOutlined />,
+      accent: "#722ed1",
+      accentSoft: "rgba(114, 46, 209, 0.10)",
+      description:
+        "在项目下「新建会话」，起一个会话名，选择 CLI 工具（Claude Code / Codex / Gemini CLI / OpenCode），再选择 LLM 供应商和模型即可启动。",
+      tips: [
+        { label: "入口", value: "项目卡片右下角 ＋按钮" },
+        { label: "必填", value: "会话名 · CLI 工具 · LLM 供应商 · 模型" },
+      ],
     },
   ];
+
+  const step = steps[current];
+  const isFirst = current === 0;
+  const isLast = current === steps.length - 1;
 
   return (
     <Modal
       title={
         <div className="flex items-center gap-2">
-          <CheckCircleOutlined className="text-green-500" />
-          <span>欢迎使用茶码 TeaCoder</span>
+          <CheckCircleOutlined style={{ color: step.accent }} />
+          <span>欢迎使用TeaCoder</span>
         </div>
       }
       open={open}
@@ -153,51 +184,121 @@ export function OnboardingGuide({
             跳过引导
           </Button>
           <div className="flex gap-2">
-            {current > 0 && (
-              <Button onClick={() => setCurrent(current - 1)}>上一步</Button>
-            )}
-            {current < steps.length - 1 ? (
-              <Button type="primary" onClick={() => setCurrent(current + 1)}>
-                下一步
+            {!isFirst && (
+              <Button icon={<ArrowLeftOutlined />} onClick={() => setCurrent(current - 1)}>
+                上一步
               </Button>
-            ) : (
+            )}
+            {isLast ? (
               <Button type="primary" onClick={onComplete}>
                 开始使用
+              </Button>
+            ) : (
+              <Button
+                type="primary"
+                icon={<ArrowRightOutlined />}
+                iconPosition="end"
+                onClick={() => setCurrent(current + 1)}
+              >
+                下一步
               </Button>
             )}
           </div>
         </div>
       }
-      width={520}
+      width={560}
     >
-      <div className="flex gap-2 mb-4">
+      {/* 顶部进度条：已完成 + 当前用渐变色填充 */}
+      <div className="flex gap-1.5 mb-6">
         {steps.map((_, index) => (
           <div
             key={index}
-            className={`flex-1 h-1 rounded-full ${
-              index <= current ? "bg-blue-500" : "bg-gray-200 dark:bg-gray-700"
-            }`}
-          />
+            className="flex-1 h-1 rounded-full overflow-hidden"
+            style={{ backgroundColor: "var(--ant-color-fill-tertiary, #f0f0f0)" }}
+          >
+            <div
+              style={{
+                width: index <= current ? "100%" : "0%",
+                height: "100%",
+                background: `linear-gradient(90deg, ${steps
+                  .slice(0, index + 1)
+                  .map((st) => st.accent)
+                  .join(", ")})`,
+                transition: "width 0.3s ease",
+              }}
+            />
+          </div>
         ))}
       </div>
-      <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
-        <div className="flex items-center gap-2 mb-2">
-          <span className="text-xl text-blue-500">{steps[current].icon}</span>
-          <span className="font-medium">{steps[current].title}</span>
+
+      {/* 步骤内容 */}
+      <div className="flex flex-col items-center text-center px-2">
+        {/* 大图标 */}
+        <div
+          className="flex items-center justify-center mb-4 transition-colors"
+          style={{
+            width: 72,
+            height: 72,
+            borderRadius: 20,
+            background: step.accentSoft,
+            color: step.accent,
+            fontSize: 32,
+            boxShadow: `0 6px 16px -4px ${step.accentSoft}`,
+          }}
+        >
+          {step.icon}
         </div>
-        <p className="text-sm text-gray-600 dark:text-gray-300">
-          {steps[current].description}
+
+        {/* 标题 + 副标题 */}
+        <div className="text-lg font-semibold text-[var(--ant-color-text)] mb-1">
+          {step.title}
+        </div>
+        <div className="text-sm text-[var(--ant-color-text-tertiary)] mb-5">
+          {step.subtitle}
+        </div>
+
+        {/* 描述 */}
+        <p className="text-sm leading-relaxed text-[var(--ant-color-text-secondary)] mb-5 max-w-md">
+          {step.description}
         </p>
       </div>
-      <div className="flex justify-center gap-1 mt-4">
-        {steps.map((_, index) => (
+
+      {/* 提示卡：列出关键信息 */}
+      <div className="grid grid-cols-2 gap-2.5">
+        {step.tips.map((tip) => (
+          <div
+            key={tip.label}
+            className="rounded-md border px-3 py-2"
+            style={{
+              borderColor: "var(--ant-color-border-secondary, #42424233)",
+              backgroundColor: "var(--ant-color-bg-container, transparent)",
+            }}
+          >
+            <div
+              className="text-[11px] font-medium mb-0.5"
+              style={{ color: step.accent }}
+            >
+              {tip.label}
+            </div>
+            <div className="text-xs text-[var(--ant-color-text-secondary)] leading-snug">
+              {tip.value}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* 底部点指示器 */}
+      <div className="flex justify-center items-center gap-1.5 mt-6">
+        {steps.map((s, index) => (
           <div
             key={index}
-            className={`w-2 h-2 rounded-full ${
-              index === current
-                ? "bg-blue-500"
-                : "bg-gray-300 dark:bg-gray-600"
-            }`}
+            className="rounded-full transition-all"
+            style={{
+              width: index === current ? 20 : 6,
+              height: 6,
+              backgroundColor:
+                index === current ? s.accent : "var(--ant-color-fill-tertiary, #d9d9d9)",
+            }}
           />
         ))}
       </div>

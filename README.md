@@ -1,4 +1,4 @@
-# 茶码 TeaCoder
+# TeaCoder
 
 > AI 编程 CLI 工具的桌面管理客户端 — Claude Code / Codex CLI / Gemini CLI / OpenCode / Antigravity 的统一管家
 
@@ -16,7 +16,7 @@
 
 ## 项目简介
 
-TeaCoder（茶码）是一款为 **AI 编程 CLI 工具** 量身打造的桌面管理客户端。它不做 AI 推理，只做"周边设施"——为 Claude Code、Codex CLI、Gemini CLI、OpenCode、Antigravity 提供图形化的会话管理、账号管理、LLM 供应商管理、配置管理。
+TeaCoder是一款为 **AI 编程 CLI 工具** 量身打造的桌面管理客户端。它不做 AI 推理，只做"周边设施"——为 Claude Code、Codex CLI、Gemini CLI、OpenCode、Antigravity 提供图形化的会话管理、账号管理、LLM 供应商管理、配置管理。
 
 **核心原则：零额外 Token 开销。** TeaCoder 通过 PTY 直通运行 CLI 工具，**不拦截、不代理任何 API 请求**。Token 统计直接读取各 CLI 工具本地的 JSONL / 数据库，不解析 PTY 输出——CLI 工具的协议怎么变都不会影响 TeaCoder 的统计准确性。
 

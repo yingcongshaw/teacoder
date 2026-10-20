@@ -476,7 +476,7 @@ Source: screenshot 21.设置-关于
 **Section: 应用信息**
 | Label | Type | Options/Default |
 |-------|------|-----------------|
-| 应用名称 | Text | 茶码 TeaCoder |
+| 应用名称 | Text | TeaCoder |
 | 版本 | Text | v0.1.0 |
 | 检查更新 | Button | → check |
 | 更新通道 | Select | 稳定/Beta/Alpha |

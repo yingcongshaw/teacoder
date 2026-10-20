@@ -2,13 +2,13 @@
 
 > 本文档记录 TeaCoder 的产品定位、版本规划与技术方案。已实现的版本（v0.1.0）按代码现状描述，未实现的版本（v0.2 / v0.3 / v1.0+）保留方向性规划。
 >
-> 项目代号历史：早期代号 aicode / aicoder，已统一为 **TeaCoder**（中文品牌：茶码；Tauri `productName`: `teacoder`；包标识符：`com.codingtea.teacoder`）。
+> 项目代号：统一为 **TeaCoder**；Tauri `productName`: `teacoder`；包标识符：`com.codingtea.teacoder`。
 
 ---
 
 ## 一、产品定位
 
-TeaCoder（茶码）是一款 **AI 编程 CLI 工具的桌面管理客户端**，为 Claude Code / Codex CLI / Gemini CLI / OpenCode / Antigravity / 裸终端 / SSH 提供图形化的 LLM 供应商管理、会话管理、配置管理等"周边设施"。
+TeaCoder是一款 **AI 编程 CLI 工具的桌面管理客户端**，为 Claude Code / Codex CLI / Gemini CLI / OpenCode / Antigravity / 裸终端 / SSH 提供图形化的 LLM 供应商管理、会话管理、配置管理等"周边设施"。
 
 **核心原则：零额外 Token 开销** — PTY 直通运行 CLI 工具，不拦截/代理 API 请求，不解析 PTY 输出估算 Token（改为读取各 CLI 工具本地 JSONL / 数据库）。
 

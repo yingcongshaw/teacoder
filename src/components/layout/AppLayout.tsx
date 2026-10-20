@@ -39,6 +39,8 @@ export default function AppLayout() {
   const editingSessionId = useAppStore((s) => s.editingSessionId);
   const setSettingsPage = useAppStore((s) => s.setSettingsPage);
   const setSettingsActiveKey = useAppStore((s) => s.setSettingsActiveKey);
+  const manualGuideOpen = useAppStore((s) => s.manualGuideOpen);
+  const setManualGuideOpen = useAppStore((s) => s.setManualGuideOpen);
   const loadProjects = useAppStore((s) => s.loadProjects);
   const loadSessions = useAppStore((s) => s.loadSessions);
   const loadCategories = useAppStore((s) => s.loadCategories);
@@ -337,6 +339,12 @@ export default function AppLayout() {
               open={showGuide}
               onComplete={completeGuide}
               onSkip={skipGuide}
+            />
+            {/* 通过顶部"帮助"按钮主动打开的引导：只关 modal，不动完成标记 */}
+            <OnboardingGuide
+              open={manualGuideOpen}
+              onComplete={() => setManualGuideOpen(false)}
+              onSkip={() => setManualGuideOpen(false)}
             />
           </>
         )}

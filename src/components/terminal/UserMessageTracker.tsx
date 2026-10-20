@@ -26,16 +26,73 @@ interface UserMessageTrackerProps {
   } | null>;
 }
 
-// DOM KeyboardEvent.key 中属于"控制/导航/功能键"的集合。
-// 这些键不应进入消息内容,只有可打印字符(含 IME 上屏的中文)和 Enter 会改变捕捉状态。
-const CONTROL_KEYS = new Set([
-  "Backspace", "Tab", "Escape", "Delete", "Insert",
+// xterm.js 6.x 的 onKey 派发的 e.key 来自 _keyDown 中 evaluateEscapeSequence 结果,
+// 不是 DOM KeyboardEvent.key:
+//   - Enter           -> "\r" (b.CR)
+//   - Backspace       -> "\x7f" (DEL) 或 "\b"
+//   - Ctrl+C          -> "\x03" (b.ETX)
+//   - 方向键          -> "\x1b[A/B/C/D" 等转义序列
+//   - 可打印 ASCII    -> 字符本身("a", "A", "0" 等)
+// 因此过滤"控制键"要按字节判断,不能拿 DOM 字符串名比对。
+//
+// 单独保留 DOM 字符串名集合只为 IME 走 DOM 事件时的键盘名检查,平时不依赖。
+// 注意:Backspace / Delete 由 inspectControlKey 单独识别,这里不放。
+const CONTROL_KEYS_DOM = new Set([
+  "Tab", "Escape", "Insert",
   "CapsLock", "NumLock", "ScrollLock", "Pause",
   "Shift", "Control", "Alt", "AltGraph", "Meta", "OS",
   "ContextMenu", "Print", "PrintScreen",
   "PageUp", "PageDown", "Home", "End",
   "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight",
+  "Enter", "Return",
 ]);
+
+// xterm 派发的控制字节判定。返回值约定:
+//   - true:此键是控制键,直接丢弃(转义序列、其他控制字符)
+//   - "backspace":此键是 Backspace/DEL/Delete,需要弹出缓冲区末尾字符
+//   - false:可打印字符,交给 captureKey 累积
+type ControlKeyResult = boolean | "backspace";
+function inspectControlKey(key: string): ControlKeyResult {
+  if (!key) return true;
+  // Delete 键(forward delete):xterm 输出 "\x1b[3~",DOM 字符串为 "Delete"。
+  // 在终端纯逐字追加输入的典型场景下,Delete 与 Backspace 等价(都从末尾 pop)。
+  if (key === "\x1b[3~" || key === "Delete") return "backspace";
+  const code = key.charCodeAt(0);
+  // ESC 起头的转义序列(方向键、F1-F12 等)
+  if (code === 0x1b) return true;
+  // 其他控制字符(除 CR/LF/Tab 之外):后者是有意义字符
+  if (code < 0x20 && code !== 0x09 && code !== 0x0a && code !== 0x0d) return true;
+  // DEL (\x7f) 或 Backspace (\b):视为"删除前一字符"
+  if (code === 0x7f || code === 0x08) return "backspace";
+  return false;
+}
+
+// 从缓冲区末尾删一个"用户可见字符",正确处理 UTF-16 代理对
+// (emoji / 扩展汉字是两个 code unit)、以及 VS16 等组合修饰符。
+function popLastGrapheme(buf: string): string {
+  if (!buf) return buf;
+  // 先把尾部 \r\n / \n / \r 这种纯控制尾巴去掉,避免误删。
+  let end = buf.length;
+  // 处理尾部高低代理对:若最后是低代理(0xDC00-0xDFFF),连同前一个高代理一起删。
+  const last = buf.charCodeAt(end - 1);
+  if (last >= 0xDC00 && last <= 0xDFFF && end >= 2) {
+    const prev = buf.charCodeAt(end - 2);
+    if (prev >= 0xD800 && prev <= 0xDBFF) {
+      end -= 2;
+      return buf.slice(0, end);
+    }
+  }
+  // 处理尾部组合修饰符 / 变体选择符 (0xFE00-0xFE0F、0x200D ZWJ 等),
+  // 简单地往后扫一两个 code unit。
+  if (last >= 0xFE00 && last <= 0xFE0F) {
+    return buf.slice(0, end - 1);
+  }
+  if (last === 0x200d) {
+    return buf.slice(0, end - 1);
+  }
+  end -= 1;
+  return buf.slice(0, end);
+}
 
 export default function UserMessageTracker({ tabId, xtermRef, trackerRef }: UserMessageTrackerProps) {
   const [messages, setMessages] = useState<TrackedMessage[]>([]);
@@ -126,6 +183,9 @@ export default function UserMessageTracker({ tabId, xtermRef, trackerRef }: User
       .trim();
   };
 
+  // 从字符串末尾移除最后一个"用户可见字符":
+  // 注:实现见模块级 popLastGrapheme,这里不再重复定义(避免命名冲突)。
+
   const flushInput = useCallback(() => {
     const input = pendingInputRef.current;
     const cleaned = cleanMessage(input);
@@ -148,20 +208,30 @@ export default function UserMessageTracker({ tabId, xtermRef, trackerRef }: User
     handleFlushWithDelay();
   }, [handleFlushWithDelay]);
 
-  // 接收 xterm 的 onKey 派发的普通按键(DOM KeyboardEvent.key 字符串)。
-  // IME 上屏字符不走 onKey,所以走 captureImeText 路径。
+  // 接收 xterm 的 onKey 派发的按键(xterm 内 escape 序列化的 key 字符串,
+  // 如 "a"、"A"、"\r"、"\x1b[A")。IME 上屏字符不走 onKey,
+  // 由 TerminalView 在 textarea input + compositionend 标记后转发到 captureImeText。
   const captureKey = useCallback((key: string) => {
     if (!key) return;
 
-    if (key === "Enter") {
+    // Enter 检测:xterm 把 Enter 编码为 "\r"(CR),部分应用可能送 "\n"(LF)。
+    if (key === "\r" || key === "\n") {
       // 延迟 flush,给浏览器/IME 一帧时间把上一字符叠加上屏
       setTimeout(() => flushInput(), 50);
       return;
     }
 
-    // 控制/功能键过滤
-    if (CONTROL_KEYS.has(key)) return;
-    if (/^F\d{1,2}$/.test(key)) return; // F1..F12
+    // 控制/功能键处理:返回 "backspace" 表示要 pop 末尾字符
+    const controlResult = inspectControlKey(key);
+    if (controlResult === "backspace") {
+      pendingInputRef.current = popLastGrapheme(pendingInputRef.current);
+      return;
+    }
+    if (controlResult === true) return;
+    // 单独的 DOM 字符串名判断(保留以兼容 IME 走 DOM 事件的分支)
+    if (CONTROL_KEYS_DOM.has(key)) return;
+    // F1..F12 也按转义序列过滤掉
+    if (/^F\d{1,2}$/.test(key)) return;
 
     pendingInputRef.current += key;
   }, [flushInput]);

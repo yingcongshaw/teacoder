@@ -23,13 +23,13 @@ export default function AboutPage({ searchText = "" }: AboutPageProps) {
       <div style={{ textAlign: "center", padding: "32px 0 24px" }}>
         <img
           src="/logo-bg-w.png"
-          alt="茶码 TeaCoder"
+          alt="TeaCoder"
           width={72}
           height={72}
           style={{ display: "block", margin: "0 auto 16px", borderRadius: 16 }}
         />
         <Typography.Title level={4} style={{ margin: 0 }}>
-          茶码 TeaCoder
+          TeaCoder
         </Typography.Title>
         <div style={{ marginTop: 4, color: "var(--ant-color-text-secondary)", fontSize: 13 }}>
           AI 编程 CLI 工具桌面管理客户端
@@ -45,7 +45,7 @@ export default function AboutPage({ searchText = "" }: AboutPageProps) {
       {/* 应用信息 */}
       <SectionHeader title="应用信息" />
       {matchesSearch("应用名称") && (
-        <SettingRow label="应用名称">茶码 TeaCoder</SettingRow>
+        <SettingRow label="应用名称">TeaCoder</SettingRow>
       )}
       {matchesSearch("版本") && (
         <SettingRow label="版本">v0.1.0</SettingRow>

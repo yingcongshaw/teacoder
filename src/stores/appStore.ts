@@ -404,6 +404,10 @@ interface AppState {
   costTick: number;
   setCostTick: (tick: number) => void;
 
+  // 通过顶部"帮助"按钮主动打开的引导（与首次启动自动引导解耦）
+  manualGuideOpen: boolean;
+  setManualGuideOpen: (open: boolean) => void;
+
   terminalSettings: TerminalSettings;
   updateTerminalSetting: <K extends keyof TerminalSettings>(key: K, value: TerminalSettings[K]) => void;
 
@@ -1519,6 +1523,9 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   costTick: 0,
   setCostTick: (tick) => set({ costTick: tick }),
+
+  manualGuideOpen: false,
+  setManualGuideOpen: (open) => set({ manualGuideOpen: open }),
 
   terminalSettings: loadTerminalSettings(),
   updateTerminalSetting: (key, value) =>

@@ -1,4 +1,4 @@
-# CLAUDE.md — 茶码 TeaCoder 项目指导
+# CLAUDE.md — TeaCoder 项目指导
 
 > 本文件是 Claude Code 的项目级指导文件，所有开发任务必须严格遵守本文件中的约束和规范。
 
@@ -12,7 +12,7 @@
 
 ## 项目概述
 
-茶码 TeaCoder 是一款 AI 编程 CLI 工具的桌面管理客户端（Tauri 2.x），为 Claude Code / Codex CLI / Gemini CLI / OpenCode 提供图形化的会话管理、账号管理、费用追踪等"周边设施"。
+TeaCoder 是一款 AI 编程 CLI 工具的桌面管理客户端（Tauri 2.x），为 Claude Code / Codex CLI / Gemini CLI / OpenCode 提供图形化的LLM供应商管理、会话管理等"周边设施"。
 
 **核心原则：零额外 Token 开销** — PTY 直通，不拦截/代理 API 请求。
 
@@ -155,37 +155,6 @@
 - 前端调用通过 `@tauri-apps/api` 的 `invoke` 函数
 - 事件命名：`<领域>:<事件>`，如 `pty:output`、`pty:exit`、`cost:updated`
 - **禁止**在 IPC 通道中传递 API Key 明文
-
-## 版本范围（v0.1 MVP）
-
-### 必须实现
-
-1. 多工具终端管理（检测 + 启动 + PTY 交互）
-2. 多标签会话管理（标签页 + 项目分组 + 搜索）
-3. 账号/Profile 管理（CRUD + 切换 + 数据隔离）
-4. Token 费用追踪（CostProvider + Claude Code 完整实现 + 其他工具框架）
-
-### 禁止实现（v0.1 边界）
-
-- MCP Server 可视化管理
-- 代码片段库
-- WebDAV 云同步
-- SSH 远程工作区
-- 语音输入
-- 移动端伴侣
-- 工作区编辑器
-- 内置浏览器
-- 桌面宠物
-- Responses ↔ Chat 转换代理
-- 本地 LLM 后端
-
-## 性能指标（v0.1 验收标准）
-
-- 冷启动 < 2 秒
-- CLI 工具检测 < 3 秒
-- PTY 输出延迟 < 50ms
-- SQLite 查询 < 100ms
-- 空闲内存 < 200MB，单会话 < 400MB
 
 ## 关键依赖
 

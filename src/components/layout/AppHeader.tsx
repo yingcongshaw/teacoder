@@ -4,6 +4,7 @@ import {
   ReloadOutlined,
   ToolOutlined,
   SettingOutlined,
+  QuestionCircleOutlined,
 } from "@ant-design/icons";
 import { useAppStore } from "../../stores/appStore";
 import { detectCliTools } from "../../utils/ipc";
@@ -19,6 +20,7 @@ export default function AppHeader() {
   const sessions = useAppStore((s) => s.sessions);
   const projects = useAppStore((s) => s.projects);
   const activeTabId = useAppStore((s) => s.activeTabId);
+  const setManualGuideOpen = useAppStore((s) => s.setManualGuideOpen);
 
   const handleRedetect = () => {
     detectCliTools().then(setCliTools).catch(() => {});
@@ -41,13 +43,13 @@ export default function AppHeader() {
         >
           <img
             src="/logo.png"
-            alt="茶码 TeaCoder"
+            alt="TeaCoder"
             className="h-5 w-5 flex-shrink-0"
             draggable={false}
             data-tauri-drag-region
           />
           <span className="text-[13px] font-medium text-[var(--ant-color-text-secondary)] truncate" data-tauri-drag-region>
-            茶码 TeaCoder
+            TeaCoder
           </span>
         </div>
 
@@ -73,6 +75,15 @@ export default function AppHeader() {
         {/* Right: tool status + actions + window controls */}
         <div className="flex items-center flex-shrink-0 justify-end" style={{ width: isMac ? 200 : 220, paddingRight: isMac ? 12 : 0 }}>
           <div className="flex items-center gap-1">
+            <Tooltip title="帮助 / 新手引导">
+              <Button
+                type="text"
+                size="small"
+                icon={<QuestionCircleOutlined style={{ fontSize: 13 }} />}
+                onClick={() => setManualGuideOpen(true)}
+              />
+            </Tooltip>
+
             <Tooltip title="已检测工具">
               <Button
                 type="text"
