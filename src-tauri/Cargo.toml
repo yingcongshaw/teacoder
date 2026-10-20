@@ -1,8 +1,8 @@
 [package]
-name = "teacoder"
+name = "TeaCoder"
 version = "0.1.0"
-description = "茶码 TeaCoder — AI 编程 CLI 工具桌面管理客户端"
-authors = ["苦鼎茶 <teacoder@codingtea.com>"]
+description = "TeaCoder — AI 编程 CLI 工具桌面管理客户端"
+authors = ["苦鼎茶 <yingcongshaw@gmail.com>"]
 edition = "2021"
 license = ""
 default-run = "teacoder"
