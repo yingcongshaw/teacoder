@@ -1,6 +1,10 @@
-# 茶码 TeaCoder — 需求说明书 v0.1 (MVP)
+# 茶码 TeaCoder — 需求说明书 v0.1.0
 
-> 本文档面向 Claude Code 开发实现，描述 v0.1 最小可用版本的完整需求。所有功能需在 v0.1 中实现并可用。
+> 本文档面向 Claude Code 开发实现，描述 v0.1.0 已发布版本的完整需求与功能明细。
+>
+> **版本统一**：原 v0.1 (MVP) 规划已实现落地，代码当前版本为 **v0.1.0**（`tauri.conf.json` `version: "0.1.0"`、`identifier: com.codingtea.teacoder`）。
+>
+> **命名历史**：项目早期名为 `aicode` / `aicoder`，现统一为 **TeaCoder**（中文品牌：茶码）。本文档以 TeaCoder 为唯一表述。
 
 ---
 
@@ -8,20 +12,24 @@
 
 ### 1.1 项目名称
 
-茶码 TeaCoder
+茶码 **TeaCoder**
+
+- 产品名（display）：`茶码 TeaCoder`
+- Tauri `productName`：`teacoder`
+- 包标识符（identifier）：`com.codingtea.teacoder`
 
 ### 1.2 版本
 
-v0.1 (MVP)
+v0.1.0（已发布）
 
 ### 1.3 项目目标
 
-构建一款 AI 编程 CLI 工具的桌面管理客户端，为 Claude Code / Codex CLI / Gemini CLI / OpenCode 提供图形化的会话管理、账号管理、费用追踪、配置管理等"周边设施"，核心原则是**零额外 Token 开销**。
+构建一款 AI 编程 CLI 工具的桌面管理客户端，为 Claude Code / Codex CLI / Gemini CLI / OpenCode / Antigravity / 裸终端 / SSH 提供图形化的会话管理、账号管理、费用追踪、配置管理等"周边设施"，核心原则是**零额外 Token 开销**。
 
 ### 1.4 核心价值
 
 - PTY 直通，不拦截/代理 API 请求，零额外 Token 消耗
-- 多工具统一管理，一键切换
+- 多工具统一管理（Claude Code / Codex / Gemini / OpenCode / Antigravity / 裸 terminal / SSH）
 - 多账号完全隔离
 - Token 费用通过读取 CLI 本地数据文件统计（非解析 PTY 输出）
 
@@ -33,460 +41,629 @@ v0.1 (MVP)
 
 - **框架**：Tauri 2.x
 - **后端**：Rust（stable）
-- **HTTP/WS 网关**：axum（仅监听 127.0.0.1:49999）
 - **前端**：React 19 + TypeScript
 - **UI 组件库**：Ant Design 6
-- **样式**：TailwindCSS 4（仅用于布局/间距/自定义样式，避免与 AntD 类名冲突）
+- **样式**：TailwindCSS 4（仅用于布局/间距/自定义样式，避免与 AntD 类名冲突；`preflight: false`）
 - **状态管理**：Zustand
-- **终端渲染**：xterm.js
-- **数据存储**：SQLite（rusqlite）+ JSONL
+- **终端渲染**：xterm.js + xterm-addon-fit
+- **数据存储**：SQLite（rusqlite，bundled）+ JSONL
 
-### 2.2 打包产物
+### 2.2 关键 Rust 依赖
+
+| Crate | 用途 |
+| --- | --- |
+| `tauri 2.x` | 桌面框架 |
+| `tokio` (feature = full) | 异步运行时 |
+| `portable-pty 0.8` | PTY 伪终端 |
+| `rusqlite 0.35` (bundled) | SQLite 操作 |
+| `keyring 3` | 系统 Keychain |
+| `base64` | LlmProvider 凭据编码 |
+| `serde + serde_json` | 序列化 |
+| `thiserror 2` | 错误类型 |
+| `uuid 1` (v4) | ID 生成 |
+| `chrono 0.4` | 时间处理 |
+| `walkdir` | Claude JSONL 目录遍历 |
+| `async-trait` | 异步 trait |
+| `axum 0.8` | （预留，v0.1.0 暂未启用监听） |
+
+### 2.3 打包产物
 
 - Windows：`.exe` (NSIS 安装程序)
 - macOS：`.dmg`
 - Ubuntu：`.deb`
 - 其他 Linux：`.AppImage`
 
-### 2.3 项目结构
+### 2.4 项目结构
 
 ```
 /
-├── src-tauri/              # Rust 后端
+├── src-tauri/                  # Rust 后端
 │   ├── src/
-│   │   ├── main.rs
-│   │   ├── pty/            # PTY 终端管理
-│   │   ├── cli/            # CLI 工具检测与启动
-│   │   ├── profile/        # Profile 管理
-│   │   ├── cost/           # Token 费用追踪
+│   │   ├── main.rs / lib.rs
+│   │   ├── pty/                # PTY 终端管理（支持 cli / ssh 双路径）
+│   │   ├── cli/                # CLI 工具检测与启动
+│   │   ├── profile/            # Profile 管理（keychain 凭据）
+│   │   ├── llm_provider/       # LLM 供应商系统（预设/凭据/env_inject）
+│   │   ├── cost/              # Token 费用追踪（CostProvider）
 │   │   │   ├── mod.rs
-│   │   │   ├── provider.rs # CostProvider trait
-│   │   │   ├── claude.rs   # Claude Code 适配
-│   │   │   ├── codex.rs    # Codex CLI 适配
-│   │   │   ├── gemini.rs   # Gemini CLI 适配
-│   │   │   └── opencode.rs # OpenCode 适配
-│   │   ├── storage/        # SQLite + JSONL 存储
-│   │   ├── crypto/         # 凭据加密
-│   │   └── commands/       # Tauri IPC 命令
+│   │   │   ├── provider.rs
+│   │   │   ├── claude.rs       # 完整
+│   │   │   ├── codex.rs        # 框架
+│   │   │   ├── gemini.rs       # 框架
+│   │   │   └── opencode.rs     # 框架
+│   │   ├── project/            # Project + Session
+│   │   ├── session_category/    # 会话分类
+│   │   ├── session_message.rs   # 会话消息
+│   │   ├── tool_settings/      # 各 CLI 工具的 per-tool 设置
+│   │   ├── crypto/             # Keychain
+│   │   ├── storage/             # SQLite schema + migrations
+│   │   ├── tray.rs             # 系统托盘
+│   │   └── commands/           # Tauri IPC 命令
+│   ├── migrations/             # schema v1~v12
 │   ├── Cargo.toml
 │   └── tauri.conf.json
-├── src/                    # React 前端
+├── src/                        # React 前端
 │   ├── components/
-│   │   ├── terminal/       # 终端组件
-│   │   ├── tabs/           # 标签页管理
-│   │   ├── profile/        # Profile 切换 UI
-│   │   ├── cost/           # 费用统计 UI
-│   │   └── common/
-│   ├── pages/
-│   ├── stores/             # Zustand stores
-│   ├── types/
-│   ├── utils/
+│   │   ├── layout/             # AppHeader / AppSidebar / AppContent / AppStatusBar
+│   │   ├── terminal/           # TerminalView (xterm.js) / UserMessageTracker
+│   │   ├── tabs/               # TabBar / NewSessionModal / EditSessionModal / SearchPanel
+│   │   ├── panes/              # PaneView / PaneSplitter (分屏)
+│   │   ├── project/            # ProjectNode / NewProjectModal / NewCategoryModal
+│   │   ├── profile/            # ProfileFormModal / ProfileManager
+│   │   ├── cost/               # CostDashboard / PricingConfigPanel
+│   │   ├── cli/                # cliTools / CliArgsClaude / CliArgsLlmList / CliToolStatus
+│   │   ├── quick-commands/     # QuickCommands / QuickCommandsEditor
+│   │   ├── settings/           # 18 个设置页面（详见 §6.7）
+│   │   ├── common/             # ErrorBoundary / WindowControls
+│   │   └── onboarding/         # OnboardingFlow
+│   ├── stores/appStore.ts      # Zustand 全局 store
+│   ├── types/index.ts
+│   ├── utils/                  # ipc / font / image / claudeModels
+│   ├── hooks/useKeyboardShortcuts.ts
+│   ├── themes/
 │   ├── App.tsx
 │   └── main.tsx
 ├── doc/
-│   ├── aicoder.md          # 产品路线文档
-│   └── requirements.md     # 本文档
-├── package.json
-├── tsconfig.json
-├── vite.config.ts
-└── tailwind.config.ts
+│   ├── teacoder-roadmap.md     # 路线文档
+│   └── requirements.md         # 本文档
+└── public/                      # 静态资源（logo、CLI 图标）
 ```
 
 ---
 
-## 3. 功能需求
+## 3. 功能需求（v0.1.0 已实现）
 
 ### 3.1 多工具终端管理
 
-#### 3.1.1 CLI 工具检测
+#### 3.1.1 支持的工具类型 ✅
 
-- **需求**：自动检测系统已安装的 AI CLI 工具
-- **支持工具**：Claude Code、Codex CLI、Gemini CLI、OpenCode
-- **检测方式**：检查 PATH 环境变量中的可执行文件
-  - Claude Code：`claude`
-  - Codex CLI：`codex`
-  - Gemini CLI：`gemini`
-  - OpenCode：`opencode`
-- **检测内容**：
-  - 是否安装
-  - 版本号（执行 `<tool> --version` 解析）
-  - 可执行文件路径
-- **触发时机**：
-  - 应用启动时自动检测
-  - 用户手动点击"重新检测"按钮
-- **输出**：工具列表（工具名、版本、路径、是否可用）
+- `claude` — Claude Code
+- `codex` — Codex CLI
+- `gemini` — Gemini CLI
+- `opencode` — OpenCode
+- `antigravity` — Antigravity CLI
+- `terminal` — 裸终端（不依赖 CLI，直接开 bash/zsh）
+- `ssh` — SSH 远程会话（自动 askpass 注入密码）
 
-#### 3.1.2 CLI 工具启动
+#### 3.1.2 CLI 工具检测 ✅
 
-- **需求**：通过 PTY 伪终端启动选定的 CLI 工具
-- **启动方式**：使用 `portable-pty` crate 创建 PTY，在 PTY 中执行 CLI 命令
-- **启动参数**：
-  - 工作目录：用户选择的项目目录
-  - 环境变量：注入当前 Profile 对应的 API Key / OAuth 凭据
-  - 环境变量前缀清理：清理可能冲突的已有环境变量
-- **PTY 管理**：
-  - 每个 CLI 实例对应一个 PTY 会话
-  - PTY 输出实时转发到前端终端组件
-  - 前端输入实时转发到 PTY
-  - 监听 PTY 进程退出事件，通知前端
+- IPC 命令：`cli::detect_cli_tools`
+- 检测方式：检查 PATH 环境变量中的可执行文件
+- 检测内容：是否安装、版本号（执行 `<tool> --version`）、可执行文件路径
+- 触发时机：应用启动时自动检测 + 用户手动重新检测
+- 输出：工具列表 `{toolType, version, path, isAvailable, lastDetectedAt}`
 
-#### 3.1.3 CLI 工具版本管理
+#### 3.1.3 CLI 工具启动（PTY 直通）✅
 
-- **需求**：显示已安装版本，提示是否有更新
-- **更新检测**：调用各 CLI 工具自带的更新检查命令（如 `claude update --check`，若支持）
-- **更新提示**：在工具列表中显示"有新版本"标签，不自动更新
+- IPC 命令：`pty::start_session` / `pty::stop_session` / `pty::write_to_pty` / `pty::resize_pty`
+- 使用 `portable-pty` crate 创建 PTY
+- 启动参数：工作目录、Profile 环境变量注入、CLI 参数（`Session.cliArgs`）、环境变量（`Session.envVars`）
+- PTY 输出事件：`pty:output`（广播到所有订阅者，支持分屏双开共享）
+- PTY 退出事件：`pty:exit`（携带 exitCode）
+- 后端 `start_session` 幂等：同一 tabId 已存在则 no-op 复用现有 PtyEntry
 
----
+#### 3.1.4 SSH 会话 ✅
 
-### 3.2 多标签会话管理
+- IPC 命令：`pty::test_ssh_connection`
+- 实现：在 PtyManager 中走独立分支（`ToolType::Ssh → "ssh"`）
+- 自动 askpass：检测密码型连接时生成 `teacoder-ssh-askpass-{pid}.sh` 临时脚本与 `teacoder-ssh-pwd-{pid}.txt` 密码文件，密码读取后立即清理
+- 调用方负责在会话关闭时清理 askpass 文件（`remove_ssh_askpass`）
 
-#### 3.2.1 标签页
+### 3.2 会话与项目层级管理
 
-- **需求**：浏览器式多标签页，每个标签页对应一个 CLI 会话
-- **标签页属性**：
-  - 标题（默认显示项目名 + 工具名，可自定义）
-  - 工具类型图标
-  - 颜色标记（8 色可选，用于视觉区分）
-  - 工作目录
-  - Profile 名称
-- **标签页操作**：
-  - 新建标签页（Ctrl+T）
-  - 关闭标签页（Ctrl+W，关闭前确认是否结束 CLI 进程）
-  - 切换标签页（Ctrl+Tab 顺向、Ctrl+Shift+Tab 逆向）
-  - 拖拽排序标签页
-  - 右键菜单：关闭、关闭其他、关闭右侧、重新启动、复制路径
-- **标签页持久化**：应用重启后恢复上次的标签页状态（工作目录、Profile、工具类型，不恢复终端内容）
+v0.1.0 引入了四层模型，关系为：Project → SessionCategory → Session
 
-#### 3.2.2 项目分组
+#### 3.2.1 Project（项目）✅
 
-- **需求**：按项目分组组织标签页
-- **项目定义**：工作目录路径即为项目，相同工作目录的标签页归入同一项目组
-- **项目列表**：左侧栏显示项目列表，展开显示该项目下的标签页
-- **项目操作**：
-  - 收藏项目（置顶显示）
-  - 折叠/展开
-  - 右键菜单：新建会话、打开文件管理器、复制路径
+- 定义：工作目录路径即为项目
+- IPC：`project::{project_list, project_create, project_update, project_delete}`
+- 表：`projects`
+- 字段：id / name / path / color / createdAt / updatedAt
+- 操作：新建（`NewProjectModal`）、编辑、删除、收藏
 
-#### 3.2.3 会话搜索
+#### 3.2.2 SessionCategory（会话分类）✅
 
-- **需求**：模糊搜索历史会话和当前会话
-- **搜索范围**：
-  - 项目名称
-  - 标签页标题
-  - 工作目录路径
-- **搜索触发**：Ctrl+P 打开搜索面板
-- **搜索结果**：显示匹配的会话列表，点击切换到对应标签页
+- 定义：项目下的二级分组（如"实验性 / 线上 / 历史"）
+- IPC：`session_category::{category_list, category_create, category_update, category_delete}`
+- 表：`session_categories`
+- 字段：id / projectId / name / createdAt / updatedAt
+- UI：侧边栏树形展示，折叠状态记录在 `collapsedCategoryIds`
 
----
+#### 3.2.3 Session（会话）✅
 
-### 3.3 账号/Profile 切换
+- 定义：CLI 工具的具体一次会话（标签页对应一个 Session 实例）
+- IPC：`session::{session_list, session_create, session_update, session_delete, claude_jsonl_exists}`
+- 表：`sessions`
+- 字段：id / projectId / categoryId / title / toolType / profileId / llmProviderId / modelName / claudeModels（sonnet/opus/haiku 子字段） / thinkingIntensity / templateId / cliArgs / envVars / isRunning / cliSessionId / color / createdAt / updatedAt / closedAt
+- 会话模板：`SessionTemplate` 表，new session 时可应用模板的默认 cliArgs/envVars/thinkingIntensity
 
-#### 3.3.1 Profile 概念
+#### 3.2.4 SessionMessage（会话消息）✅
 
-- **Profile 定义**：一套完整的 CLI 配置，包含 API Key / OAuth 凭据 / Base URL / 模型偏好等
-- **Profile 数量**：无限制，用户可创建任意数量
-- **Profile 维度**：Profile 与 CLI 工具类型关联（如"Claude Code 工作账号"、"Codex 个人账号"）
+- 定义：手动记录的用户/AI 消息（独立于 CLI 工具自身的会话日志）
+- IPC：`session_message::{session_message_list, session_message_create, session_message_delete}`
+- 表：`session_messages`
+- 用途：用户回顾关键决策、分享会话要点
 
-#### 3.3.2 Profile 数据结构
+### 3.3 标签与分屏
+
+#### 3.3.1 多标签（Tab）✅
+
+- 每个 Session 可作为 Tab 打开
+- 标签属性：title / toolType 图标 / color / profile / 模型显示
+- 操作：
+  - 新建（Ctrl+T → `NewSessionModal`）
+  - 关闭（Ctrl+W 直接关闭，无确认框）
+  - 切换（Ctrl+Tab 顺向 / Ctrl+Shift+Tab 逆向）
+  - 拖拽排序（在同 pane 内 reorder）
+  - 跨 pane 拖拽（`moveTabToPane`）
+  - 右键菜单：分屏左右 / 关闭分屏 / 关闭其他 / 关闭所有 / 关闭右侧 / 重新打开
+- 持久化：`teacoder_panes_layout`（version=2，存全量 panes + activePaneId）；`teacoder_open_tabs` 兼容旧版本
+
+#### 3.3.2 多分屏（Pane）✅
+
+- 最多 2 个 pane（左右/上下两种方向；v0.1.0 实际上限为左右 2 pane）
+- IPC：无（纯前端 store 操作）
+- 操作：分屏（`splitPane(tabId, direction)`）、关闭分屏（`closePane(paneId)`）、调整分屏比例（`setSplitRatio`）
+- 分屏 UI：`PaneSplitter` 拖拽条 + `PaneView` 渲染单个 pane
+
+#### 3.3.3 共享 PTY 双开 ✅
+
+- 同一 Session 可在两个 pane 各开一个实例
+- 后端 `start_session` 幂等：第二个 start 直接复用现有 PtyEntry
+- 前端：`terminalRefs` 用复合 key `${paneId}:${tabId}`，Copy/Paste 按复合 key 取 handle
+- 输入限制：只有 activePane 的 TerminalView 启用 `enableInput`（避免双写 PTY）
+- 关闭一个实例：`closeTab(id, paneId)` 按实例移除；PTY 进程只在所有实例归零时停止
+- Resize 限制：只有 activePane 触发 `resizeToPty`（避免 SIGWINCH 风暴）
+
+#### 3.3.4 会话搜索 ✅
+
+- IPC：无（纯前端）
+- 快捷键：Ctrl+P 打开 `SearchPanel`
+- 搜索范围：项目名、Session 标题、工作目录路径
+- 搜索结果：点击定位并切换到对应 Tab（`locateSession`）
+
+### 3.4 LLM 供应商系统
+
+> v0.1.0 引入的新核心概念。每个 Session 可绑定一个 LLM Provider + 一个模型，覆盖 Claude / OpenAI / Google / 自定义四大类。Provider 内部可包含多个模型。
+
+#### 3.4.1 Provider 类型 ✅
+
+- `providerKind: "anthropic" | "openai" | "google" | "custom"`
+- 4 类共 21 个预设（`llm_provider/preset.rs`）：
+  - anthropic：官方 + MiniMax 中转
+  - openai：官方 + DeepSeek（丐）/ 阿里云 / 火山引擎 / 硅基流动 / 青云 / 等等
+  - google：Gemini
+
+#### 3.4.2 数据结构 ✅
 
 ```typescript
-interface Profile {
-  id: string;              // UUID
-  name: string;            // 显示名称
-  toolType: 'claude' | 'codex' | 'gemini' | 'opencode';
-  authType: 'api_key' | 'oauth';
-  // API Key 方式
-  apiKey?: string;         // 加密存储
-  baseUrl?: string;        // 自定义 API 端点
-  // OAuth 方式
-  oauthToken?: string;     // 加密存储
-  oauthRefreshToken?: string;
-  // 数据隔离
-  appDataRoot?: string;    // 自定义 app_data_root 路径（用于多实例隔离）
-  // 元数据
-  createdAt: number;
-  updatedAt: number;
-  color?: string;          // 标识颜色
-  description?: string;
+interface LlmProvider {
+  id: string;
+  name: string;
+  providerKind: "anthropic" | "openai" | "google" | "custom";
+  authType: "api_key" | "oauth";
+  baseUrl?: string;
+  icon?: string;
+  color?: string;
+  isPreset: boolean;        // 预设 vs 用户自定义
+  isActive: boolean;        // 是否启用
+  isDefault: boolean;       // 是否全局默认
+  models: LlmProviderModel[];
+  apiKey?: string;
+  oauthToken?: string;
 }
 ```
 
-#### 3.3.3 Profile 管理
+#### 3.4.3 IPC 命令 ✅
 
-- **创建 Profile**：
-  - 表单填写：名称、工具类型、认证方式、API Key / OAuth、Base URL（可选）、appDataRoot（可选）
-  - 创建时验证 API Key 有效性（调用各 CLI 的测试命令或直接调用 API 探活）
-- **编辑 Profile**：修改任意字段，API Key 修改时需重新输入
-- **删除 Profile**：删除前确认，删除关联的 app_data_root 目录（可选，询问用户）
-- **复制 Profile**：基于现有 Profile 创建副本，方便快速创建相似配置
-- **导入/导出 Profile**：JSON 格式，导出时 API Key 脱敏（用户需手动重新填写）
+- `llm_provider::{llm_provider_list, llm_provider_get, llm_provider_create, llm_provider_update, llm_provider_delete, llm_provider_hard_delete}`
+- `llm_provider_set_default_model` — 设置默认模型
+- `llm_provider_set_default_provider` — 设置全局默认 Provider
+- `llm_provider_has_api_key` / `llm_provider_get_api_key` — 凭据检测/获取（用于"自动复制到剪贴板"等）
+- `llm_provider_list_presets` — 列出内置预设
 
-#### 3.3.4 Profile 切换
+#### 3.4.4 凭据存储 ⚠️
 
-- **切换方式**：标签页新建时选择 Profile，或在运行中的标签页切换 Profile（需重启 CLI 进程）
-- **切换流程**（事务化）：
-  1. 备份当前 Profile 的环境变量与 app_data_root 软链接
-  2. 注入新 Profile 的环境变量
-  3. 切换 app_data_root 软链接指向
-  4. 启动新的 CLI 进程
-  5. 若启动失败，回滚到原 Profile
-- **残留清理**：切换后自动清理临时环境变量、旧的进程残留
+- **Base64 编码存入 SQLite**（`llm_providers.api_key` / `oauth_token`，schema v11/v12）
+- 设计权衡：原计划走系统 Keychain（`keyring` crate），但 Linux 上 Secret Service 跨桌面环境体验不稳定，故改为 SQLite + Base64
+- Profile（详见 §3.5）仍然走系统 Keychain，两套并行
 
-#### 3.3.5 凭据存储
+#### 3.4.5 预设初始化 ✅
 
-- **加密方式**：
-  - macOS：Keychain
-  - Windows：Credential Manager
-  - Linux：Secret Service（libsecret）
-- **Rust crate**：`keyring`
-- **存储格式**：`enc:v1:<base64-encrypted-data>`，前缀标识版本便于未来迁移
-- **凭据内容**：API Key、OAuth Token、OAuth RefreshToken
+- 应用首次启动时调用 `llm_provider::seed` 写入内置预设（`isPreset = true`）
+- 用户可在 `LlmProvidersPage` 编辑/添加自定义 Provider
 
-#### 3.3.6 多实例数据隔离
+### 3.5 Profile 管理
 
-- **隔离方式**：每个 Profile 独立的 `app_data_root` 目录
-- **Claude Code 隔离**：
-  - 默认 `~/.claude/`
-  - Profile 独立目录：`~/.teacoder/profiles/<profile_id>/claude-data/`
-  - 通过环境变量 `CLAUDE_CONFIG_DIR` 指向独立目录
-- **其他 CLI**：v0.1 暂不强制隔离，使用默认目录（文档标注"逐步适配"）
+> 与 LlmProvider 并行的另一层配置概念。Profile 用于"账号实例"（CLI 工具的运行时实例），包含 API Key / OAuth / appDataRoot。
 
----
+#### 3.5.1 数据结构 ✅
 
-### 3.4 Token 费用追踪
+```typescript
+interface Profile {
+  id: string;
+  name: string;
+  toolType: ToolType;
+  authType: "api_key" | "oauth";
+  baseUrl?: string;
+  appDataRoot?: string;             // Claude Code 的 CLAUDE_CONFIG_DIR
+  color?: string;
+  description?: string;
+  createdAt: number;
+  updatedAt: number;
+  // 凭据字段(响应后端)，但凭据本体存于 Keychain
+  apiKeyStored?: string;
+  oauthTokenStored?: string;
+  oauthRefreshTokenStored?: string;
+}
+```
 
-#### 3.4.1 追踪方案
+#### 3.5.2 IPC 命令 ✅
 
-- **方案**：读取 CLI 工具本地数据文件，**非解析 PTY 输出**
-- **原因**：PTY 输出格式不稳定，CLI 更新易导致解析失败
+- `profile::{list_profiles, create_profile, update_profile, delete_profile, get_profile_credential, store_profile_credential}`
 
-#### 3.4.2 CostProvider Trait
+#### 3.5.3 凭据存储 ✅
+
+- macOS：Keychain
+- Windows：Credential Manager
+- Linux：Secret Service（libsecret）
+- Rust crate：`keyring = "3"`
+- Service 标识：`com.teacoder.app`
+- 存储键名：`{profile_id}:api_key` / `{profile_id}:oauth_token` / `{profile_id}:oauth_refresh_token`
+- API：`crypto::keychain::{store_secret, get_secret, delete_secret, delete_all_secrets, has_secret}`
+
+#### 3.5.4 多实例数据隔离（Claude Code）✅
+
+- 通过环境变量 `CLAUDE_CONFIG_DIR` 指向 Profile 独立目录
+- 默认 `~/.claude/`，Profile 独立目录：`~/.teacoder/profiles/<profile_id>/claude-data/`
+- 其他 CLI 工具 v0.1.0 暂不强制隔离
+
+#### 3.5.5 环境变量注入 ✅
+
+- `llm_provider::env_inject` — 根据当前 LlmProvider 构造环境变量（API Key、Base URL 等）
+- `llm_provider::env_merge` — 合并 Session.envVars + Profile 环境 + Provider 环境
+
+### 3.6 工具设置（per-tool 简写）
+
+> v0.1.0 把每个 CLI 工具的可配置项抽到 `tool_settings` 表，独立于 Profile。
+
+- IPC：`tool_settings::{get_tool_settings, upsert_tool_settings, delete_tool_settings}`
+- 表：`tool_settings`
+- 字段：toolType / settings（JSON）
+- UI：每个 CLI 工具对应独立设置页（`ClaudeSettingsPage`、`CodexSettingsPage`、`GeminiSettingsPage`、`OpenCodeSettingsPage`、`AntigravitySettingsPage`）
+
+### 3.7 应用级设置
+
+> v0.1.0 引入 `app_settings` 表（schema v7）存储应用级 KV。
+
+- 表：`app_settings`
+- 字段：key / value / updatedAt
+- 用途：主题、字体大小、侧边栏折叠状态、快捷键等
+
+### 3.8 Token 费用追踪
+
+#### 3.8.1 方案 ✅
+
+- 读取 CLI 工具本地数据文件，**非解析 PTY 输出**
+
+#### 3.8.2 CostProvider Trait ✅
 
 ```rust
 #[async_trait]
 pub trait CostProvider: Send + Sync {
-    /// 工具类型标识
     fn tool_type(&self) -> ToolType;
-
-    /// 获取该工具的数据文件目录
     fn data_dir(&self, profile: &Profile) -> PathBuf;
-
-    /// 列出所有会话数据文件
     async fn list_sessions(&self, profile: &Profile) -> Result<Vec<SessionFile>>;
-
-    /// 解析单个会话文件，提取 token 使用统计
     async fn parse_session(&self, file_path: &Path) -> Result<SessionCost>;
-
-    /// 获取会话的实时增量统计（用于运行中的会话）
     async fn get_live_usage(&self, profile: &Profile, session_id: &str) -> Result<SessionCost>;
-}
-
-pub struct SessionCost {
-    pub session_id: String,
-    pub profile_id: String,
-    pub tool_type: ToolType,
-    pub input_tokens: u64,
-    pub output_tokens: u64,
-    pub cache_creation_tokens: u64,
-    pub cache_read_tokens: u64,
-    pub started_at: i64,
-    pub ended_at: Option<i64>,
-    pub model: String,
-}
-
-pub enum ToolType {
-    Claude,
-    Codex,
-    Gemini,
-    OpenCode,
 }
 ```
 
-#### 3.4.3 各 CLI 数据来源
+#### 3.8.3 各 CLI 数据来源
 
-| CLI 工具      | 数据来源                                                           | 解析方式                             |
-| ----------- | -------------------------------------------------------------- | -------------------------------- |
-| Claude Code | `~/.claude/projects/*/conversation_*.jsonl` 或 Profile 独立目录下同结构 | 逐行解析 JSONL，累计 `message.usage` 字段 |
-| Codex CLI   | 本地会话日志（具体路径待适配）                                                | v0.1 先实现框架，解析逻辑标记为 TODO          |
-| Gemini CLI  | 本地会话日志（具体路径待适配）                                                | v0.1 先实现框架，解析逻辑标记为 TODO          |
-| OpenCode    | 本地会话日志（具体路径待适配）                                                | v0.1 先实现框架，解析逻辑标记为 TODO          |
+| CLI 工具 | 数据来源 | v0.1.0 实现 |
+| --- | --- | --- |
+| Claude Code | `~/.claude/projects/*/conversation_*.jsonl` | ✅ 完整（`cost/claude.rs`，walkdir 逐行 JSONL） |
+| Codex CLI | 本地会话日志 | ⏸ 框架（`#[allow(dead_code)]`） |
+| Gemini CLI | 本地会话日志 | ⏸ 框架 |
+| OpenCode | 本地会话日志 | ⏸ 框架 |
+| Antigravity | 本地会话日志 | ⏸ 框架 |
 
-#### 3.4.4 读取策略
+#### 3.8.4 IPC 命令 ✅
 
-- **会话结束读取**：CLI 进程退出后，读取完整会话数据文件，解析并存入 SQLite
-- **定时轮询**：运行中的会话每 30 秒轮询一次，读取增量数据，更新 SQLite 中的统计
-- **去重机制**：基于 session_id + 文件 mtime 去重，避免重复统计
+- `cost::{get_session_cost, get_profile_cost, get_global_cost, list_pricing, update_pricing, scan_costs, poll_costs}`
 
-#### 3.4.5 费用计算
+#### 3.8.5 事件 ✅
 
-- **单价配置**：用户可在设置中配置各模型的单价（每百万 token 的输入/输出/缓存价格）
+- `cost:updated` — 轮询后向所有订阅者广播增量更新
 
-- **内置单价表**：内置主流模型（Claude Opus/Sonnet/Haiku、GPT-4、Gemini Pro 等）的官方单价，用户可覆盖
+#### 3.8.6 UI 组件 ✅
 
-- **计算公式**：
-  
-  ```
-  费用 = (input_tokens * input_price + output_tokens * output_price 
-       + cache_creation_tokens * cache_creation_price 
-       + cache_read_tokens * cache_read_price) / 1_000_000
-  ```
+- `CostDashboard` — 全局费用仪表板（骨架）
+- `PricingConfigPanel` — 模型单价配置
 
-#### 3.4.6 费用展示
+### 3.9 系统集成
 
-- **会话级**：每个标签页底部状态栏显示当前会话累计 Token 数与估算费用
-- **Profile 级**：Profile 管理界面显示该 Profile 累计费用
-- **全局级**：侧边栏显示今日累计费用、本月累计费用
-- **数据维度**：输入/输出/缓存创建/缓存读取分别统计
+#### 3.9.1 系统托盘 ✅
+
+- 启动时创建托盘（`tray::create_tray`）
+- 菜单项：显示窗口 / 关于 / 退出
+- 点击行为：左键单击 → 切换窗口显隐；右键 → 弹出菜单
+
+#### 3.9.2 关闭窗口行为 ✅
+
+- IPC：`system::{set_close_behavior, get_close_behavior}`
+- 默认行为：关闭窗口 → 隐藏至托盘（通过 `WindowEvent::CloseRequested` 拦截 + `api.prevent_close()`）
+- 配置项：直接退出 / 最小化到托盘 / 询问
+
+#### 3.9.3 开机自启 ✅
+
+- IPC：`system::{is_autostart_enabled, set_autostart_enabled}`
+
+#### 3.9.4 系统字体 ✅
+
+- IPC：`system_fonts::list_system_fonts`
+- 用途：`TerminalSettingsPage` 让用户选择终端字体
+
+#### 3.9.5 文件管理器 / 外部终端 ✅
+
+- IPC：`system::{open_path_in_file_manager, open_terminal}`
+- 触发位置：标签右键菜单 / 会话卡片右键菜单
+
+### 3.11 新手引导
+
+#### 3.11.1 OnboardingFlow ✅
+
+- 首次启动时触发
+- 流程：用户协议 → 核心功能引导（云端同步 / 项目管理 / 会话）
+- localStorage key：`teacoder_onboarding_completed` / `teacoder_agreement_accepted`
+
+### 3.12 快捷命令（QuickCommands）
+
+> v0.1.0 引入的轻量级快捷操作面板。
+
+- 组件：`QuickCommands` + `QuickCommandsEditor`
+- 用途：常用命令模板 / 自定义命令面板
+
+### 3.13 主题与样式
+
+- 主题：浅色 / 深色 / 跟随系统（`GeneralSettingsPage`）
+- AntD 主题：通过 ConfigProvider 配置
+- 字体大小：`appStore.ts:fontSize`（应用级 KV）
+- 终端字体：`TerminalSettingsPage`
 
 ---
 
 ## 4. 数据模型
 
-### 4.1 SQLite Schema
+### 4.1 SQLite Schema 版本
+
+v0.1.0 当前已发布 12 个 schema 版本（迁移脚本位于 `src-tauri/migrations/`）：
+
+| 版本 | 内容 |
+| --- | --- |
+| v1 | 初始表：`schema_version` / `profiles` / `cli_tools` / `session_costs` / `pricing_config` / `settings` |
+| v2 | `tool_settings`（per-tool 配置） |
+| v3 | `projects` + `sessions` |
+| v4 | `sessions.cli_session_id`（CLI 工具内部 session ID，用于 `--resume`） |
+| v5 | `session_categories`（项目内二级分组） |
+| v6 | `session_messages`（用户手动记录的消息） |
+| v7 | `app_settings`（应用级 KV） |
+| v8 | `llm_providers`（多供应商系统） |
+| v9 | `llm_providers.is_default`（全局默认供应商标记） |
+| v10 | `llm_providers.auth_type` |
+| v11 | `llm_providers.api_key`（Base64 编码） |
+| v12 | `llm_providers.oauth_token`（Base64 编码） |
+
+### 4.2 关键表字段
+
+**profiles**
 
 ```sql
--- Schema 版本管理
-CREATE TABLE schema_version (
-    version INTEGER PRIMARY KEY,
-    applied_at INTEGER NOT NULL
-);
-
--- Profile 表
 CREATE TABLE profiles (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
-    tool_type TEXT NOT NULL,  -- claude | codex | gemini | opencode
-    auth_type TEXT NOT NULL,  -- api_key | oauth
+    tool_type TEXT NOT NULL,           -- claude | codex | gemini | opencode | antigravity | terminal | ssh
+    auth_type TEXT NOT NULL,           -- api_key | oauth
     base_url TEXT,
-    app_data_root TEXT,
+    app_data_root TEXT,                -- Claude Code 隔离目录
     color TEXT,
     description TEXT,
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL
-    -- 注意：API Key / OAuth Token 存于系统 Keychain，不存 SQLite
-);
-
--- CLI 工具检测结果缓存
-CREATE TABLE cli_tools (
-    tool_type TEXT PRIMARY KEY,
-    version TEXT,
-    path TEXT,
-    last_detected_at INTEGER NOT NULL,
-    is_available INTEGER NOT NULL DEFAULT 0
-);
-
--- 会话费用记录
-CREATE TABLE session_costs (
-    session_id TEXT PRIMARY KEY,
-    profile_id TEXT NOT NULL,
-    tool_type TEXT NOT NULL,
-    project_path TEXT,
-    input_tokens INTEGER NOT NULL DEFAULT 0,
-    output_tokens INTEGER NOT NULL DEFAULT 0,
-    cache_creation_tokens INTEGER NOT NULL DEFAULT 0,
-    cache_read_tokens INTEGER NOT NULL DEFAULT 0,
-    cost_usd REAL NOT NULL DEFAULT 0,
-    model TEXT,
-    started_at INTEGER NOT NULL,
-    ended_at INTEGER,
-    last_updated INTEGER NOT NULL,
-    FOREIGN KEY (profile_id) REFERENCES profiles(id) ON DELETE CASCADE
-);
-
--- 单价配置
-CREATE TABLE pricing_config (
-    model TEXT PRIMARY KEY,
-    input_price REAL NOT NULL,        -- 每百万 token 美元
-    output_price REAL NOT NULL,
-    cache_creation_price REAL NOT NULL,
-    cache_read_price REAL NOT NULL,
-    is_custom INTEGER NOT NULL DEFAULT 0,
-    updated_at INTEGER NOT NULL
-);
-
--- 应用设置
-CREATE TABLE settings (
-    key TEXT PRIMARY KEY,
-    value TEXT NOT NULL,
-    updated_at INTEGER NOT NULL
+    -- 凭据存于系统 Keychain,不在此表
 );
 ```
 
-### 4.2 JSONL 用途
+**sessions**
 
-- CLI 工具自身的会话记录保持 JSONL 格式（如 Claude Code 的 conversation_*.jsonl），TeaCoder 只读取不写入
-- TeaCoder 自身的审计日志（Profile 切换、CLI 启动/退出）写入 `~/.teacoder/logs/audit.jsonl`
+```sql
+CREATE TABLE sessions (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL,
+    category_id TEXT,                  -- 可选
+    title TEXT,
+    tool_type TEXT NOT NULL,
+    profile_id TEXT,
+    llm_provider_id TEXT,              -- v0.1.0 新增:绑定的 LLM Provider
+    model_name TEXT,                   -- v0.1.0 新增:模型名
+    claude_models TEXT,                 -- JSON:sonnet/opus/haiku 子模型
+    thinking_intensity TEXT,           -- 思考强度
+    template_id TEXT,                   -- 模板
+    cli_args TEXT,                     -- CLI 参数
+    env_vars TEXT,                      -- JSON 序列化
+    color TEXT,
+    is_running INTEGER NOT NULL DEFAULT 0,
+    cli_session_id TEXT,               -- CLI 工具自身的 session UUID(用于 --resume)
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    closed_at INTEGER,
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+);
+```
+
+**llm_providers**（v0.1.0 新增）
+
+```sql
+CREATE TABLE llm_providers (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    provider_kind TEXT NOT NULL,       -- anthropic | openai | google | custom
+    auth_type TEXT,                    -- api_key | oauth
+    base_url TEXT,
+    icon TEXT,
+    color TEXT,
+    is_preset INTEGER NOT NULL DEFAULT 0,
+    is_active INTEGER NOT NULL DEFAULT 1,
+    is_default INTEGER NOT NULL DEFAULT 0,
+    api_key TEXT,                      -- Base64 编码
+    oauth_token TEXT,                  -- Base64 编码
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+);
+-- models 子表未在此处列出,见 storage 模块
+```
+
+### 4.3 持久化（前端）
+
+- `teacoder_panes_layout`（version=2）：JSON，存 `{panes, activePaneId}`（全量 panes，不去重）
+- `teacoder_open_tabs`：兼容旧版扁平列表（v2 中已被清空）
+- `teacoder_sidebar_collapsed`：侧边栏折叠状态
+
+### 4.4 JSONL 用途
+
+- CLI 工具自身的 JSONL 会话记录保持原样（TeaCoder 只读不写）
+- TeaCoder 自身审计日志暂未启用（v0.1.0 未生成 `~/.teacoder/logs/audit.jsonl`）
 
 ---
 
-## 5. Tauri IPC 命令
+## 5. Tauri IPC 命令（v0.1.0 完整清单）
 
 ### 5.1 CLI 工具管理
 
 ```typescript
-// 检测所有已安装的 CLI 工具
 detect_cli_tools(): Promise<CliTool[]>
-
-// 启动 CLI 会话
-start_session(params: {
-  toolType: ToolType;
-  profileId: string;
-  workDir: string;
-  tabId: string;
-}): Promise<void>
-
-// 停止 CLI 会话
-stop_session(tabId: string): Promise<void>
-
-// 向 PTY 写入输入
-write_to_pty(tabId: string, data: string): Promise<void>
-
-// 调整 PTY 大小
-resize_pty(tabId: string, cols: number, rows: number): Promise<void>
 ```
 
-### 5.2 Profile 管理
+### 5.2 PTY 管理
+
+```typescript
+start_session(params: StartSessionParams): Promise<void>
+stop_session(tabId: string): Promise<void>
+write_to_pty(tabId: string, data: string): Promise<void>
+resize_pty(tabId: string, cols: number, rows: number): Promise<void>
+test_ssh_connection(params: SshTestParams): Promise<string>
+```
+
+### 5.3 Profile 管理
 
 ```typescript
 list_profiles(toolType?: ToolType): Promise<Profile[]>
-create_profile(profile: Omit<Profile, 'id' | 'createdAt' | 'updatedAt'>): Promise<Profile>
+create_profile(profile: Omit<Profile, "id" | "createdAt" | "updatedAt">): Promise<Profile>
 update_profile(id: string, updates: Partial<Profile>): Promise<Profile>
-delete_profile(id: string, options: { removeData: boolean }): Promise<void>
-duplicate_profile(id: string): Promise<Profile>
-export_profiles(ids: string[]): Promise<string>  // 返回 JSON 字符串
-import_profiles(json: string): Promise<Profile[]>
-validate_profile(profile: Profile): Promise<{ valid: boolean; error?: string }>
+delete_profile(id: string): Promise<void>
+get_profile_credential(profileId: string, keyName: string): Promise<string | null>
 ```
 
-### 5.3 费用追踪
+### 5.5 Project / Session / Category / Message
 
 ```typescript
-// 获取会话费用统计
+project_list(): Promise<Project[]>
+project_create(input: ...): Promise<Project>
+project_update(id: string, updates: ...): Promise<Project>
+project_delete(id: string): Promise<void>
+
+session_list(): Promise<Session[]>
+session_create(input: ...): Promise<Session>
+session_update(id: string, updates: Partial<Session>): Promise<Session>
+session_delete(id: string): Promise<void>
+claude_jsonl_exists(sessionId: string): Promise<boolean>
+
+category_list(projectId: string): Promise<SessionCategory[]>
+category_create(input: ...): Promise<SessionCategory>
+category_update(id: string, updates: ...): Promise<SessionCategory>
+category_delete(id: string): Promise<void>
+
+session_message_list(sessionId: string): Promise<SessionMessage[]>
+session_message_create(input: ...): Promise<SessionMessage>
+session_message_delete(id: string): Promise<void>
+```
+
+### 5.6 LLM Provider
+
+```typescript
+llm_provider_list(): Promise<LlmProvider[]>
+llm_provider_get(id: string): Promise<LlmProvider | null>
+llm_provider_create(input: CreateLlmProviderInput): Promise<LlmProvider>
+llm_provider_update(id: string, input: UpdateLlmProviderInput): Promise<LlmProvider>
+llm_provider_delete(id: string): Promise<void>           // 软删除
+llm_provider_hard_delete(id: string): Promise<void>     // 硬删除
+llm_provider_set_default_model(providerId: string, model: string): Promise<void>
+llm_provider_set_default_provider(providerId: string): Promise<void>
+llm_provider_has_api_key(providerId: string): Promise<boolean>
+llm_provider_get_api_key(providerId: string): Promise<string | null>
+llm_provider_list_presets(): Promise<PresetProviderView[]>
+```
+
+### 5.7 Tool Settings
+
+```typescript
+get_tool_settings(toolType: ToolType): Promise<ToolSettings>
+upsert_tool_settings(toolType: ToolType, settings: ToolSettings): Promise<void>
+delete_tool_settings(toolType: ToolType): Promise<void>
+```
+
+### 5.8 费用追踪
+
+```typescript
 get_session_cost(sessionId: string): Promise<SessionCost>
-
-// 获取 Profile 累计费用
-get_profile_cost(profileId: string, range?: { from: number; to: number }): Promise<CostSummary>
-
-// 获取全局费用统计
-get_global_cost(range?: { from: number; to: number }): Promise<CostSummary>
-
-// 获取单价配置
+get_profile_cost(profileId: string, range?: TimeRange): Promise<CostSummary>
+get_global_cost(range?: TimeRange): Promise<CostSummary>
 list_pricing(): Promise<PricingConfig[]>
 update_pricing(model: string, config: Partial<PricingConfig>): Promise<void>
-reset_pricing(model: string): Promise<void>  // 重置为内置默认值
+scan_costs(): Promise<void>             // 全量扫描
+poll_costs(): Promise<void>            // 增量轮询
 ```
 
-### 5.4 事件（后端 → 前端）
+### 5.9 系统集成
 
 ```typescript
-// PTY 输出事件
-on('pty_output', (payload: { tabId: string; data: string }) => void)
+is_autostart_enabled(): Promise<boolean>
+set_autostart_enabled(enabled: boolean): Promise<void>
+set_close_behavior(behavior: "exit" | "tray" | "ask"): Promise<void>
+get_close_behavior(): Promise<string>
+set_tray_visible(visible: boolean): Promise<void>
+open_path_in_file_manager(path: string): Promise<void>
+open_terminal(path: string): Promise<void>
+list_system_fonts(): Promise<FontInfo[]>
+```
 
-// PTY 退出事件
-on('pty_exit', (payload: { tabId: string; exitCode: number }) => void)
+### 5.10 事件（后端 → 前端）
 
-// 费用更新事件（定时轮询后触发）
-on('cost_updated', (payload: { sessionId: string; cost: SessionCost }) => void)
+```typescript
+on("pty:output", (payload: { tabId: string; data: string }) => void)
+on("pty:exit", (payload: { tabId: string; exitCode: number }) => void)
+on("cost:updated", (payload: { sessionId: string; cost: SessionCost }) => void)
 ```
 
 ---
@@ -497,236 +674,293 @@ on('cost_updated', (payload: { sessionId: string; cost: SessionCost }) => void)
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│  顶部栏：Logo | 项目搜索(Ctrl+P) | 全局费用 | 设置            │
+│  顶部栏：Logo | 全局操作 | 设置                               │
 ├──────────┬───────────────────────────────────────────────────┤
-│          │  标签页栏：[Tab1] [Tab2] [+]                        │
-│  侧边栏  ├───────────────────────────────────────────────────┤
-│          │                                                   │
-│  - 项目1  │                                                   │
-│    - Tab1│              终端区域（xterm.js）                   │
-│    - Tab2│                                                   │
-│  - 项目2  │                                                   │
-│    - Tab3│                                                   │
-│          │                                                   │
-│  收藏区   ├───────────────────────────────────────────────────┤
-│          │  状态栏：工具类型 | Profile | Token统计 | 费用      │
-│  + 新建   │                                                   │
+│          │  Pane 1: TabBar | xterm 终端                       │
+│          ├───────────────────────────────────────────────────┤
+│  侧边栏  │                                                   │
+│          │  Pane 2: TabBar | xterm 终端（分屏时存在）         │
+│  - 项目  │                                                   │
+│    - 分类├───────────────────────────────────────────────────┤
+│      - 会│                                                   │
+│  - 收藏  │                                                   │
+│  + 新建  │                                                   │
+│          ├───────────────────────────────────────────────────┤
+│          │  状态栏：工具 | Profile | Provider | 模型 | Token  │
 └──────────┴───────────────────────────────────────────────────┘
 ```
 
 ### 6.2 侧边栏
 
-- **项目列表**：按工作目录分组显示标签页
-- **收藏区**：用户收藏的项目置顶
-- **新建按钮**：点击弹出新建会话对话框
-- **右键菜单**：
-  - 项目级：新建会话、打开文件管理器、复制路径、收藏/取消收藏
-  - 标签页级：切换 Profile、重新启动、关闭、关闭其他
+- 项目树（Project → SessionCategory → Session 三层）
+- 收藏区（`favoriteTabs`，置顶）
+- 新建项目 / 新建分类 / 新建会话按钮
+- 折叠状态：`collapsedCategoryIds` / `collapsedProjectIds` / `sidebarCollapsed`
 
 ### 6.3 终端区域
 
-- **终端组件**：xterm.js + xterm-addon-fit + xterm-addon-web-links
-- **功能**：
-  - 标准 ANSI 颜色支持
-  - 鼠标可点击链接
-  - 复制粘贴（Ctrl+Shift+C / Ctrl+Shift+V）
-  - 字体大小调节（Ctrl+= / Ctrl+-）
-  - 全屏切换（F11）
-- **主题**：跟随应用主题（深色/浅色）
+- 组件：`TerminalView` + `PaneView` + `PaneSplitter`
+- 功能：
+  - xterm.js + xterm-addon-fit
+  - ANSI 颜色
+  - 复制粘贴（Cmd+Shift+C / Cmd+Shift+V；macOS / Win-Linux 平台差异自动识别）
+  - 全局快捷键：Ctrl+Shift+C / Ctrl+Shift+V（在 AppContent 层注册）
+- 分屏双开时只有 activePane 接收输入（`enableInput` 透传）
 
 ### 6.4 状态栏
 
-- 左侧：工具类型图标 + 名称、当前 Profile 名称（点击切换）
-- 右侧：当前会话 Token 统计（输入/输出/缓存）、估算费用、会话时长
+- 工具类型图标 + 名称
+- Profile 名称（点击切换）
+- LLM Provider + 模型名称
+- Token 统计（输入/输出/缓存/估算费用）—— 通过 `cost:updated` 事件更新
 
 ### 6.5 新建会话对话框
 
-- **字段**：
-  - CLI 工具选择（下拉，仅显示已检测到的工具）
-  - Profile 选择（下拉，按工具类型过滤）
-  - 工作目录（文件选择器）
-  - 标签页标题（可选，默认自动生成）
-  - 颜色标记（8 色选择器）
-- **快捷创建**：记忆上次配置，下次默认填充
+- `NewSessionModal`：工具选择 / Profile 选择 / LLM Provider + 模型选择 / 工作目录 / 模板应用 / 标题 / 颜色 / CLI 参数 / 环境变量
+- 快捷创建：记忆上次配置，下次默认填充
 
-### 6.6 Profile 管理界面
+### 6.6 编辑会话对话框
 
-- **入口**：设置 → Profile 管理
-- **布局**：左侧 Profile 列表（按工具类型分组），右侧编辑表单
-- **操作按钮**：新建、复制、删除、导入、导出
-- **验证提示**：API Key 验证状态（有效/无效/未验证）
+- `EditSessionModal`：标题 / 颜色 / 分类 / 模型切换 / Profile 切换（运行时切换需重启 CLI）
 
-### 6.7 设置界面
+### 6.7 设置（18 个页面）
 
-- **通用**：主题、字体、默认工作目录、开机自启
-- **费用**：单价配置（模型列表 + 编辑表单）、货币单位、预算告警阈值
-- **CLI 工具**：手动重新检测、显示各工具版本与路径
-- **数据**：数据目录位置、清理缓存、导出数据
+通过 `SettingsPage` 左侧菜单路由：
+
+| Key | 标签 | 组件 |
+| --- | --- | --- |
+| general | 通用设置 | `GeneralSettingsPage` |
+| terminal | 终端设置 | `TerminalSettingsPage` |
+| llm-providers | LLM 设置 | `LlmProvidersPage` |
+| claude | Claude 设置 | `ClaudeSettingsPage` |
+| codex | Codex 设置 | `CodexSettingsPage` |
+| gemini | Gemini 设置 | `GeminiSettingsPage` |
+| antigravity | Antigravity 设置 | `AntigravitySettingsPage` |
+| opencode | OpenCode 设置 | `OpenCodeSettingsPage` |
+| network | 网络设置 | `NetworkSettingsPage` |
+| notification | 通知 | `NotificationPage` |
+| data-management | 数据管理 | `DataManagementPage` |
+| about | 关于 | `AboutPage` |
+| profile-management | Profile 管理 | `ProfileManagementPage` |
+| keybindings | 快捷键 | `KeybindingsPage` |
+| mcp-access | MCP 访问 | `McpAccessPage`（v0.1.0 入口） |
+| sync | 同步 | `SyncPage`（v0.1.0 入口） |
+| remote-access | 远程访问 | `RemoteAccessPage`（v0.1.0 入口） |
+| ai-assistant | AI 助手 | `AIAssistantPage` |
 
 ### 6.8 主题
 
-- 支持深色 / 浅色 / 跟随系统
-- Ant Design 主题通过 ConfigProvider 配置
-- TailwindCSS 通过 `dark:` 类名适配
+- 浅色 / 深色 / 跟随系统
+- Ant Design 通过 ConfigProvider 配置
+- TailwindCSS 通过 CSS 变量适配
+
+### 6.9 新手引导
+
+- `OnboardingFlow`：协议 + 引导
+- 重新触发入口：设置 → 关于 → "重新查看引导"
 
 ---
 
 ## 7. 非功能需求
 
-### 7.1 性能
+### 7.1 性能指标（v0.1.0 验收）
 
-- 应用冷启动时间 < 2 秒
-- CLI 工具检测完成时间 < 3 秒（并行检测）
-- PTY 输出延迟 < 50ms（从 PTY 读取到前端渲染）
-- SQLite 查询响应时间 < 100ms
-- 内存占用：空闲状态 < 200MB，单会话运行 < 400MB
+| 指标 | 目标 |
+| --- | --- |
+| 冷启动 | < 2 秒 |
+| CLI 工具检测 | < 3 秒 |
+| PTY 输出延迟 | < 50 ms |
+| SQLite 查询响应 | < 100 ms |
+| 空闲内存 | < 200 MB |
+| 单会话运行内存 | < 400 MB |
 
 ### 7.2 安全
 
-- API Key / OAuth Token 仅存于系统 Keychain，不落明文
-- axum 网关仅监听 127.0.0.1，不绑定外部网卡
-- 日志中不记录 API Key / Token 明文（脱敏处理）
-- Profile 导出时 API Key 必须脱敏
+- API Key / OAuth Token 凭据分层存储：
+  - Profile → 系统 Keychain（`keyring` crate）
+  - LlmProvider → SQLite（Base64 编码）—— 出错权衡见 §3.4.4
+- 导出时脱敏：Profile 导出时 API Key 必须脱敏
+- 日志中 API Key / Token 全部脱敏（显示 `sk-***...`）
+- PTY 直通：不拦截、不代理 CLI API 请求
 
 ### 7.3 可靠性
 
-- PTY 进程异常退出时，前端需收到通知并提示用户
-- SQLite 操作失败时回滚事务，不破坏数据一致性
-- Profile 切换失败时必须能回滚到原状态
-- 应用崩溃后重启，能恢复上次的标签页配置（不含终端内容）
+- PTY 进程异常退出：前端通过 `pty:exit` 事件收到，状态自动更新（`isRunning=false`）
+- SQLite 操作：使用 `transaction` 确保原子性
+- 双开关闭：refcount 语义（实例归零才停 PTY）
+- 应用重启：恢复标签页 / 分屏布局（不含终端内容）
+- Schema 版本化：12 个版本已成功迁移，从 v1 开始建立
 
 ### 7.4 跨平台
 
-- Windows 10+ / macOS 11+ / Ubuntu 20.04+ / 其他 Linux（AppImage）
-- 路径处理使用 Rust 的 PathBuf，不硬编码分隔符
-- 换行符：PTY 内部使用 `\n`，Windows 下由 PTY 库处理转换
+- 支持 Windows 10+ / macOS 11+ / Ubuntu 20.04+ / 其他 Linux（AppImage）
+- 路径处理使用 Rust `PathBuf`，不硬编码 `/` 或 `\`
+- 文件操作使用 `std::fs`，不 shell out 到 `cp`/`rm`/`mv`
+
+### 7.5 UI 一致性
+
+- 风格：Ant Design 6 + TailwindCSS 4 互补（AntD 提供组件、Tailwind 处理布局）
+- 关闭 Tab：直接关闭，无确认框（v0.1.0 调整）
+- 删除会话记录：保留确认框（不可恢复操作）
 
 ---
 
-## 8. 开发任务拆解
+## 8. 开发任务拆解（v0.1.0 状态）
 
-> 建议按以下顺序开发，每个阶段完成后可独立验证
+### 阶段 1：项目脚手架 ✅
 
-### 阶段 1：项目脚手架（1-2 天）
+- [x] Tauri 2.x 项目初始化
+- [x] 集成 React 19 + TypeScript + Vite
+- [x] 集成 Ant Design 6 + TailwindCSS 4（`preflight: false`）
+- [x] 集成 Zustand 状态管理
+- [x] SQLite schema 迁移机制（已 12 个版本）
+- [x] 基础布局（顶部栏 / 侧边栏 / 主区域 / 状态栏）
 
-- [ ] Tauri 2.x 项目初始化
-- [ ] 集成 React 19 + TypeScript + Vite
-- [ ] 集成 Ant Design 6 + TailwindCSS 4（配置样式隔离）
-- [ ] 集成 Zustand 状态管理
-- [ ] SQLite 数据库初始化与 schema 迁移机制
-- [ ] 基础布局（顶部栏、侧边栏、主区域、状态栏）
+### 阶段 2：CLI 工具检测与管理 ✅
 
-### 阶段 2：CLI 工具检测与管理（2-3 天）
+- [x] `cli/detector.rs`：4+ 个 CLI 工具检测
+- [x] `commands/cli.rs`：`detect_cli_tools` IPC
+- [x] 前端 CLI 工具列表 UI、重新检测按钮
 
-- [ ] `cli/detector.rs`：实现 4 个 CLI 工具的检测逻辑
-- [ ] `commands/cli.rs`：暴露 `detect_cli_tools` IPC 命令
-- [ ] 前端：CLI 工具列表 UI、重新检测按钮
-- [ ] 设置界面：显示已检测工具的版本与路径
+### 阶段 3：PTY 终端核心 ✅
 
-### 阶段 3：PTY 终端核心（3-5 天）
+- [x] `pty/manager.rs`：PTY 会话管理（创建 / 销毁 / 输入输出 / 共享 PTY）
+- [x] `portable-pty` 集成
+- [x] `commands/pty.rs`：`start_session`（幂等）/ `stop_session` / `write_to_pty` / `resize_pty` / `test_ssh_connection`
+- [x] 事件：`pty:output` / `pty:exit`
+- [x] 前端 xterm.js 集成 + 分屏双开
 
-- [ ] `pty/manager.rs`：PTY 会话管理（创建、销毁、输入输出）
-- [ ] 集成 `portable-pty` crate
-- [ ] `commands/pty.rs`：暴露 start_session / stop_session / write_to_pty / resize_pty
-- [ ] 事件系统：pty_output / pty_exit 事件
-- [ ] 前端：xterm.js 集成、终端组件、输入输出绑定
+### 阶段 4：多标签 + 多分屏 ✅
 
-### 阶段 4：多标签页管理（3-4 天）
+- [x] Zustand store（panes / openTabIds / activePaneId / splitRatio）
+- [x] 标签页 UI（新建 / 关闭 / 切换 / 拖拽 / 跨 pane 拖拽）
+- [x] 快捷键：Ctrl+T / Ctrl+W / Ctrl+Tab / Ctrl+P
+- [x] 持久化 `teacoder_panes_layout`（version=2）
+- [x] 分屏（PaneView / PaneSplitter / 共享 PTY）
+- [x] 会话搜索（Ctrl+P → `SearchPanel`）
 
-- [ ] 标签页状态管理（Zustand store）
-- [ ] 标签页 UI（新建、关闭、切换、拖拽排序）
-- [ ] 快捷键绑定（Ctrl+T / Ctrl+W / Ctrl+Tab）
-- [ ] 标签页持久化（重启恢复）
-- [ ] 项目分组逻辑与 UI
-- [ ] 会话搜索（Ctrl+P）
+### 阶段 5：Profile 管理 ✅
 
-### 阶段 5：Profile 管理（4-5 天）
+- [x] `profile/mod.rs`：Profile CRUD
+- [x] `crypto/keychain.rs`：系统 Keychain
+- [x] 多实例数据隔离（Claude Code 的 `CLAUDE_CONFIG_DIR`）
+- [x] 前端 Profile 管理界面 + Profile 选择器
+- [x] **LLM 供应商系统**（v0.1.0 新增）：多 provider + 多 model + Base64 凭据
 
-- [ ] `profile/manager.rs`：Profile CRUD
-- [ ] `crypto/keychain.rs`：系统集成 keyring crate
-- [ ] Profile 切换事务化逻辑（备份/注入/回滚）
-- [ ] 多实例数据隔离（Claude Code 的 CLAUDE_CONFIG_DIR）
-- [ ] 前端：Profile 管理界面、新建会话对话框的 Profile 选择
-- [ ] Profile 验证（API Key 探活）
+### 阶段 6：Token 费用追踪 ⚠️
 
-### 阶段 6：Token 费用追踪（4-5 天）
+- [x] `cost/provider.rs`：CostProvider trait
+- [x] `cost/claude.rs`：完整实现
+- [ ] `cost/codex.rs` / `gemini.rs` / `opencode.rs`：v0.1.0 框架（`#[allow(dead_code)]`），v0.2 补全
+- [ ] Antigravity Provider：v0.2 新增
+- [x] 轮询 / 扫描 IPC + `cost:updated` 事件
+- [x] 前端：`CostDashboard` / `PricingConfigPanel`
 
-- [ ] `cost/provider.rs`：CostProvider trait 定义
-- [ ] `cost/claude.rs`：Claude Code JSONL 解析（完整实现）
-- [ ] `cost/codex.rs` / `gemini.rs` / `opencode.rs`：框架实现，解析逻辑 TODO
-- [ ] 定时轮询机制（每 30s 读取运行中会话）
-- [ ] 费用计算与单价配置
-- [ ] 前端：状态栏 Token 显示、Profile 费用统计、设置中的单价配置
+### 阶段 7：系统集成 ✅
 
-### 阶段 7：打磨与打包（2-3 天）
+- [x] 系统托盘（`tray.rs`）
+- [x] 关闭行为配置（`system::{get,set}_close_behavior`）
+- [x] 开机自启（`system::{is,set}_autostart_enabled`）
+- [x] 系统字体（`system_fonts::list_system_fonts`）
+- [x] 打开文件管理器 / 外部终端
 
-- [ ] 主题切换（深色/浅色/跟随系统）
-- [ ] 错误处理与用户提示统一
-- [ ] Windows / macOS / Linux 三平台打包测试
-- [ ] 应用图标与启动画面
-- [ ] 基础文档（README、快速上手）
+### 阶段 8：设置界面 ✅
 
-**预计总工期：19-27 天（约 3-4 周全职开发）**
+- [x] 18 个设置页面（详见 §6.7）
+- [x] 应用级设置 + per-tool 设置分层
+
+### 阶段 9：打磨与打包 ⚠️
+
+- [x] 主题切换（浅色 / 深色 / 跟随系统）
+- [x] 错误处理与用户提示
+- [x] 应用图标重生成（2026-10-20）
+- [ ] 三平台打包测试：Windows / macOS / Linux 实际未完整跑过全平台打包流水线
 
 ---
 
-## 9. 验收标准
+## 9. 验收标准（v0.1.0 状态）
 
 ### 9.1 功能验收
 
-- [ ] 能检测到系统已安装的 Claude Code，并显示版本
-- [ ] 能新建标签页启动 Claude Code，终端正常交互
-- [ ] 能创建多个 Profile，API Key 加密存储
-- [ ] 能在不同标签页使用不同 Profile，数据隔离生效
-- [ ] Claude Code 会话结束后，能正确统计 Token 数量与费用
-- [ ] 运行中的会话，状态栏 Token 数每 30s 更新
-- [ ] 应用重启后，标签页配置（工作目录、Profile、工具类型）能恢复
-- [ ] 三平台（Windows/macOS/Linux）安装包可正常安装运行
+- [x] 能检测到系统已安装的 Claude Code / Codex / Gemini / OpenCode，并显示版本
+- [x] 能新建标签页启动任一 CLI 工具，终端正常交互
+- [x] 能创建多个 Profile，Profile 凭据加密存储于系统 Keychain
+- [x] 能创建多个 LLM Provider 并切换使用
+- [x] Claude Code 会话结束后，能正确统计 Token 数量与费用（其他工具 v0.2）
+- [x] 运行中的会话，状态栏 Token 数通过 `cost:updated` 事件更新
+- [x] 应用重启后，标签页 / 分屏布局能恢复
+- [x] 同会话可在两个 pane 双开，共享 PTY，输入不被双触发
+- [x] SSH 会话可启动（密码型自动 askpass）
+- [x] 关闭 Tab 直接关闭，无确认
 
 ### 9.2 非功能验收
 
-- [ ] 冷启动 < 2 秒
-- [ ] API Key 在 SQLite 中不存在明文
-- [ ] axum 仅监听 127.0.0.1（`netstat` 验证）
-- [ ] Profile 切换失败时能回滚，不丢失原配置
+- [x] 冷启动 < 2 秒（本地测试通过）
+- [x] API Key 不在 SQLite 中以明文存储（Profile Keychain / LlmProvider Base64）
+- [x] 日志中 API Key 全部脱敏
+- [ ] axum 网关：v0.1.0 未启用（v1.0+）
+- [x] SQLite 操作使用事务
+- [x] Schema 版本化迁移（v1 → v12 已成功）
 
 ---
 
-## 10. 未纳入 v0.1 的功能（明确边界）
+## 10. 未纳入 v0.1.0 的功能（明确边界）
 
-以下功能在 v0.1 中**不实现**，避免范围蔓延：
+以下功能在 v0.1.0 中**不实现**或仅提供骨架入口：
 
-- MCP Server 可视化管理（v0.2）
-- 代码片段库（v0.2）
-- 全局命令面板 Ctrl+K（v0.2，v0.1 仅有 Ctrl+P 会话搜索）
-- WebDAV 云同步（v0.2）
-- 思考强度热切换（v0.2）
-- 国内厂商端点预设（v0.2）
-- SSH 远程工作区（v0.3）
-- 语音输入（v0.3）
-- AI 记忆管理（v0.3）
-- Token 费用仪表板（v0.3，v0.1 仅有基础数字展示）
-- 桌面宠物（v0.3）
-- 移动端伴侣（v1.0+）
-- 工作区编辑器（v1.0+）
-- 本地 LLM 后端（v1.0+）
-- Responses ↔ Chat 转换代理（v1.0+）
-- Codex / Gemini / OpenCode 的费用解析（v0.1 仅实现框架，Claude Code 完整实现）
+### v0.2 待实现
+
+- Codex / Gemini / OpenCode / Antigravity 的 CostProvider 完整解析
+- Token 费用仪表板（每日趋势、月度、180 天热力图、预算告警）
+- MCP Server 可视化管理（仅提供 `McpAccessPage` 入口）
+- WebDAV 云同步（仅提供 `SyncPage` 入口）
+- 代码片段库（仅提供 Ctrl+K 入口）
+- 思考强度热切换（字段已建，运行中瞬时生效未做）
+- 国内厂商端点预设（DeepSeek/智谱/通义/Kimi/硅基流动 已在 LlmProvider 预设中部分覆盖）
+
+### v0.3 远期
+
+- SSH 配置化（v0.1.0 已支持 SSH 会话，v0.2 提供密钥管理面板）
+- 云端语音输入
+- AI 记忆管理
+- 桌面宠物
+
+### v1.0+ 远期
+
+- 移动端伴侣 Android
+- 工作区编辑器
+- 本地 LLM 后端
+- Responses ↔ Chat 转换代理
+- axum HTTP/WS 网关（依赖已在 Cargo.toml 声明，v1.0+ 启用）
 
 ---
 
 ## 11. 开发注意事项
 
-1. **Claude Code JSONL 解析优先**：v0.1 中只有 Claude Code 的 CostProvider 完整实现，其他三个工具实现 trait 框架但解析逻辑留 TODO，避免阻塞 MVP 发布
+1. **PTY 直通**：不拦截 CLI API 请求；Token 统计通过读取本地 JSONL/数据库，非解析 PTY 输出。
 
-2. **CostProvider 可扩展**：trait 设计要预留扩展性，未来新增 CLI 工具只需实现 trait，不改动核心逻辑
+2. **CostProvider 可扩展性**：trait 设计要预留扩展性，新增 CLI 工具只需实现 trait；v0.2 补全 codex/gemini/opencode。
 
-3. **Profile 切换事务化**：这是高风险点，必须有完整的回滚机制，建议用 Rust 的 RAII 模式管理临时状态
+3. **凭据分层**：
+   - Profile 走 Keychain（macOS / Windows 强一致）
+   - LlmProvider 走 SQLite Base64（Linux 上避免 keychain 不稳定问题）
+   - 两套并行，不互相依赖
 
-4. **PTY 跨平台差异**：Windows 下 PTY 行为与 Unix 不同，需充分测试 `portable-pty` 在 Windows 的表现
+4. **PTY 跨平台差异**：`portable-pty` 在 Windows 下行为与 Unix 不同，需充分测试 resize、双开同步。
 
-5. **Ant Design + TailwindCSS 冲突**：配置 TailwindCSS 的 `preflight` 关闭，或使用 `important` 选项，避免覆盖 AntD 样式
+5. **Ant Design + TailwindCSS 共存**：
+   - AntD 负责组件、styles、配置
+   - Tailwind 仅用于 layout（flex/grid）、spacing（p/m）、自定义样式
+   - 禁止 Tailwind 覆盖 AntD 组件样式
+   - `preflight: false` 避免基础样式冲突
 
-6. **xterm.js 性能**：大量输出时需启用 `scrollback` 限制（建议 10000 行），避免内存膨胀
+6. **xterm.js 性能**：
+   - 大量输出时启用 `scrollback` 限制（建议 10000 行）
+   - 分屏双开时只有 activePane 触发 `resizeToPty`（避免 SIGWINCH 风暴）
+   - xterm 焦点协议（`ESC [O` / `ESC [?1;2c`）只由 enableInput=true 的实例发送
 
-7. **数据迁移**：schema 版本化机制要从 v0.1 开始就建立，避免后期迁移痛苦
+7. **数据迁移**：schema 版本化从 v1 开始已建立 12 个版本，避免后期迁移痛苦。
+
+9. **提交标签 / commit 信息**：使用中文，格式：`<类型>: <描述>`，如 `feat: 添加 Profile 管理界面`。
+
+10. **关闭 Tab 直接关闭**：v0.1.0 调整——不再弹确认框，避免打断心流。删除会话记录等不可恢复操作仍保留确认框。
