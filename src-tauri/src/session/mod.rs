@@ -2,6 +2,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::storage::AppDatabase;
 
+mod ssh_secret;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Session {
@@ -76,7 +78,9 @@ fn row_to_session(row: &rusqlite::Row) -> Result<Session, rusqlite::Error> {
         color: row.get(5)?,
         thinking_intensity: row.get(6)?,
         template_id: row.get(7)?,
-        cli_args: row.get(8)?,
+        // 唯一读出收口点：list_sessions 与 update_session 都经由这里，
+        // 因此跨 IPC 的 cli_args 恒为明文。
+        cli_args: ssh_secret::decode_cli_args(&row.get::<_, String>(3)?, row.get(8)?),
         env_vars: row.get(9)?,
         is_running: is_running_int != 0,
         created_at: row.get(11)?,
@@ -138,6 +142,7 @@ pub fn create_session(db: &AppDatabase, input: CreateSessionInput) -> Result<Ses
     let now = chrono::Utc::now().timestamp_millis();
     let thinking_intensity = input.thinking_intensity.unwrap_or_else(|| "medium".to_string());
     let is_running: i64 = 1;
+    let stored_cli_args = ssh_secret::encode_cli_args(&input.tool_type, input.cli_args.clone());
 
     conn.execute(
         "INSERT INTO sessions (id, project_id, title, tool_type, profile_id, color, thinking_intensity, template_id, cli_args, env_vars, is_running, created_at, updated_at, cli_session_id, category_id, llm_provider_id, model_name, claude_models) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)",
@@ -150,7 +155,7 @@ pub fn create_session(db: &AppDatabase, input: CreateSessionInput) -> Result<Ses
             input.color,
             thinking_intensity,
             input.template_id,
-            input.cli_args,
+            stored_cli_args,
             input.env_vars,
             is_running,
             now,
@@ -164,6 +169,9 @@ pub fn create_session(db: &AppDatabase, input: CreateSessionInput) -> Result<Ses
     )
     .map_err(|e| format!("Failed to insert session: {}", e))?;
 
+    // 先于 struct 字面量算好：那里 tool_type 字段会 move 掉 input.tool_type
+    let returned_cli_args = ssh_secret::decode_cli_args(&input.tool_type, stored_cli_args);
+
     Ok(Session {
         id,
         project_id: input.project_id,
@@ -173,7 +181,7 @@ pub fn create_session(db: &AppDatabase, input: CreateSessionInput) -> Result<Ses
         color: input.color,
         thinking_intensity,
         template_id: input.template_id,
-        cli_args: input.cli_args,
+        cli_args: returned_cli_args,
         env_vars: input.env_vars,
         is_running: true,
         created_at: now,
@@ -225,8 +233,18 @@ pub fn update_session(
     }
 
     if let Some(ref cli_args) = input.cli_args {
+        // UpdateSessionInput 不带 tool_type（会话工具类型在创建后不可改），
+        // 编码与否取决于它，所以先从行里取出来。
+        let tool_type: String = conn
+            .query_row("SELECT tool_type FROM sessions WHERE id = ?1", [id], |row| {
+                row.get(0)
+            })
+            .map_err(|e| format!("Failed to read session tool_type: {}", e))?;
         set_clauses.push("cli_args = ?".to_string());
-        params.push(Box::new(cli_args.clone()));
+        params.push(Box::new(ssh_secret::encode_cli_args(
+            &tool_type,
+            Some(cli_args.clone()),
+        )));
     }
 
     if let Some(ref env_vars) = input.env_vars {
@@ -329,4 +347,172 @@ pub fn reset_all_running(db: &AppDatabase) -> Result<(), String> {
     .map_err(|e| format!("Failed to reset running sessions: {}", e))?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        create_session, list_sessions, update_session, CreateSessionInput, UpdateSessionInput,
+    };
+    use crate::storage::AppDatabase;
+    use rusqlite::Connection;
+    use std::sync::Mutex;
+
+    /// 按版本号升序跑真实迁移脚本，而不是抄一份 DDL 进测试 ——
+    /// 后者会随 schema 演进而静默失真，让 `SESSION_COLUMNS` 的列下标错位测不出来。
+    fn test_db() -> AppDatabase {
+        let conn = Connection::open_in_memory().unwrap();
+
+        let dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("migrations");
+        let mut entries: Vec<_> = std::fs::read_dir(&dir)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.path().extension().is_some_and(|ext| ext == "sql"))
+            .map(|e| {
+                let version: u32 = e
+                    .file_name()
+                    .to_string_lossy()
+                    .strip_prefix('v')
+                    .and_then(|s| s.split('_').next())
+                    .and_then(|s| s.parse().ok())
+                    .expect("迁移文件名应以 v<N>_ 开头");
+                (version, e.path())
+            })
+            .collect();
+        entries.sort_by_key(|(version, _)| *version);
+
+        for (version, path) in entries {
+            let sql = std::fs::read_to_string(&path).unwrap();
+            conn.execute_batch(&sql)
+                .unwrap_or_else(|e| panic!("迁移 v{version} 执行失败: {e}"));
+        }
+
+        AppDatabase {
+            conn: Mutex::new(conn),
+        }
+    }
+
+    fn test_db_with_project() -> AppDatabase {
+        let db = test_db();
+        let now = chrono::Utc::now().timestamp_millis();
+        db.conn
+            .lock()
+            .unwrap()
+            .execute(
+                "INSERT INTO projects (id, name, path, created_at, updated_at) VALUES ('p1', 'P', '/tmp/p1', ?1, ?1)",
+                [now],
+            )
+            .unwrap();
+        db
+    }
+
+    fn ssh_input(password: &str) -> CreateSessionInput {
+        CreateSessionInput {
+            project_id: "p1".to_string(),
+            tool_type: "ssh".to_string(),
+            title: Some("SSH".to_string()),
+            profile_id: None,
+            color: None,
+            thinking_intensity: None,
+            template_id: None,
+            cli_args: Some(format!(
+                r#"{{"hostname":"10.0.0.1","port":22,"username":"root","password":"{password}","identityFile":""}}"#
+            )),
+            env_vars: None,
+            cli_session_id: None,
+            category_id: None,
+            llm_provider_id: None,
+            model_name: None,
+            claude_models: None,
+        }
+    }
+
+    fn password_of(args: &Option<String>) -> String {
+        let raw = args.as_deref().expect("cli_args 应存在");
+        let v: serde_json::Value = serde_json::from_str(raw).unwrap();
+        v["password"].as_str().unwrap().to_string()
+    }
+
+    /// 绕过 `row_to_session` 直取原始列，验证落库形态
+    fn raw_password(db: &AppDatabase, id: &str) -> String {
+        let conn = db.conn.lock().unwrap();
+        let raw: String = conn
+            .query_row("SELECT cli_args FROM sessions WHERE id = ?1", [id], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        password_of(&Some(raw))
+    }
+
+    #[test]
+    fn create_session_encodes_password_in_db_and_returns_plaintext() {
+        let db = test_db_with_project();
+        let created = create_session(&db, ssh_input("P@ssw0rd")).unwrap();
+
+        let stored = raw_password(&db, &created.id);
+        assert!(
+            stored.starts_with("b64:"),
+            "SQLite 里不应出现明文密码，实际存了: {stored}"
+        );
+        assert_eq!(password_of(&created.cli_args), "P@ssw0rd");
+    }
+
+    #[test]
+    fn list_sessions_returns_plaintext_password() {
+        let db = test_db_with_project();
+        create_session(&db, ssh_input("P@ssw0rd")).unwrap();
+
+        let listed = list_sessions(&db, Some("p1")).unwrap();
+        assert_eq!(listed.len(), 1);
+        assert_eq!(password_of(&listed[0].cli_args), "P@ssw0rd");
+    }
+
+    #[test]
+    fn update_session_reencodes_and_reads_back_plaintext() {
+        let db = test_db_with_project();
+        let created = create_session(&db, ssh_input("old")).unwrap();
+
+        let input = ssh_input("new");
+        let updated = update_session(
+            &db,
+            &created.id,
+            UpdateSessionInput {
+                title: None,
+                profile_id: None,
+                color: None,
+                thinking_intensity: None,
+                template_id: None,
+                cli_args: input.cli_args,
+                env_vars: None,
+                is_running: None,
+                closed_at: None,
+                project_id: None,
+                cli_session_id: None,
+                category_id: None,
+                llm_provider_id: None,
+                model_name: None,
+                claude_models: None,
+            },
+        )
+        .unwrap();
+
+        assert!(raw_password(&db, &created.id).starts_with("b64:"));
+        assert_eq!(password_of(&updated.cli_args), "new");
+    }
+
+    #[test]
+    fn non_ssh_session_stores_cli_args_verbatim() {
+        let db = test_db_with_project();
+        let mut input = ssh_input("pw");
+        input.tool_type = "claude".to_string();
+
+        let created = create_session(&db, input).unwrap();
+        let conn = db.conn.lock().unwrap();
+        let raw: Option<String> = conn
+            .query_row("SELECT cli_args FROM sessions WHERE id = ?1", [&created.id], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        assert!(raw.unwrap().contains(r#""password":"pw""#));
+    }
 }
