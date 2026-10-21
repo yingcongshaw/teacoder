@@ -27,6 +27,18 @@ impl AppDatabase {
             conn: Mutex::new(conn),
         };
         db.run_migrations()?;
+        // best-effort 数据修复：旧版 closeTab 的探测逻辑曾把同一项目下多个会话的
+        // cli_session_id 覆写成同一个值。修复幂等，失败不阻塞启动。
+        match crate::session::dedupe::dedupe_cli_session_ids(&db) {
+            Ok(outcome) if !outcome.is_noop() => {
+                eprintln!(
+                    "已修复重复 cli_session_id：{} 组，正确 {} 个，改回 {} 个，清空 {} 个",
+                    outcome.groups, outcome.unchanged, outcome.reassigned, outcome.cleared
+                );
+            }
+            Ok(_) => {}
+            Err(e) => eprintln!("拆分重复 cli_session_id 失败: {e}"),
+        }
         Ok(db)
     }
 

@@ -2,6 +2,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::storage::AppDatabase;
 
+pub(crate) mod claude_path;
+pub mod dedupe;
 mod ssh_secret;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -350,17 +352,16 @@ pub fn reset_all_running(db: &AppDatabase) -> Result<(), String> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::{
-        create_session, list_sessions, update_session, CreateSessionInput, UpdateSessionInput,
-    };
-    use crate::storage::AppDatabase;
-    use rusqlite::Connection;
+pub(crate) mod test_support {
     use std::sync::Mutex;
+
+    use rusqlite::Connection;
+
+    use crate::storage::AppDatabase;
 
     /// 按版本号升序跑真实迁移脚本，而不是抄一份 DDL 进测试 ——
     /// 后者会随 schema 演进而静默失真，让 `SESSION_COLUMNS` 的列下标错位测不出来。
-    fn test_db() -> AppDatabase {
+    pub fn test_db() -> AppDatabase {
         let conn = Connection::open_in_memory().unwrap();
 
         let dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("migrations");
@@ -391,6 +392,15 @@ mod tests {
             conn: Mutex::new(conn),
         }
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::test_support::test_db;
+    use super::{
+        create_session, list_sessions, update_session, CreateSessionInput, UpdateSessionInput,
+    };
+    use crate::storage::AppDatabase;
 
     fn test_db_with_project() -> AppDatabase {
         let db = test_db();

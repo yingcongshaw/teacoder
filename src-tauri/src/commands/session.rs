@@ -1,25 +1,6 @@
-use std::path::PathBuf;
-
 use crate::session;
+use crate::session::claude_path::resolve_session_jsonl;
 use crate::storage::AppDatabase;
-
-/// Claude Code 将工作目录路径编码为目录名的规则：
-/// 把路径分隔符 `/`（或 Windows 上的 `\`）替换为 `-`。例如 `/work/proj` → `-work-proj`。
-fn encode_project_dir_name(work_dir: &str) -> String {
-    let normalized = work_dir.replace('\\', "/");
-    normalized.replace('/', "-")
-}
-
-fn resolve_claude_projects_dir(
-    claude_config_dir: Option<&str>,
-    work_dir: &str,
-) -> Option<PathBuf> {
-    let base = match claude_config_dir {
-        Some(dir) if !dir.is_empty() => PathBuf::from(dir),
-        _ => dirs::home_dir()?.join(".claude"),
-    };
-    Some(base.join("projects").join(encode_project_dir_name(work_dir)))
-}
 
 /// 检查 Claude Code 在 `<claude_config_dir>/projects/<work_dir>/<cli_session_id>.jsonl`
 /// 是否存在。用于"重开 Claude Code tab 之前"判断该会话是否已被用户清理。
@@ -32,10 +13,8 @@ pub fn claude_jsonl_exists(
     claude_config_dir: Option<String>,
     cli_session_id: String,
 ) -> bool {
-    let Some(dir) = resolve_claude_projects_dir(claude_config_dir.as_deref(), &work_dir) else {
-        return false;
-    };
-    dir.join(format!("{cli_session_id}.jsonl")).exists()
+    resolve_session_jsonl(claude_config_dir.as_deref(), &work_dir, &cli_session_id)
+        .is_some_and(|path| path.exists())
 }
 
 #[tauri::command]
@@ -69,27 +48,4 @@ pub fn session_delete(
     id: String,
 ) -> Result<(), String> {
     session::delete_session(&db, &id)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::encode_project_dir_name;
-
-    #[test]
-    fn encode_unix_path() {
-        assert_eq!(encode_project_dir_name("/work/CodingTea/proj"), "-work-CodingTea-proj");
-    }
-
-    #[test]
-    fn encode_windows_path() {
-        assert_eq!(
-            encode_project_dir_name("C:\\Users\\me\\proj"),
-            "C:-Users-me-proj"
-        );
-    }
-
-    #[test]
-    fn encode_root() {
-        assert_eq!(encode_project_dir_name("/"), "-");
-    }
 }
