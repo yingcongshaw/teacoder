@@ -165,8 +165,11 @@ export default function TabBar({ paneId }: TabBarProps = {}) {
       label: "复制会话",
       icon: <CopyOutlined />,
       onClick: () => {
-        duplicateSession(tab.id);
-        message.success("已复制会话");
+        duplicateSession(tab.id)
+          .then((created) => {
+            if (created) message.success(`已复制会话「${created.title}」`);
+          })
+          .catch(() => message.error("复制会话失败"));
       },
     },
     {

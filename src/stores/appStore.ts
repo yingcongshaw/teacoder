@@ -12,7 +12,7 @@ import type {
   CreateLlmProviderInput,
   UpdateLlmProviderInput,
 } from "../types";
-import { DEFAULT_TERMINAL_SETTINGS, BUILTIN_SESSION_TEMPLATES } from "../types";
+import { DEFAULT_TERMINAL_SETTINGS, BUILTIN_SESSION_TEMPLATES, TOOL_DISPLAY_NAMES } from "../types";
 import {
   stopSession,
   startSession,
@@ -329,7 +329,7 @@ interface AppState {
   restoreTabs: () => void;
   closeAllTabs: () => void;
   setActiveTab: (id: string | null) => void;
-  duplicateSession: (id: string) => void;
+  duplicateSession: (id: string) => Promise<Session | null>;
   closeOtherTabs: (id: string) => void;
   closeTabsToRight: (id: string) => void;
 
@@ -1209,46 +1209,56 @@ export const useAppStore = create<AppState>((set, get) => ({
     });
   },
 
-  duplicateSession: (id) => {
+  duplicateSession: async (id) => {
     const state = get();
     const src = state.sessions.find((s) => s.id === id);
-    if (!src) return;
-    // 创建新 session（同 projectId，标题加"副本"）
-    sessionCreate({
+    if (!src) return null;
+    // 无标题时回落到工具显示名：副本必须与原会话在侧边树上可区分，
+    // 否则两个同名行用户无从分辨哪个是刚复制出来的。
+    const baseTitle = src.title || TOOL_DISPLAY_NAMES[src.toolType];
+    // 刻意不复制 cliSessionId：共享同一个 Claude 会话 ID 会让两个标签页
+    // --resume 到同一段对话，互相覆盖。副本应是一段全新对话。
+    const newSession = await sessionCreate({
       projectId: src.projectId,
       toolType: src.toolType,
-      title: src.title ? `${src.title} 副本` : undefined,
+      title: `${baseTitle}-Copy`,
       profileId: src.profileId,
       color: src.color,
       thinkingIntensity: src.thinkingIntensity,
       templateId: src.templateId,
       cliArgs: src.cliArgs,
       envVars: src.envVars,
-    }).then((newSession) => {
-      set((state) => {
-        const sessions = [...state.sessions, newSession];
-        // 把新 tab 加到当前活动 pane；若 activePaneId 指向不存在的 pane，按该 id 新建
-        const candidateId = state.activePaneId ?? state.panes[state.panes.length - 1]?.id;
-        let nextPanes: Pane[];
-        let nextActivePaneId: string | null;
-        if (state.panes.some((p) => p.id === candidateId)) {
-          nextPanes = state.panes.map((p) =>
-            p.id === candidateId
-              ? { ...p, openTabIds: [...p.openTabIds, newSession.id], activeTabId: newSession.id }
-              : p,
-          );
-          nextActivePaneId = candidateId;
-        } else {
-          const newId = candidateId ?? crypto.randomUUID();
-          const newPane: Pane = { id: newId, openTabIds: [newSession.id], activeTabId: newSession.id };
-          nextPanes = [...state.panes, newPane];
-          nextActivePaneId = newId;
-        }
-        const openTabIds = flattenPaneOpenIds(nextPanes);
-        saveOpenTabIds(openTabIds);
-        return { sessions, panes: nextPanes, activePaneId: nextActivePaneId, openTabIds, activeTabId: newSession.id };
-      });
-    }).catch(() => {});
+      categoryId: src.categoryId,
+      llmProviderId: src.llmProviderId,
+      modelName: src.modelName,
+      claudeModels: serializeClaudeModels(src.claudeModels),
+    });
+
+    set((state) => {
+      const sessions = [...state.sessions, newSession];
+      // 把新 tab 加到当前活动 pane；若 activePaneId 指向不存在的 pane，按该 id 新建
+      const candidateId = state.activePaneId ?? state.panes[state.panes.length - 1]?.id;
+      let nextPanes: Pane[];
+      let nextActivePaneId: string | null;
+      if (state.panes.some((p) => p.id === candidateId)) {
+        nextPanes = state.panes.map((p) =>
+          p.id === candidateId
+            ? { ...p, openTabIds: [...p.openTabIds, newSession.id], activeTabId: newSession.id }
+            : p,
+        );
+        nextActivePaneId = candidateId;
+      } else {
+        const newId = candidateId ?? crypto.randomUUID();
+        const newPane: Pane = { id: newId, openTabIds: [newSession.id], activeTabId: newSession.id };
+        nextPanes = [...state.panes, newPane];
+        nextActivePaneId = newId;
+      }
+      const openTabIds = flattenPaneOpenIds(nextPanes);
+      saveOpenTabIds(openTabIds);
+      return { sessions, panes: nextPanes, activePaneId: nextActivePaneId, openTabIds, activeTabId: newSession.id };
+    });
+
+    return newSession;
   },
 
   closeOtherTabs: (id) => {

@@ -94,6 +94,7 @@ export default function NewSessionModal({ open: isOpen, projectId, categoryId, o
   const [sshPort, setSshPort] = useState(22);
   const [sshUsername, setSshUsername] = useState("root");
   const [sshPassword, setSshPassword] = useState("");
+  const [sshPasswordVisible, setSshPasswordVisible] = useState(false);
   const [sshIdentityFile, setSshIdentityFile] = useState("");
   const [testingConnection, setTestingConnection] = useState(false);
 
@@ -171,6 +172,7 @@ export default function NewSessionModal({ open: isOpen, projectId, categoryId, o
       setSshPort(22);
       setSshUsername("root");
       setSshPassword("");
+      setSshPasswordVisible(false);
       setSshIdentityFile("");
       setSessionCategoryId(categoryId || undefined);
       setLlmProviderId(undefined);
@@ -716,12 +718,15 @@ export default function NewSessionModal({ open: isOpen, projectId, categoryId, o
                   onChange={(e) => setSshUsername(e.target.value)}
                   style={{ backgroundColor: "var(--ant-color-bg-elevated)", borderColor: "var(--ant-color-border)", color: "var(--ant-color-text)" }}
                 />
-                <Input
+                <Input.Password
                   size="small"
                   placeholder="密码（PublicKey 优先）"
-                  type="password"
                   value={sshPassword}
                   onChange={(e) => setSshPassword(e.target.value)}
+                  visibilityToggle={{
+                    visible: sshPasswordVisible,
+                    onVisibleChange: setSshPasswordVisible,
+                  }}
                   style={{ backgroundColor: "var(--ant-color-bg-elevated)", borderColor: "var(--ant-color-border)", color: "var(--ant-color-text)" }}
                 />
                 <Input

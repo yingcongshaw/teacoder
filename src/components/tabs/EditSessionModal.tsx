@@ -100,6 +100,7 @@ export default function EditSessionModal({ open: isOpen, sessionId, onClose }: E
   const [sshPort, setSshPort] = useState(22);
   const [sshUsername, setSshUsername] = useState("root");
   const [sshPassword, setSshPassword] = useState("");
+  const [sshPasswordVisible, setSshPasswordVisible] = useState(false);
   const [sshIdentityFile, setSshIdentityFile] = useState("");
   const [testingConnection, setTestingConnection] = useState(false);
 
@@ -176,6 +177,7 @@ export default function EditSessionModal({ open: isOpen, sessionId, onClose }: E
       setSshPort(22);
       setSshUsername("root");
       setSshPassword("");
+      setSshPasswordVisible(false);
       setSshIdentityFile("");
 
       if (session.cliArgs) {
@@ -325,6 +327,31 @@ export default function EditSessionModal({ open: isOpen, sessionId, onClose }: E
       identityFile: sshIdentityFile,
     });
 
+  // SSH 连接参数在 PTY 启动那一刻就被烧进 ssh 命令行（manager.rs build_ssh_args），
+  // 保存只改 DB 不会重连。判断"参数是否真的变了"必须逐字段比：
+  // buildSshArgs 按声明序输出，而从 DB 读回的 cli_args 经 serde_json 归一后是字母序，
+  // 字符串直接比会永远不相等。
+  const sshParamsDiffer = (nextJson: string): boolean => {
+    const readParams = (json: string | undefined) => {
+      if (!json) return null;
+      try {
+        const parsed = JSON.parse(json);
+        return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+          ? (parsed as Record<string, unknown>)
+          : null;
+      } catch {
+        return null;
+      }
+    };
+    const prev = readParams(session?.cliArgs);
+    const next = readParams(nextJson);
+    // 读不出旧值时保守判定为"变了"：宁可多提示一次，也不要让用户以为密码已生效
+    if (!prev || !next) return true;
+    return ["hostname", "port", "username", "password", "identityFile"].some(
+      (key) => prev[key] !== next[key],
+    );
+  };
+
   const handleTestSsh = async () => {
     if (!sshHostname.trim()) {
       message.warning("请填写主机名");
@@ -366,6 +393,13 @@ export default function EditSessionModal({ open: isOpen, sessionId, onClose }: E
         ? buildSshArgs()
         : buildCliArgs(selectedTool, cliParams) || undefined;
 
+    // 只有"参数变了 + 连接还活着"才需要提示：已关闭的 tab 下次打开自然用新参数
+    const needsReconnect =
+      selectedTool === "ssh" &&
+      !!session?.isRunning &&
+      finalCliArgs !== undefined &&
+      sshParamsDiffer(finalCliArgs);
+
     try {
       await updateSession(sessionId, {
         title: title.trim() || undefined,
@@ -382,7 +416,11 @@ export default function EditSessionModal({ open: isOpen, sessionId, onClose }: E
         // store 边界处统一序列化为字符串；Modal 始终以对象形态操作
         claudeModels: selectedTool === "claude" ? claudeModels : undefined,
       });
-      message.success("已保存会话信息");
+      if (needsReconnect) {
+        message.warning("连接参数已保存，当前连接仍使用旧参数，请关闭并重新打开该标签页生效", 5);
+      } else {
+        message.success("已保存会话信息");
+      }
       onClose();
     } catch (err) {
       message.error(`保存会话失败: ${err}`);
@@ -733,12 +771,15 @@ export default function EditSessionModal({ open: isOpen, sessionId, onClose }: E
                   onChange={(e) => setSshUsername(e.target.value)}
                   style={{ backgroundColor: "var(--ant-color-bg-elevated)", borderColor: "var(--ant-color-border)", color: "var(--ant-color-text)" }}
                 />
-                <Input
+                <Input.Password
                   size="small"
                   placeholder="密码（PublicKey 优先）"
-                  type="password"
                   value={sshPassword}
                   onChange={(e) => setSshPassword(e.target.value)}
+                  visibilityToggle={{
+                    visible: sshPasswordVisible,
+                    onVisibleChange: setSshPasswordVisible,
+                  }}
                   style={{ backgroundColor: "var(--ant-color-bg-elevated)", borderColor: "var(--ant-color-border)", color: "var(--ant-color-text)" }}
                 />
                 <Input

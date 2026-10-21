@@ -12,6 +12,7 @@ import {
   CloudOutlined,
   FolderOpenOutlined,
   RightSquareOutlined,
+  CopyOutlined,
 } from "@ant-design/icons";
 import { useAppStore } from "../../stores/appStore";
 import { TOOL_DISPLAY_NAMES } from "../../types";
@@ -50,6 +51,7 @@ export default function ProjectNode({ project, sessions, categories }: ProjectNo
   const setActiveTab = useAppStore((s) => s.setActiveTab);
   const openTab = useAppStore((s) => s.openTab);
   const deleteSession = useAppStore((s) => s.deleteSession);
+  const duplicateSession = useAppStore((s) => s.duplicateSession);
   const updateSession = useAppStore((s) => s.updateSession);
   const deleteProject = useAppStore((s) => s.deleteProject);
   const updateProject = useAppStore((s) => s.updateProject);
@@ -297,6 +299,18 @@ export default function ProjectNode({ project, sessions, categories }: ProjectNo
       label: "重命名会话",
       icon: <EditOutlined />,
       onClick: () => handleRenameSession(session),
+    },
+    {
+      key: "duplicate",
+      label: "复制会话",
+      icon: <CopyOutlined />,
+      onClick: () => {
+        duplicateSession(session.id)
+          .then((created) => {
+            if (created) message.success(`已复制会话「${created.title}」`);
+          })
+          .catch(() => message.error("复制会话失败"));
+      },
     },
     { type: "divider" as const },
     {
