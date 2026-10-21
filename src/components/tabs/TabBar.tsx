@@ -415,7 +415,7 @@ export default function TabBar({ paneId }: TabBarProps = {}) {
                     border: "none",
                     color: "var(--ant-color-text-quaternary)",
                     cursor: "pointer",
-                    fontSize: 14,
+                    fontSize: 16,
                     lineHeight: 1,
                     padding: "0 2px",
                     borderRadius: 2,
