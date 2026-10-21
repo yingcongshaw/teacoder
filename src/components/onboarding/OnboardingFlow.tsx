@@ -233,28 +233,32 @@ export function OnboardingGuide({
 
       {/* 步骤内容 */}
       <div className="flex flex-col items-center text-center px-2">
-        {/* 大图标 */}
-        <div
-          className="flex items-center justify-center mb-4 transition-colors"
-          style={{
-            width: 72,
-            height: 72,
-            borderRadius: 20,
-            background: step.accentSoft,
-            color: step.accent,
-            fontSize: 32,
-            boxShadow: `0 6px 16px -4px ${step.accentSoft}`,
-          }}
-        >
-          {step.icon}
-        </div>
+        {/* 图标与标题左右排列：整组仍居中，组内文字左对齐。
+            改为左右结构是为了压掉上下堆叠占掉的约 70px 高度 */}
+        <div className="flex items-center gap-4 mb-5">
+          <div
+            className="flex items-center justify-center flex-shrink-0 transition-colors"
+            style={{
+              width: 72,
+              height: 72,
+              borderRadius: 20,
+              background: step.accentSoft,
+              color: step.accent,
+              fontSize: 32,
+              boxShadow: `0 6px 16px -4px ${step.accentSoft}`,
+            }}
+          >
+            {step.icon}
+          </div>
 
-        {/* 标题 + 副标题 */}
-        <div className="text-lg font-semibold text-[var(--ant-color-text)] mb-1">
-          {step.title}
-        </div>
-        <div className="text-sm text-[var(--ant-color-text-tertiary)] mb-5">
-          {step.subtitle}
+          <div className="min-w-0 text-left">
+            <div className="text-lg font-semibold text-[var(--ant-color-text)]">
+              {step.title}
+            </div>
+            <div className="text-sm text-[var(--ant-color-text-tertiary)]">
+              {step.subtitle}
+            </div>
+          </div>
         </div>
 
         {/* 描述 */}
