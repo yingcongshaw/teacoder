@@ -47,7 +47,7 @@ impl AppDatabase {
             return Ok(());
         }
 
-        let mut entries: Vec<_> = std::fs::read_dir(&migrations_dir)
+        let mut entries: Vec<(i32, PathBuf)> = std::fs::read_dir(&migrations_dir)
             .map_err(|e| format!("Failed to read migrations dir: {}", e))?
             .filter_map(|e| e.ok())
             .filter(|e| {
@@ -55,25 +55,29 @@ impl AppDatabase {
                     .extension()
                     .is_some_and(|ext| ext == "sql")
             })
-            .collect();
+            .map(|e| {
+                let path = e.path();
+                let version = Self::migration_version(&e.file_name().to_string_lossy())
+                    .ok_or_else(|| format!("迁移文件名不以 v<N>_ 开头: {path:?}"));
+                version.map(|v| (v, path))
+            })
+            .collect::<Result<_, _>>()?;
 
-        entries.sort_by_key(|e| e.file_name());
+        // 必须按版本号排，不是按文件名排：'v10_' < 'v1_'（'0' < '_'），
+        // 字典序会让 v10 先于 v8 执行，而 v10 ALTER 的 llm_providers 彼时尚不存在。
+        entries.sort_by_key(|(version, _)| *version);
 
-        for entry in entries {
-            let filename = entry.file_name();
-            let name = filename.to_string_lossy();
-
-            let version: i32 = name
-                .strip_prefix('v')
-                .and_then(|s| s.split('_').next())
-                .and_then(|s| s.parse().ok())
-                .unwrap_or(0);
+        for (version, path) in entries {
+            let name = path
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_default();
 
             if version <= current_version {
                 continue;
             }
 
-            let sql = std::fs::read_to_string(entry.path())
+            let sql = std::fs::read_to_string(&path)
                 .map_err(|e| format!("Failed to read migration {}: {}", name, e))?;
 
             conn.execute_batch(&sql)
@@ -81,6 +85,16 @@ impl AppDatabase {
         }
 
         Ok(())
+    }
+
+    /// 从 `v13_claude_models.sql` 解析出 13。
+    /// 解析不出来返回 None —— 文件名写错时要报错，不能静默当成 v0 跳过。
+    fn migration_version(name: &str) -> Option<i32> {
+        name.strip_prefix('v')?
+            .split('_')
+            .next()?
+            .parse()
+            .ok()
     }
 
     fn migrations_dir() -> Result<PathBuf, String> {
