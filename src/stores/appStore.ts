@@ -36,6 +36,8 @@ import {
   deleteLlmProvider as deleteLlmProviderIpc,
 } from "../utils/ipc";
 import { parseClaudeModels, serializeClaudeModels } from "../utils/claudeModels";
+import type { ClaudeModels } from "../utils/claudeModels";
+import { stripResumeArgs } from "../utils/cliArgs";
 
 const OPEN_TABS_KEY = "teacoder_open_tabs";
 const TERMINAL_SETTINGS_KEY = "teacoder_terminal_settings";
@@ -235,6 +237,53 @@ function persistGeneralSetting(key: string, value: unknown) {
     localStorage.setItem(GENERAL_SETTINGS_KEY, JSON.stringify(saved));
   } catch {
     // non-critical
+  }
+}
+
+interface LaunchNewSessionParams {
+  session: Session;
+  toolType: string;
+  profileId?: string;
+  workDir: string;
+  envVars: Record<string, string>;
+  cliArgs?: string;
+  cliSessionId?: string;
+  llmProviderId?: string;
+  modelName?: string;
+  claudeModels?: ClaudeModels;
+  title?: string;
+}
+
+/**
+ * 启动"刚创建的全新会话"：起 PTY，并把 TeaCoder 标题同步进 Claude Code。
+ *
+ * 新建会话与复制会话共用这条路径 —— 副本必须拿到独立 UUID 由 `--session-id`
+ * 注入，若只建库不起 PTY，副本停留在"已打开但无终端"状态，下次 openTab 会拿
+ * 一个磁盘上尚不存在的 UUID 去 `--resume`，必然失败。
+ */
+async function launchNewSession(params: LaunchNewSessionParams): Promise<void> {
+  await startSession({
+    toolType: params.toolType,
+    profileId: params.profileId || "",
+    workDir: params.workDir,
+    tabId: params.session.id,
+    envVars: params.envVars,
+    cliArgs: params.cliArgs,
+    cliSessionId: params.cliSessionId,
+    llmProviderId: params.llmProviderId,
+    modelName: params.modelName,
+    claudeModels: serializeClaudeModels(params.claudeModels),
+  });
+
+  // Claude Code：等 PTY 稳定后用 /rename 把 TeaCoder 标题同步过去。
+  // 固定 3 秒延迟：用户实测启动 + 写首个 JSONL 平均 < 2s；/rename 是交互式命令，
+  // 必须在 Claude Code 提示符出现后才能正确消费，太早会被吞进 stdin 缓冲。
+  if (params.toolType === "claude" && params.title) {
+    const tabId = params.session.id;
+    const safeTitle = params.title.replace(/[\r\n]+/g, " ").trim();
+    setTimeout(() => {
+      if (safeTitle) writeToPty(tabId, `/rename ${safeTitle}\r`).catch(() => {});
+    }, 3000);
   }
 }
 
@@ -558,29 +607,19 @@ export const useAppStore = create<AppState>((set, get) => ({
       cliSessionId,
     });
     const project = get().projects.find((p) => p.id === input.projectId);
-    const envVars = parseEnvVars(input.envVars || "");
-    await startSession({
+    await launchNewSession({
+      session,
       toolType: input.toolType,
-      profileId: input.profileId || "",
+      profileId: input.profileId,
       workDir: project?.path || "~",
-      tabId: session.id,
-      envVars,
+      envVars: parseEnvVars(input.envVars || ""),
       cliArgs: input.cliArgs,
       cliSessionId,
       llmProviderId: input.llmProviderId,
       modelName: input.modelName,
-      claudeModels: serializeClaudeModels(input.claudeModels),
+      claudeModels: input.claudeModels,
+      title,
     });
-    // Claude Code：等 PTY 稳定后用 /rename 把 TeaCoder 标题同步过去。
-    // 固定 3 秒延迟：用户实测启动 + 写首个 JSONL 平均 < 2s；/rename 是交互式命令，
-    // 必须在 Claude Code 提示符出现后才能正确消费，太早会被吞进 stdin 缓冲。
-    if (input.toolType === "claude" && title) {
-      const tabId = session.id;
-      const safeTitle = title.replace(/[\r\n]+/g, " ").trim();
-      setTimeout(() => {
-        if (safeTitle) writeToPty(tabId, `/rename ${safeTitle}\r`).catch(() => {});
-      }, 3000);
-    }
     const updatedSession = {
       ...session,
       isRunning: true,
@@ -1216,26 +1255,53 @@ export const useAppStore = create<AppState>((set, get) => ({
     // 无标题时回落到工具显示名：副本必须与原会话在侧边树上可区分，
     // 否则两个同名行用户无从分辨哪个是刚复制出来的。
     const baseTitle = src.title || TOOL_DISPLAY_NAMES[src.toolType];
-    // 刻意不复制 cliSessionId：共享同一个 Claude 会话 ID 会让两个标签页
-    // --resume 到同一段对话，互相覆盖。副本应是一段全新对话。
+    const title = `${baseTitle}-Copy`;
+    // 副本是一段全新对话：预分配独立 UUID 并由 --session-id 注入，
+    // 同时剥离原会话的恢复参数 —— 带着 --resume 复制会直接恢复原对话，
+    // 而留着不带 id 的 --continue 则会恢复当前目录最近的对话，同样指向原会话。
+    const cliSessionId = src.toolType === "claude" ? crypto.randomUUID() : undefined;
+    const cliArgs = stripResumeArgs(src.cliArgs);
     const newSession = await sessionCreate({
       projectId: src.projectId,
       toolType: src.toolType,
-      title: `${baseTitle}-Copy`,
+      title,
       profileId: src.profileId,
       color: src.color,
       thinkingIntensity: src.thinkingIntensity,
       templateId: src.templateId,
-      cliArgs: src.cliArgs,
+      cliArgs,
       envVars: src.envVars,
+      cliSessionId,
       categoryId: src.categoryId,
       llmProviderId: src.llmProviderId,
       modelName: src.modelName,
       claudeModels: serializeClaudeModels(src.claudeModels),
     });
 
+    const project = state.projects.find((p) => p.id === src.projectId);
+    await launchNewSession({
+      session: newSession,
+      toolType: src.toolType,
+      profileId: src.profileId,
+      workDir: project?.path || "~",
+      envVars: parseEnvVars(src.envVars || ""),
+      cliArgs,
+      cliSessionId,
+      llmProviderId: src.llmProviderId,
+      modelName: src.modelName,
+      claudeModels: src.claudeModels,
+      title,
+    });
+
+    // 后端返回的 claudeModels 是 JSON 字符串，必须解析成对象再进 store，
+    // 否则后续 updateSession 的 tier 映射会把字符串当对象取字段而全部落空。
+    const normalizedSession: Session = {
+      ...newSession,
+      claudeModels: parseClaudeModels(src.claudeModels),
+    };
+
     set((state) => {
-      const sessions = [...state.sessions, newSession];
+      const sessions = [...state.sessions, normalizedSession];
       // 把新 tab 加到当前活动 pane；若 activePaneId 指向不存在的 pane，按该 id 新建
       const candidateId = state.activePaneId ?? state.panes[state.panes.length - 1]?.id;
       let nextPanes: Pane[];
@@ -1243,22 +1309,22 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (state.panes.some((p) => p.id === candidateId)) {
         nextPanes = state.panes.map((p) =>
           p.id === candidateId
-            ? { ...p, openTabIds: [...p.openTabIds, newSession.id], activeTabId: newSession.id }
+            ? { ...p, openTabIds: [...p.openTabIds, normalizedSession.id], activeTabId: normalizedSession.id }
             : p,
         );
         nextActivePaneId = candidateId;
       } else {
         const newId = candidateId ?? crypto.randomUUID();
-        const newPane: Pane = { id: newId, openTabIds: [newSession.id], activeTabId: newSession.id };
+        const newPane: Pane = { id: newId, openTabIds: [normalizedSession.id], activeTabId: normalizedSession.id };
         nextPanes = [...state.panes, newPane];
         nextActivePaneId = newId;
       }
       const openTabIds = flattenPaneOpenIds(nextPanes);
       saveOpenTabIds(openTabIds);
-      return { sessions, panes: nextPanes, activePaneId: nextActivePaneId, openTabIds, activeTabId: newSession.id };
+      return { sessions, panes: nextPanes, activePaneId: nextActivePaneId, openTabIds, activeTabId: normalizedSession.id };
     });
 
-    return newSession;
+    return normalizedSession;
   },
 
   closeOtherTabs: (id) => {
