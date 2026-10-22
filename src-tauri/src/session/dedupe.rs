@@ -298,7 +298,7 @@ fn find_candidate_match(
         .ok()?;
 
     for base in candidate_bases(conn, candidate.profile_id.as_deref(), home) {
-        let key = base.join(encode_project_dir_name(&work_dir));
+        let key = base.join("projects").join(encode_project_dir_name(&work_dir));
         let index = cache.entry(key).or_insert_with(|| scan_project_jsonl(&base, &work_dir));
         if let Some(found) = best_match(index, candidate.created_at) {
             return Some(found);

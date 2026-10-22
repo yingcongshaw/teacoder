@@ -1,9 +1,12 @@
 use crate::session;
-use crate::session::claude_path::resolve_session_jsonl;
+use crate::session::claude_path::{find_session_jsonl_anywhere, resolve_session_jsonl};
 use crate::storage::AppDatabase;
 
 /// 检查 Claude Code 在 `<claude_config_dir>/projects/<work_dir>/<cli_session_id>.jsonl`
 /// 是否存在。用于"重开 Claude Code tab 之前"判断该会话是否已被用户清理。
+///
+/// 编码后的目录名对不上时（例如会话是在另一个目录下创建的）退化为按
+/// `cli_session_id` 全局反查，避免误判为"会话已删除"而挡掉可恢复的会话。
 ///
 /// 返回 false 的情况：路径解析失败、目录不存在、文件不存在。
 /// 调用方按"false → 提示会话被删除"处理。
@@ -13,8 +16,9 @@ pub fn claude_jsonl_exists(
     claude_config_dir: Option<String>,
     cli_session_id: String,
 ) -> bool {
-    resolve_session_jsonl(claude_config_dir.as_deref(), &work_dir, &cli_session_id)
-        .is_some_and(|path| path.exists())
+    let found = resolve_session_jsonl(claude_config_dir.as_deref(), &work_dir, &cli_session_id)
+        .is_some_and(|path| path.exists());
+    found || find_session_jsonl_anywhere(claude_config_dir.as_deref(), &cli_session_id).is_some()
 }
 
 #[tauri::command]
