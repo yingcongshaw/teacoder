@@ -285,7 +285,7 @@ const load = useCallback(async (background = false) => {
       {open && panelHostRef.current && createPortal(
         <div
           ref={panelRef}
-          className="absolute top-12 right-2 z-20 flex flex-col"
+          className="absolute top-10 right-10 z-20 flex flex-col"
           style={{
             width: 400,
             // 相对终端容器高度(panelHostRef)解析,不是视口高度。
