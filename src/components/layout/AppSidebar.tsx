@@ -37,7 +37,7 @@ export default function AppSidebar() {
     sessions.filter((s) => s.projectId === projectId);
 
   return (
-    <div className="h-full bg-[var(--ant-color-bg-container)] flex flex-col min-w-0" style={{ maxWidth: 240 }}>
+    <div className="h-full w-full bg-[var(--ant-color-bg-container)] flex flex-col min-w-0">
       {/* Search bar */}
       <div className="px-3 pt-2 pb-2 flex-shrink-0">
         <Input

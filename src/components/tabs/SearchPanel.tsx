@@ -3,6 +3,7 @@ import { App, Modal, Input, List } from "antd";
 import type { InputRef } from "antd";
 import { useAppStore } from "../../stores/appStore";
 import { TOOL_DISPLAY_NAMES } from "../../types";
+import { reportOpenTabError } from "../../utils/openTabError";
 
 export default function SearchPanel() {
   const searchOpen = useAppStore((s) => s.searchOpen);
@@ -40,9 +41,7 @@ export default function SearchPanel() {
       setActiveTab(tabId);
     } else {
       openTab(tabId).catch((err) => {
-        if (err?.message === "SESSION_DELETED") {
-          message.error("会话被删除或不存在");
-        }
+        reportOpenTabError(message, err);
       });
     }
     setSearchOpen(false);

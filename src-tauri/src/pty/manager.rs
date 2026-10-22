@@ -3,6 +3,7 @@ use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
 use portable_pty::{
     native_pty_system, Child, CommandBuilder, MasterPty, PtySize,
@@ -53,6 +54,49 @@ fn parse_ssh_args(json_str: &str) -> Option<SshArgs> {
     })
 }
 
+/// 打印前脱敏 JSON 中常见敏感字段，避免密码等原文落进 stderr 与日志采集。
+///
+/// 两处调用点都在失败分支，此时已无业务需要原文，故解析失败或结构异常时只返回
+/// 元信息：回落到 `json.to_string()` 会把明文密码直接写进日志。
+fn redact_secrets(json: &str) -> String {
+    match serde_json::from_str::<serde_json::Value>(json) {
+        Ok(mut v) => {
+            redact_value(&mut v);
+            // 顶层是标量时无键名可依据，而 SSH 的 cli_args 约定必须是 JSON 对象，
+            // 这类内容本身就可能是密码原文，只能整体屏蔽。
+            if !v.is_object() && !v.is_array() {
+                return "<非对象/数组的 JSON，已屏蔽>".to_string();
+            }
+            v.to_string()
+        }
+        Err(e) => format!("<无法解析的 JSON，长度 {}，错误: {e}>", json.len()),
+    }
+}
+
+fn redact_value(v: &mut serde_json::Value) {
+    const KEYS: &[&str] = &[
+        "password", "passphrase", "token", "secret", "apiKey", "api_key", "privateKey",
+        "private_key", "identityFile", "identity_file",
+    ];
+    match v {
+        serde_json::Value::Object(map) => {
+            for (k, val) in map.iter_mut() {
+                if KEYS.iter().any(|name| name.eq_ignore_ascii_case(k)) {
+                    *val = serde_json::Value::String("***".into());
+                } else {
+                    redact_value(val);
+                }
+            }
+        }
+        serde_json::Value::Array(arr) => {
+            for item in arr.iter_mut() {
+                redact_value(item);
+            }
+        }
+        _ => {}
+    }
+}
+
 /// 创建 SSH_ASKPASS 辅助脚本与密码文件。
 /// 脚本读取密码文件并打印到 stdout;密码文件权限 0600,脚本权限 0755。
 /// 调用方负责在会话关闭时清理(`remove_ssh_askpass`)。
@@ -84,6 +128,62 @@ fn remove_ssh_askpass(paths: &SshAskpassPaths) {
     if let Some((script, pwd)) = paths {
         let _ = std::fs::remove_file(script);
         let _ = std::fs::remove_file(pwd);
+    }
+}
+
+/// 剥除 ANSI / VT 转义序列(CSI / SGR / 光标移动),Claude Code Ink TUI 反复重绘同一行
+/// 时会插入这类序列,直接做子串匹配会被它们打断命中。
+fn strip_ansi(s: &str) -> String {
+    let bytes = s.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        // ESC [ ... <final> 形式:final 字节范围 0x40..=0x7E(@ A..Z [ \ ] ^ _ ` { | } ~)
+        if bytes[i] == 0x1b && i + 1 < bytes.len() && bytes[i + 1] == b'[' {
+            let mut j = i + 2;
+            while j < bytes.len() && !(0x40..=0x7e).contains(&bytes[j]) {
+                j += 1;
+            }
+            if j < bytes.len() {
+                i = j + 1;
+            } else {
+                // 未终结的转义,保留原样以防截断 prompt
+                out.push(bytes[i]);
+                i += 1;
+            }
+            continue;
+        }
+        // 其他 ESC 序列:两字节 OSC / 其他,跳过整个控制符长度
+        if bytes[i] == 0x1b && i + 1 < bytes.len() {
+            // ESC 后跟一个 P(SOS)/X(SOH)/...(ST 结束) 等,简化处理:丢一字节后续
+            i += 2;
+            continue;
+        }
+        out.push(bytes[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+/// 检测 PTY 输出尾部是否含已知密码/PIN 提示串。
+/// 不引入 regex crate —— 子串扫描对以下 6 类已足够,TUI 重绘反复命中由调用方用 2s 防抖控制。
+/// 返回命中的提示类别名,方便日后做 UI 分类标签。
+fn detect_sensitive_prompt(tail: &str) -> Option<&'static str> {
+    let lower = tail.to_lowercase();
+    if lower.contains("[sudo] password for") {
+        Some("sudo")
+    } else if lower.contains("(current) unix password") {
+        Some("sudo_retry")
+    } else if lower.contains("old password:") {
+        Some("passwd")
+    } else if lower.contains("password:") {
+        Some("generic")
+    } else if lower.contains("passphrase") {
+        Some("passphrase")
+    } else if lower.contains("enter pin") || lower.contains("enter your pin") {
+        Some("pin")
+    } else {
+        None
     }
 }
 
@@ -237,7 +337,8 @@ impl PtyManager {
         if matches!(tool_type, ToolType::Ssh) {
             if let Some(ref json) = cli_args_raw {
                 if let Some(ssh_args) = parse_ssh_args(json) {
-                    eprintln!("[PTY] SSH 启动 cli_args 解析成功: {}", json);
+                    // JSON 中可能含明文 password —— 打日志时脱敏，避免密码落盘/上送到日志收集。
+                    eprintln!("[PTY] SSH 启动 cli_args 解析成功: {}", redact_secrets(json));
                     if ssh_args.hostname.is_empty() {
                         return Err("SSH 会话缺少主机名".to_string());
                     }
@@ -293,7 +394,7 @@ impl PtyManager {
                     cmd.arg("-o");
                     cmd.arg("UserKnownHostsFile=/dev/null");
                 } else {
-                    eprintln!("[PTY] SSH 参数 JSON 解析失败，原始 cli_args: {}", json);
+                    eprintln!("[PTY] SSH 参数 JSON 解析失败，原始 cli_args: {}", redact_secrets(json));
                     return Err("SSH 参数 JSON 解析失败".to_string());
                 }
             } else {
@@ -349,6 +450,11 @@ impl PtyManager {
             let mut pending: Vec<u8> = Vec::new();
             let tab_id = tab_id_for_emit;
 
+            // 敏感提示匹配:闭包局部状态(reader 线程 1:1 绑 tab,无需 PtyManager 上挂 HashMap)。
+            // sensitive_tail 保留最近 ~256 字节去 ANSI 后的输出,跨 PTY 读块拼接也能命中跨边界提示。
+            let mut sensitive_tail = String::new();
+            let mut last_sensitive_emit: Option<Instant> = None;
+
             loop {
                 let mut buf = [0u8; 4096];
                 match reader.read(&mut buf) {
@@ -366,6 +472,35 @@ impl PtyManager {
 
                         let data = String::from_utf8_lossy(&pending[..valid_end]).to_string();
                         pending = pending[valid_end..].to_vec();
+
+                        // 剥 ANSI → 拼到尾部 → 截断到 256 → 扫描
+                        let stripped = strip_ansi(&data);
+                        sensitive_tail.push_str(&stripped);
+                        if sensitive_tail.len() > 256 {
+                            // 按字节下标切片(都是 ASCII/UTF-8,字符边界安全)
+                            let start = sensitive_tail.len() - 256;
+                            // 避免在多字节字符中间切:找到 start 之后的下一个 UTF-8 起点
+                            let mut cut = start;
+                            while cut < sensitive_tail.len()
+                                && (sensitive_tail.as_bytes()[cut] & 0xc0) == 0x80
+                            {
+                                cut += 1;
+                            }
+                            sensitive_tail.replace_range(..cut, "");
+                        }
+                        if let Some(_kind) = detect_sensitive_prompt(&sensitive_tail) {
+                            let now = Instant::now();
+                            let should_emit = last_sensitive_emit
+                                .map(|t| now.duration_since(t) > Duration::from_secs(2))
+                                .unwrap_or(true);
+                            if should_emit {
+                                last_sensitive_emit = Some(now);
+                                let _ = app_arc.emit(
+                                    "pty:sensitive_prompt_detected",
+                                    serde_json::json!({ "tabId": tab_id }),
+                                );
+                            }
+                        }
 
                         let _ = app_arc.emit("pty:output", serde_json::json!({
                             "tabId": tab_id,
@@ -417,7 +552,8 @@ impl PtyManager {
     }
 
     pub fn write_to_pty(&self, tab_id: &str, data: &str) -> Result<(), String> {
-        eprintln!("[PTY-WRITE] tab={} data={:?} len={}", tab_id, data, data.len());
+        // 仅记录长度，不打 data —— 击键内容（含密码原文）会泄漏到 stderr。
+        eprintln!("[PTY-WRITE] tab={} len={}", tab_id, data.len());
         let sessions = self.sessions.lock().map_err(|e| e.to_string())?;
         let entry = sessions
             .get(tab_id)
@@ -538,6 +674,30 @@ mod tests {
     use super::*;
 
     #[test]
+    fn redact_masks_password_field() {
+        let out = redact_secrets(
+            r#"{"hostname":"10.0.0.1","username":"root","password":"hunter2"}"#,
+        );
+        assert!(!out.contains("hunter2"), "密码原文泄漏: {out}");
+        assert!(out.contains("10.0.0.1"), "非敏感字段应保留: {out}");
+    }
+
+    /// 回归：解析失败时曾回落成原文，把明文密码直接写进 stderr。
+    #[test]
+    fn redact_does_not_leak_on_malformed_json() {
+        let out = redact_secrets(r#"{"password":"hunter2""#);
+        assert!(!out.contains("hunter2"), "密码原文泄漏: {out}");
+        assert!(out.contains("无法解析"), "应说明无法解析: {out}");
+    }
+
+    /// 回归：顶层标量没有键名可依据，其内容本身就可能是密码。
+    #[test]
+    fn redact_masks_top_level_scalar() {
+        assert!(!redact_secrets("\"hunter2\"").contains("hunter2"));
+        assert!(!redact_secrets("42").contains("42"));
+    }
+
+    #[test]
     fn test_parse_ssh_args_valid() {
         let json = r#"{"hostname":"192.168.1.1","port":2222,"username":"admin","password":"secret","identityFile":""}"#;
         let parsed = parse_ssh_args(json).expect("should parse valid SSH JSON");
@@ -629,5 +789,99 @@ mod tests {
     #[test]
     fn test_valid_utf8_boundary_only_continuation() {
         assert_eq!(find_valid_utf8_boundary(b"\x80\x81\x82"), 0);
+    }
+
+    // ----- 敏感提示识别 -----
+
+    #[test]
+    fn detect_sudo() {
+        assert_eq!(
+            detect_sensitive_prompt("[sudo] password for alice:"),
+            Some("sudo")
+        );
+    }
+
+    #[test]
+    fn detect_sudo_case_insensitive() {
+        assert_eq!(
+            detect_sensitive_prompt("[SUDO] Password For bob:"),
+            Some("sudo")
+        );
+    }
+
+    #[test]
+    fn detect_sudo_retry() {
+        assert_eq!(
+            detect_sensitive_prompt("(current) UNIX password:"),
+            Some("sudo_retry")
+        );
+    }
+
+    #[test]
+    fn detect_passwd_old_pw() {
+        assert_eq!(detect_sensitive_prompt("Old password:"), Some("passwd"));
+    }
+
+    #[test]
+    fn detect_generic_password_colon() {
+        assert_eq!(
+            detect_sensitive_prompt("Enter password:"),
+            Some("generic")
+        );
+    }
+
+    #[test]
+    fn detect_passphrase() {
+        assert_eq!(
+            detect_sensitive_prompt("Enter passphrase for key '/home/x/.ssh/id_ed25519':"),
+            Some("passphrase")
+        );
+    }
+
+    #[test]
+    fn detect_pin() {
+        assert_eq!(detect_sensitive_prompt("Enter PIN: "), Some("pin"));
+    }
+
+    #[test]
+    fn detect_pin_lowercase() {
+        assert_eq!(
+            detect_sensitive_prompt("please enter your pin to continue"),
+            Some("pin")
+        );
+    }
+
+    #[test]
+    fn no_hit_help_text() {
+        // `--password=...` 这种 CLI 参数含 password 字串,但不构成 prompt
+        assert!(detect_sensitive_prompt("--password=foo --foo=bar ").is_none());
+    }
+
+    #[test]
+    fn no_hit_normal_terminal() {
+        assert!(detect_sensitive_prompt("$ ls -la\nexit\n").is_none());
+    }
+
+    // ----- ANSI 剥离 -----
+
+    #[test]
+    fn strip_ansi_removes_csi() {
+        let raw = "\x1b[1m[ sudo ]\x1b[0m password for user:";
+        assert_eq!(
+            strip_ansi(raw),
+            "[ sudo ] password for user:"
+        );
+    }
+
+    #[test]
+    fn strip_ansi_keeps_plain_text() {
+        assert_eq!(strip_ansi("hello world"), "hello world");
+    }
+
+    #[test]
+    fn strip_ansi_unterminated_escape_preserved() {
+        // 未终结的 ESC[（没遇到 final byte）保留尾部，避免截断真 prompt
+        let raw = "[sudo] pass\x1b[";
+        assert_eq!(strip_ansi(raw), "[sudo] pass\x1b[");
     }
 }

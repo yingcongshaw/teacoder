@@ -165,8 +165,11 @@ export default function TabBar({ paneId }: TabBarProps = {}) {
       label: "复制会话",
       icon: <CopyOutlined />,
       onClick: () => {
-        duplicateSession(tab.id);
-        message.success("已复制会话");
+        duplicateSession(tab.id)
+          .then((created) => {
+            if (created) message.success(`已复制会话「${created.title}」`);
+          })
+          .catch(() => message.error("复制会话失败"));
       },
     },
     {
@@ -260,9 +263,9 @@ export default function TabBar({ paneId }: TabBarProps = {}) {
   return (
     <>
       <div
-        className="flex items-center overflow-x-auto"
+        className="flex flex-wrap items-center"
         style={{
-          height: 32,
+          minHeight: 32,
           backgroundColor: "var(--ant-color-bg-container)",
           borderBottom: "1px solid var(--ant-color-border-secondary)",
         }}
@@ -343,9 +346,10 @@ export default function TabBar({ paneId }: TabBarProps = {}) {
                   locateSession(tab.id);
                 }}
                 onDoubleClick={() => handleRename(tab)}
-                className="flex items-center gap-1 px-3 h-full cursor-pointer whitespace-nowrap text-xs"
+                className="flex items-center gap-1 px-3 h-8 cursor-pointer whitespace-nowrap text-xs"
                 style={{
-                  color: isActive ? "var(--ant-color-text)" : "var(--ant-color-text-secondary)",
+                  boxSizing: "border-box",
+                  color: isActive ? "var(--ant-color-text)" : "var(--ant-color-text-inactive)",
                   borderRight: "1px solid var(--ant-color-border-secondary)",
                   backgroundColor: isActive ? "var(--ant-color-bg-layout)" : undefined,
                   borderBottom: isActive ? "4px solid var(--ant-color-primary)" : "4px solid transparent",
@@ -375,7 +379,9 @@ export default function TabBar({ paneId }: TabBarProps = {}) {
                     onClick={(e) => e.stopPropagation()}
                   />
                 ) : (
-                  <span className="truncate max-w-[120px]">{tab.title || TOOL_DISPLAY_NAMES[tab.toolType]}</span>
+                  <span className={`truncate max-w-[120px] ${isActive ? "font-semibold" : ""}`}>
+                    {tab.title || TOOL_DISPLAY_NAMES[tab.toolType]}
+                  </span>
                 )}
                 {(() => {
                   const provider = llmProviders.find((p) => p.id === tab.llmProviderId);
@@ -412,7 +418,7 @@ export default function TabBar({ paneId }: TabBarProps = {}) {
                     border: "none",
                     color: "var(--ant-color-text-quaternary)",
                     cursor: "pointer",
-                    fontSize: 14,
+                    fontSize: 16,
                     lineHeight: 1,
                     padding: "0 2px",
                     borderRadius: 2,

@@ -4,7 +4,7 @@ import zhCN from "antd/locale/zh_CN";
 import { listen } from "@tauri-apps/api/event";
 import { useAppStore } from "../../stores/appStore";
 import { detectCliTools, listProfiles, pollCosts, projectList, projectCreate, sessionCreate } from "../../utils/ipc";
-import { resolveTheme } from "../../themes";
+import { resolveTheme, buildTextTokens, buildBgTokens } from "../../themes";
 import { buildUiFontStack } from "../../utils/font";
 import useKeyboardShortcuts from "../../hooks/useKeyboardShortcuts";
 import AppHeader from "./AppHeader";
@@ -275,6 +275,8 @@ export default function AppLayout() {
         token: {
           fontFamily: themeFontFamily,
           ...compactToken,
+          ...buildTextTokens(themeConfig.token),
+          ...buildBgTokens(themeConfig.token),
         },
       }}
       getPopupContainer={() => document.getElementById("root") || document.body}

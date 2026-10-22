@@ -12,11 +12,13 @@ import {
   CloudOutlined,
   FolderOpenOutlined,
   RightSquareOutlined,
+  CopyOutlined,
 } from "@ant-design/icons";
 import { useAppStore } from "../../stores/appStore";
 import { TOOL_DISPLAY_NAMES } from "../../types";
 import type { Project, Session, ToolType, SessionCategory } from "../../types";
 import { openPathInFileManager, openTerminal } from "../../utils/ipc";
+import { reportOpenTabError } from "../../utils/openTabError";
 
 const TOOL_COLORS: Record<string, string> = {
   claude: "#722ed1",
@@ -50,6 +52,7 @@ export default function ProjectNode({ project, sessions, categories }: ProjectNo
   const setActiveTab = useAppStore((s) => s.setActiveTab);
   const openTab = useAppStore((s) => s.openTab);
   const deleteSession = useAppStore((s) => s.deleteSession);
+  const duplicateSession = useAppStore((s) => s.duplicateSession);
   const updateSession = useAppStore((s) => s.updateSession);
   const deleteProject = useAppStore((s) => s.deleteProject);
   const updateProject = useAppStore((s) => s.updateProject);
@@ -298,6 +301,18 @@ export default function ProjectNode({ project, sessions, categories }: ProjectNo
       icon: <EditOutlined />,
       onClick: () => handleRenameSession(session),
     },
+    {
+      key: "duplicate",
+      label: "复制会话",
+      icon: <CopyOutlined />,
+      onClick: () => {
+        duplicateSession(session.id)
+          .then((created) => {
+            if (created) message.success(`已复制会话「${created.title}」`);
+          })
+          .catch(() => message.error("复制会话失败"));
+      },
+    },
     { type: "divider" as const },
     {
       key: "openInFileManager",
@@ -380,9 +395,7 @@ export default function ProjectNode({ project, sessions, categories }: ProjectNo
               setActiveTab(session.id);
             } else {
               openTab(session.id).catch((err) => {
-                if (err?.message === "SESSION_DELETED") {
-                  message.error("会话被删除或不存在");
-                }
+                reportOpenTabError(message, err);
               });
             }
           }}
@@ -422,7 +435,9 @@ export default function ProjectNode({ project, sessions, categories }: ProjectNo
               autoFocus
             />
           ) : (
-            <span className="flex-1 min-w-0 truncate">
+            <span
+              className={`flex-1 min-w-0 truncate ${isActive || isOpen ? "font-semibold" : ""}`}
+            >
               {session.title || TOOL_DISPLAY_NAMES[session.toolType]}
             </span>
           )}

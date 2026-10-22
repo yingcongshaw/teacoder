@@ -65,6 +65,17 @@ export interface Project {
   updatedAt: number;
 }
 
+/** Claude Code transcript 主线中的一条记录（真人输入 / AI 回复 / 工具调用）。 */
+export interface TranscriptEntry {
+  uuid: string;
+  /** user | assistant | tool */
+  kind: string;
+  text: string;
+  timestamp: number;
+  /** 工具名，如 Bash / Read（仅 kind === "tool"） */
+  toolName?: string | null;
+}
+
 export interface SessionCategory {
   id: string;
   projectId: string;

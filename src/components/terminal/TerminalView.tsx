@@ -9,7 +9,8 @@ import { useAppStore } from "../../stores/appStore";
 import { TERMINAL_COLOR_THEMES, DEFAULT_ANSI_COLORS } from "../../types";
 import { terminalThemeForAppTheme } from "../../themes";
 import { clipboardImageToProtocol, fileToProtocol } from "../../utils/image";
-import UserMessageTracker from "./UserMessageTracker";
+import { useUserMessageCapture, type UserMessageCaptureHandle } from "./useUserMessageCapture";
+import TranscriptPanel from "../transcript/TranscriptPanel";
 import "@xterm/xterm/css/xterm.css";
 
 interface TerminalViewProps {
@@ -223,7 +224,10 @@ const TerminalView = forwardRef<TerminalViewHandle, TerminalViewProps>(function 
   const termRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
-  const trackerRef = useRef<{ captureKey: (key: string) => void; captureImeText: (text: string) => void; flushInput: () => void; handleEnter: () => void } | null>(null);
+  const trackerRef = useRef<UserMessageCaptureHandle | null>(null);
+  // 会话记录面板的 portal 宿主。面板必须挂在终端根容器下 —— 它上层的按钮包装 div
+  // 高度只有 32px(max-height 的百分比会解析成 32×78%≈25px,把标题栏整个裁掉)。
+  const panelHostRef = useRef<HTMLDivElement>(null);
   // 共享 PTY 语义: enableInput / enableResize 切到非 active 时不应重建 xterm 实例,
   // 否则 useEffect 重跑会触发新的 focus 协议 (ESC [O) + 老的 onData 还没 dispose,
   // 导致一次按键被多个 onData 监听器处理,PTY 收到 N 次写入。用 ref 让 onData /
@@ -235,6 +239,8 @@ const TerminalView = forwardRef<TerminalViewHandle, TerminalViewProps>(function 
   // 缓存最近一次的有效选中内容。xterm.js 在右键打开自定义菜单后偶发会清空内部选中状态，
   // 这里用 onSelectionChange 持续记录，可作为 getSelection() 失效时的回退值。
   const cachedSelectionRef = useRef<string>("");
+
+  useUserMessageCapture({ tabId, xtermRef, trackerRef });
 
   useImperativeHandle(ref, () => ({
     scrollToLine: (lineIndex: number) => {
@@ -301,6 +307,24 @@ const TerminalView = forwardRef<TerminalViewHandle, TerminalViewProps>(function 
 
   const terminalSettings = useAppStore((s) => s.terminalSettings);
   const appTheme = useAppStore((s) => s.theme);
+
+  // 会话记录面板所需的定位信息。拆成独立 selector 而非一次返回对象，
+  // 避免每次渲染构造新对象触发无谓重渲染。
+  const sessionToolType = useAppStore(
+    (s) => s.sessions.find((x) => x.id === tabId)?.toolType ?? "terminal",
+  );
+  const sessionCliSessionId = useAppStore(
+    (s) => s.sessions.find((x) => x.id === tabId)?.cliSessionId ?? null,
+  );
+  const sessionWorkDir = useAppStore((s) => {
+    const pid = s.sessions.find((x) => x.id === tabId)?.projectId;
+    return pid ? s.projects.find((p) => p.id === pid)?.path ?? null : null;
+  });
+  // CLAUDE_CONFIG_DIR 由 Profile 的 appDataRoot 决定，与 pty.rs 启动时的注入保持一致
+  const sessionClaudeConfigDir = useAppStore((s) => {
+    const profId = s.sessions.find((x) => x.id === tabId)?.profileId;
+    return profId ? s.profiles.find((p) => p.id === profId)?.appDataRoot ?? null : null;
+  });
   const [systemDark, setSystemDark] = useState(
     () => window.matchMedia("(prefers-color-scheme: dark)").matches
   );
@@ -634,21 +658,25 @@ const TerminalView = forwardRef<TerminalViewHandle, TerminalViewProps>(function 
   const themeColors = getThemeColors(effectiveThemeName);
 
   return (
-    <div className="w-full h-full relative" style={{ backgroundColor: themeColors.background }}>
+    <div
+      ref={panelHostRef}
+      className="w-full h-full relative"
+      style={{ backgroundColor: themeColors.background }}
+    >
       <div
         ref={termRef}
         className="w-full h-full"
         style={{ padding: "4px 8px" }}
       />
-      {/* 用户消息追踪器 - 悬浮在右上角 */}
-      <div
-        className="absolute top-2 right-2 z-10"
-        style={{ padding: "4px 8px" }}
-      >
-        <UserMessageTracker
+      <div className="absolute top-2 right-2 z-10 flex items-center gap-2">
+        <TranscriptPanel
           tabId={tabId}
+          toolType={sessionToolType}
+          cliSessionId={sessionCliSessionId}
+          workDir={sessionWorkDir}
+          claudeConfigDir={sessionClaudeConfigDir}
           xtermRef={xtermRef}
-          trackerRef={trackerRef}
+          panelHostRef={panelHostRef}
         />
       </div>
     </div>

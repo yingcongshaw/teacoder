@@ -2,6 +2,7 @@
 // Each theme defines Ant Design token overrides + Tailwind dark class handling
 
 import { TERMINAL_COLOR_THEMES } from "../types";
+import { withAlpha, solidColor } from "../utils/color";
 
 export interface ThemeConfig {
   key: string;
@@ -60,7 +61,8 @@ export const BUILT_IN_THEMES: ThemeConfig[] = [
     algorithm: "dark",
     token: {
       colorBgBase: "#282c34",
-      colorTextBase: "#abb2bf",
+      // 原版 #abb2bf 的 tertiary 档仅 4.48:1，略微提亮至 AA 以上，色相饱和度不变
+      colorTextBase: "#b1b7c3",
       colorPrimary: "#61afef",
       colorBorder: "#3e4451",
       colorSuccess: "#98c379",
@@ -68,7 +70,7 @@ export const BUILT_IN_THEMES: ThemeConfig[] = [
       colorError: "#e06c75",
     },
     tailwindClass: "dark",
-    previewColors: ["#61afef", "#282c34", "#abb2bf"],
+    previewColors: ["#61afef", "#282c34", "#b1b7c3"],
   },
   {
     key: "monokai",
@@ -111,7 +113,8 @@ export const BUILT_IN_THEMES: ThemeConfig[] = [
     algorithm: "dark",
     token: {
       colorBgBase: "#002b36",
-      colorTextBase: "#839496",
+      // Solarized 原版 base0 偏灰，colorText 档仅 4.43:1，提亮至 AA 以上
+      colorTextBase: "#abb6b8",
       colorPrimary: "#268bd2",
       colorBorder: "#073642",
       colorSuccess: "#859900",
@@ -119,7 +122,7 @@ export const BUILT_IN_THEMES: ThemeConfig[] = [
       colorError: "#dc322f",
     },
     tailwindClass: "dark",
-    previewColors: ["#268bd2", "#002b36", "#839496"],
+    previewColors: ["#268bd2", "#002b36", "#abb6b8"],
   },
   {
     key: "solarized-light",
@@ -128,7 +131,8 @@ export const BUILT_IN_THEMES: ThemeConfig[] = [
     algorithm: "light",
     token: {
       colorBgBase: "#fdf6e3",
-      colorTextBase: "#657b83",
+      // 浅色主题，文字需比原版 base00 明显加深才够对比度（原值 tertiary 仅 2.62:1）
+      colorTextBase: "#354145",
       colorPrimary: "#268bd2",
       colorBorder: "#eee8d5",
       colorSuccess: "#859900",
@@ -136,7 +140,7 @@ export const BUILT_IN_THEMES: ThemeConfig[] = [
       colorError: "#dc322f",
     },
     tailwindClass: "",
-    previewColors: ["#268bd2", "#fdf6e3", "#657b83"],
+    previewColors: ["#268bd2", "#fdf6e3", "#354145"],
   },
   {
     key: "github-storm",
@@ -215,6 +219,42 @@ export const BUILT_IN_THEMES: ThemeConfig[] = [
 
 export function getThemeConfig(key: string): ThemeConfig {
   return BUILT_IN_THEMES.find((t) => t.key === key) || BUILT_IN_THEMES[0];
+}
+
+/**
+ * antd 把 colorTextBase 派生成半透明文字，档位固定为 0.88/0.65/0.45/0.25 且不可配置。
+ * 该档位在浅色主题下 colorTextTertiary 仅 3.24:1、colorTextQuaternary 仅 1.81:1，
+ * 均低于 WCAG AA 的 4.5:1，且半透明黑覆盖在暖色背景上会洗掉暖色调，故显式覆盖四档。
+ */
+export function buildTextTokens(
+  token?: Record<string, string | number>,
+): Record<string, string> {
+  const base = String(token?.colorTextBase ?? "#000000");
+  return {
+    colorText: withAlpha(base, 0.95),
+    colorTextSecondary: withAlpha(base, 0.85),
+    colorTextTertiary: withAlpha(base, 0.75),
+    colorTextQuaternary: withAlpha(base, 0.65),
+    // tab 条上未激活页签专用，比 quaternary 更淡以拉开与激活项的差距
+    colorTextInactive: withAlpha(base, 0.6),
+  };
+}
+
+/**
+ * 背景层次：从 colorBgBase 派生容器底、布局底和边框色。
+ *
+ * WHY: antd 固定使用 container=0 / layout=4 / border=15 三个暗化档，
+ * 导致布局底比容器底深太多、边框在浅色主题下发灰发脏，故收紧为 0 / 2 / 8。
+ */
+export function buildBgTokens(
+  token?: Record<string, string | number>,
+): Record<string, string> {
+  const base = String(token?.colorBgBase ?? "#ffffff");
+  return {
+    colorBgContainer: solidColor(base, 0),
+    colorBgLayout: solidColor(base, 2),
+    colorBorder: solidColor(base, 8),
+  };
 }
 
 export function resolveTheme(

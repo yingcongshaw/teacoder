@@ -1,28 +1,12 @@
-use std::path::PathBuf;
-
 use crate::session;
+use crate::session::claude_path::{find_session_jsonl_anywhere, resolve_session_jsonl};
 use crate::storage::AppDatabase;
-
-/// Claude Code 将工作目录路径编码为目录名的规则：
-/// 把路径分隔符 `/`（或 Windows 上的 `\`）替换为 `-`。例如 `/work/proj` → `-work-proj`。
-fn encode_project_dir_name(work_dir: &str) -> String {
-    let normalized = work_dir.replace('\\', "/");
-    normalized.replace('/', "-")
-}
-
-fn resolve_claude_projects_dir(
-    claude_config_dir: Option<&str>,
-    work_dir: &str,
-) -> Option<PathBuf> {
-    let base = match claude_config_dir {
-        Some(dir) if !dir.is_empty() => PathBuf::from(dir),
-        _ => dirs::home_dir()?.join(".claude"),
-    };
-    Some(base.join("projects").join(encode_project_dir_name(work_dir)))
-}
 
 /// 检查 Claude Code 在 `<claude_config_dir>/projects/<work_dir>/<cli_session_id>.jsonl`
 /// 是否存在。用于"重开 Claude Code tab 之前"判断该会话是否已被用户清理。
+///
+/// 编码后的目录名对不上时（例如会话是在另一个目录下创建的）退化为按
+/// `cli_session_id` 全局反查，避免误判为"会话已删除"而挡掉可恢复的会话。
 ///
 /// 返回 false 的情况：路径解析失败、目录不存在、文件不存在。
 /// 调用方按"false → 提示会话被删除"处理。
@@ -32,10 +16,9 @@ pub fn claude_jsonl_exists(
     claude_config_dir: Option<String>,
     cli_session_id: String,
 ) -> bool {
-    let Some(dir) = resolve_claude_projects_dir(claude_config_dir.as_deref(), &work_dir) else {
-        return false;
-    };
-    dir.join(format!("{cli_session_id}.jsonl")).exists()
+    let found = resolve_session_jsonl(claude_config_dir.as_deref(), &work_dir, &cli_session_id)
+        .is_some_and(|path| path.exists());
+    found || find_session_jsonl_anywhere(claude_config_dir.as_deref(), &cli_session_id).is_some()
 }
 
 #[tauri::command]
@@ -71,25 +54,20 @@ pub fn session_delete(
     session::delete_session(&db, &id)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::encode_project_dir_name;
+/// 读取该 Claude 会话的 transcript 主线（真人输入 / AI 回复 / 工具调用）。
+///
+/// 返回 `None` 表示 transcript 不存在或无法定位（`cli_session_id` 缺失、
+/// 工作目录不匹配等），调用方应据此显示「未找到记录」而不是报错。
+#[tauri::command]
+pub fn claude_transcript_read(
+    work_dir: String,
+    claude_config_dir: Option<String>,
+    cli_session_id: String,
+    limit: Option<usize>,
+) -> Option<Vec<session::claude_transcript::TranscriptEntry>> {
+    let path = resolve_session_jsonl(claude_config_dir.as_deref(), &work_dir, &cli_session_id)
+        .filter(|p| p.exists())
+        .or_else(|| find_session_jsonl_anywhere(claude_config_dir.as_deref(), &cli_session_id))?;
 
-    #[test]
-    fn encode_unix_path() {
-        assert_eq!(encode_project_dir_name("/work/CodingTea/proj"), "-work-CodingTea-proj");
-    }
-
-    #[test]
-    fn encode_windows_path() {
-        assert_eq!(
-            encode_project_dir_name("C:\\Users\\me\\proj"),
-            "C:-Users-me-proj"
-        );
-    }
-
-    #[test]
-    fn encode_root() {
-        assert_eq!(encode_project_dir_name("/"), "-");
-    }
+    session::claude_transcript::read_transcript(&path, limit.unwrap_or(300)).ok()
 }

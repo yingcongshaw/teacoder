@@ -13,6 +13,7 @@ import type {
   CreateLlmProviderInput,
   UpdateLlmProviderInput,
   PresetProviderView,
+  TranscriptEntry,
 } from "../types";
 
 export async function detectCliTools(): Promise<CliTool[]> {
@@ -235,6 +236,20 @@ export async function claudeJsonlExists(
   });
 }
 
+export async function claudeTranscriptRead(
+  cliSessionId: string,
+  workDir: string,
+  claudeConfigDir: string | null,
+  limit?: number,
+): Promise<TranscriptEntry[] | null> {
+  return invoke<TranscriptEntry[] | null>("claude_transcript_read", {
+    cliSessionId,
+    workDir,
+    claudeConfigDir,
+    limit,
+  });
+}
+
 // Category IPC
 export async function categoryList(projectId?: string): Promise<SessionCategory[]> {
   return invoke<SessionCategory[]>("category_list", { projectId });
@@ -271,6 +286,7 @@ export interface SessionMessage {
   content: string;
   lineIndex: number;
   createdAt: number;
+  isSensitive: boolean;
 }
 
 export async function sessionMessageList(sessionId: string): Promise<SessionMessage[]> {
@@ -287,6 +303,29 @@ export async function sessionMessageCreate(input: {
 
 export async function sessionMessageDelete(sessionId: string): Promise<void> {
   return invoke("session_message_delete", { sessionId });
+}
+
+/**
+ * 标记/取消标记一条消息的敏感属性。标记后内容仍存 DB(配合真擦除路径使用),
+ * 前端按 isSensitive 决定是否脱敏渲染。
+ */
+export async function sessionMessageMarkSensitive(
+  id: string,
+  isSensitive: boolean,
+): Promise<void> {
+  return invoke("session_message_mark_sensitive", { id, isSensitive });
+}
+
+/** 单条真擦除：DB 行彻底删除。 */
+export async function sessionMessageDeleteOne(id: string): Promise<void> {
+  return invoke("session_message_delete_one", { id });
+}
+
+/** 当前 session 下批量擦除所有已标记敏感的消息，返回受影响行数。 */
+export async function sessionMessageDeleteSensitive(
+  sessionId: string,
+): Promise<number> {
+  return invoke<number>("session_message_delete_sensitive", { sessionId });
 }
 
 // System IPC
