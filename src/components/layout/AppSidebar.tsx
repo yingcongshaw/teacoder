@@ -3,7 +3,6 @@ import { Button, Input, Tooltip, Badge } from "antd";
 import {
   PlusOutlined,
   SearchOutlined,
-  FolderOutlined,
 } from "@ant-design/icons";
 import { useAppStore } from "../../stores/appStore";
 import ProjectNode from "../project/ProjectNode";
@@ -59,13 +58,13 @@ export default function AppSidebar() {
       {/* Projects section header */}
       <div className="px-3 py-1.5 flex items-center justify-between flex-shrink-0 border-b border-[var(--ant-color-border)]">
         <div className="flex items-center gap-1.5">
-          <FolderOutlined style={{ fontSize: 13, color: "var(--ant-color-primary)" }} />
-          <span className="text-xs text-[var(--ant-color-text-secondary)] font-semibold tracking-wide">项目</span>
+          {/* <FolderOutlined style={{ fontSize: 13, color: "var(--ant-color-primary)" }} /> */}
           <Badge
             count={projects.length}
             style={{ backgroundColor: "var(--ant-color-bg-elevated)", color: "var(--ant-color-text-secondary)", fontSize: 10 }}
             size="small"
           />
+          <span className="text-xs text-[var(--ant-color-text-secondary)] font-semibold tracking-wide">项目管理</span>
         </div>
         <Tooltip title="新建项目">
           <Button
@@ -113,6 +112,7 @@ export default function AppSidebar() {
               project={project}
               sessions={getProjectSessions(project.id)}
               categories={categories}
+              reorderEnabled={!searchQuery.trim()}
             />
           ))
         )}

@@ -173,6 +173,11 @@ export async function projectDelete(id: string): Promise<void> {
   return invoke("project_delete", { id });
 }
 
+/** 按给定顺序重写项目排序号（从 0 连续编号） */
+export async function projectReorder(ids: string[]): Promise<void> {
+  return invoke("project_reorder", { ids });
+}
+
 // Session IPC
 export async function sessionList(projectId?: string): Promise<Session[]> {
   return invoke<Session[]>("session_list", { projectId });
@@ -222,6 +227,25 @@ export async function sessionUpdate(
 
 export async function sessionDelete(id: string): Promise<void> {
   return invoke("session_delete", { id });
+}
+
+/**
+ * 一条会话的重排指令：改归属 + 定序号。
+ * projectId 不传表示留在原项目；categoryId 为 undefined 表示移到项目根目录（未分类）。
+ */
+export interface SessionMove {
+  id: string;
+  projectId?: string | null;
+  categoryId?: string | null;
+  sortOrder: number;
+}
+
+/**
+ * 批量重排会话。调用方需把受影响的分组（拖动时的源组与目标组）**完整**传进来，
+ * 每组从 0 连续编号 —— 否则会出现重复的 sortOrder，展示顺序取决于数据库的返回顺序。
+ */
+export async function sessionReorder(moves: SessionMove[]): Promise<void> {
+  return invoke("session_reorder", { moves });
 }
 
 export async function claudeJsonlExists(
@@ -277,6 +301,11 @@ export async function categoryUpdate(
 
 export async function categoryDelete(id: string): Promise<void> {
   return invoke("category_delete", { id });
+}
+
+/** 按给定顺序重写分类排序号（从 0 连续编号） */
+export async function categoryReorder(ids: string[]): Promise<void> {
+  return invoke("category_reorder", { ids });
 }
 
 // Session Message IPC

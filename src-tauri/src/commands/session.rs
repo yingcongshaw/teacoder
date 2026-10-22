@@ -54,6 +54,15 @@ pub fn session_delete(
     session::delete_session(&db, &id)
 }
 
+/// 批量重排会话的归属与展示顺序。调用方需把受影响的分组完整传进来,每组从 0 连续编号。
+#[tauri::command]
+pub fn session_reorder(
+    db: tauri::State<AppDatabase>,
+    moves: Vec<session::SessionMove>,
+) -> Result<(), String> {
+    session::reorder_sessions(&db, moves)
+}
+
 /// 读取该 Claude 会话的 transcript 主线（真人输入 / AI 回复 / 工具调用）。
 ///
 /// 返回 `None` 表示 transcript 不存在或无法定位（`cli_session_id` 缺失、

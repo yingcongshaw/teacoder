@@ -19,6 +19,14 @@ import { TOOL_DISPLAY_NAMES } from "../../types";
 import type { Project, Session, ToolType, SessionCategory } from "../../types";
 import { openPathInFileManager, openTerminal } from "../../utils/ipc";
 import { reportOpenTabError } from "../../utils/openTabError";
+import {
+  buildSessionMoves,
+  readDragPayload,
+  reorderIds,
+  resolveSessionDrop,
+  writeDragPayload,
+} from "../../utils/sidebarSort";
+import type { SidebarDrag } from "../../utils/sidebarSort";
 
 const TOOL_COLORS: Record<string, string> = {
   claude: "#722ed1",
@@ -39,14 +47,53 @@ const TOOL_ICONS: Record<ToolType, React.ReactNode> = {
   ssh: <CloudOutlined style={{ fontSize: 12 }} />,
 };
 
+/** 可以作为落点的行。提示线画在哪一行、这次拖拽算什么，全看这个。 */
+type DropRowKind = "session" | "category" | "project";
+
+/** 落点提示：插到某行之前 / 之后。做成字符串便于比较，避免 dragover 时反复 setState。 */
+function dropKeyOf(rowKind: DropRowKind, rowId: string, after: boolean) {
+  return `${rowKind}:${rowId}:${after ? "after" : "before"}`;
+}
+
+/** 落点提示线。行本身是 relative，线绝对定位在行的上沿或下沿。 */
+function DropIndicator({ at }: { at: "before" | "after" }) {
+  return (
+    <div
+      style={{
+        position: "absolute",
+        left: 0,
+        right: 0,
+        height: 2,
+        backgroundColor: "var(--ant-color-primary)",
+        top: at === "before" ? -1 : undefined,
+        bottom: at === "after" ? -1 : undefined,
+        pointerEvents: "none",
+        zIndex: 1,
+      }}
+    />
+  );
+}
+
 interface ProjectNodeProps {
   project: Project;
   sessions: Session[];
   categories: SessionCategory[];
+  /**
+   * 是否允许项目换位。侧边栏搜索时列表是过滤过的，视口里的先后不等于真实顺序，
+   * 此时按上下半重排会算错，所以由 AppSidebar 关掉。
+   */
+  reorderEnabled?: boolean;
 }
 
-export default function ProjectNode({ project, sessions, categories }: ProjectNodeProps) {
+export default function ProjectNode({
+  project,
+  sessions,
+  categories,
+  reorderEnabled = true,
+}: ProjectNodeProps) {
   const projects = useAppStore((s) => s.projects);
+  // 重排计算要跨项目看全量会话（拖到别的项目上时源分组在另一个项目里），不能只拿 props
+  const allSessions = useAppStore((s) => s.sessions);
   const openTabIds = useAppStore((s) => s.openTabIds);
   const activeTabId = useAppStore((s) => s.activeTabId);
   const setActiveTab = useAppStore((s) => s.setActiveTab);
@@ -56,6 +103,9 @@ export default function ProjectNode({ project, sessions, categories }: ProjectNo
   const updateSession = useAppStore((s) => s.updateSession);
   const deleteProject = useAppStore((s) => s.deleteProject);
   const updateProject = useAppStore((s) => s.updateProject);
+  const reorderProjects = useAppStore((s) => s.reorderProjects);
+  const reorderSessions = useAppStore((s) => s.reorderSessions);
+  const reorderCategories = useAppStore((s) => s.reorderCategories);
   const setNewSessionModalOpen = useAppStore((s) => s.setNewSessionModalOpen);
   const collapsedProjectIds = useAppStore((s) => s.collapsedProjectIds);
   const toggleProjectCollapsed = useAppStore((s) => s.toggleProjectCollapsed);
@@ -82,8 +132,9 @@ export default function ProjectNode({ project, sessions, categories }: ProjectNo
     (s) => s.projectId === project.id && !s.categoryId,
   );
 
-  // 拖拽状态
-  const [draggingSessionId, setDraggingSessionId] = useState<string | null>(null);
+  /** 手上正拖着什么。HTML5 DnD 在 dragover 阶段读不到 dataTransfer，只能靠这个。 */
+  const [drag, setDrag] = useState<SidebarDrag | null>(null);
+  const [dropKey, setDropKey] = useState<string | null>(null);
 
   const handleRename = () => {
     setRenameValue(project.name);
@@ -146,50 +197,136 @@ export default function ProjectNode({ project, sessions, categories }: ProjectNo
     });
   };
 
-  // 拖拽会话到分类
-  const handleDragStart = (e: React.DragEvent, sessionId: string) => {
-    setDraggingSessionId(sessionId);
-    e.dataTransfer.setData("sessionId", sessionId);
-    e.dataTransfer.effectAllowed = "move";
-  };
-
   const handleDragEnd = () => {
-    setDraggingSessionId(null);
+    setDrag(null);
+    setDropKey(null);
   };
 
-  const handleDragOver = (e: React.DragEvent, _categoryId: string) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = "move";
+  /** 这一行认不认当前手上的手势。不认就 return，让事件继续冒泡给外层原有逻辑。 */
+  const accepts = (payload: SidebarDrag, rowKind: DropRowKind, rowId: string): boolean => {
+    if (payload.id === rowId && payload.kind === rowKind) return false;
+    if (payload.kind === "session") return true;
+    if (payload.kind === "category") return rowKind === "category";
+    // 项目重排只在列表未被搜索过滤时开放
+    return rowKind === "project" && reorderEnabled;
   };
 
-  const handleDragOverProject = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = "move";
-  };
-
-  const handleDrop = async (e: React.DragEvent, categoryId: string) => {
-    e.preventDefault();
-    e.stopPropagation(); // 阻止冒泡到项目根目录
-    const sessionId = e.dataTransfer.getData("sessionId");
-    if (sessionId) {
-      // 更新会话的分类
-      await updateSession(sessionId, { categoryId });
-      message.success("已将会话移至会话分类");
+  const handleDrop = async (
+    payload: SidebarDrag,
+    rowKind: DropRowKind,
+    rowId: string,
+    after: boolean,
+  ) => {
+    if (payload.kind === "session") {
+      const target = resolveSessionDrop(
+        allSessions,
+        categories,
+        payload.id,
+        rowKind,
+        rowId,
+        after,
+      );
+      if (!target) return;
+      const moves = buildSessionMoves(
+        allSessions,
+        payload.id,
+        target.projectId,
+        target.categoryId,
+        target.index,
+      );
+      if (!moves.length) return;
+      const dragged = allSessions.find((s) => s.id === payload.id);
+      const changedGroup =
+        !dragged ||
+        dragged.projectId !== target.projectId ||
+        (dragged.categoryId ?? null) !== target.categoryId;
+      await reorderSessions(moves);
+      // 组内换位不发提示：这时候弹"已移入 XX"是在说一件没发生的事
+      if (changedGroup) {
+        const categoryName = target.categoryId
+          ? categories.find((c) => c.id === target.categoryId)?.name
+          : undefined;
+        message.success(categoryName ? `已移入「${categoryName}」` : "已移至项目根目录");
+      }
+      return;
     }
-    setDraggingSessionId(null);
+
+    if (payload.kind === "category") {
+      if (rowKind !== "category" || !projectCategories.some((c) => c.id === rowId)) return;
+      const ids = reorderIds(projectCategories.map((c) => c.id), payload.id, rowId, after);
+      if (ids.join() === projectCategories.map((c) => c.id).join()) return;
+      await reorderCategories(ids);
+      return;
+    }
+
+    if (rowKind !== "project" || !reorderEnabled) return;
+    const current = projects.map((p) => p.id);
+    const ids = reorderIds(current, payload.id, rowId, after);
+    if (ids.join() === current.join()) return;
+    await reorderProjects(ids);
   };
 
-  // 拖拽到项目根目录，取消分类
-  const handleDropToProject = async (e: React.DragEvent) => {
-    e.preventDefault();
-    const sessionId = e.dataTransfer.getData("sessionId");
-    if (sessionId) {
-      // 取消分类，设置 categoryId 为空字符串
-      await updateSession(sessionId, { categoryId: "" });
-      message.success("已将会话移至项目根目录");
-    }
-    setDraggingSessionId(null);
-  };
+  /**
+   * 行级落点：按光标落在上沿还是下沿决定插到这一行之前还是之后。
+   *
+   * `stopPropagation` 是这套逻辑的命脉 —— 外层的分类容器和项目容器也是 drop 目标，
+   * 不掐断的话精确插入会被它们抢走，事件冒泡到项目根就把会话丢去项目根目录了。
+   */
+  const rowDropProps = (rowKind: DropRowKind, rowId: string) => ({
+    onDragOver: (e: React.DragEvent) => {
+      if (!drag || !accepts(drag, rowKind, rowId)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      e.dataTransfer.dropEffect = "move";
+      const rect = e.currentTarget.getBoundingClientRect();
+      const key = dropKeyOf(rowKind, rowId, e.clientY > rect.top + rect.height / 2);
+      if (key !== dropKey) setDropKey(key);
+    },
+    onDragLeave: (e: React.DragEvent) => {
+      // 移进本行的子元素也会触发 dragleave，别把提示擦掉
+      if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+      setDropKey((k) => (k?.startsWith(`${rowKind}:${rowId}:`) ? null : k));
+    },
+    onDrop: async (e: React.DragEvent) => {
+      const payload = drag ?? readDragPayload(e);
+      if (!payload || !accepts(payload, rowKind, rowId)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const rect = e.currentTarget.getBoundingClientRect();
+      const after = e.clientY > rect.top + rect.height / 2;
+      handleDragEnd();
+      await handleDrop(payload, rowKind, rowId, after);
+    },
+  });
+
+  /**
+   * 容器级落点：落在分类 / 项目的空白处时按追加到末尾处理，兼容原来的拖拽手感。
+   *
+   * 这里也必须掐断冒泡 —— 分类容器嵌在项目容器里，两者都认会话，不掐的话一次 drop
+   * 会先命中分类再命中项目，同一条会话被搬两遍，提示线也会被外层覆盖。
+   */
+  const containerDropProps = (
+    rowKind: "category" | "project",
+    rowId: string,
+    acceptsPayload: (p: SidebarDrag) => boolean,
+  ) => ({
+    onDragOver: (e: React.DragEvent) => {
+      if (!drag || !acceptsPayload(drag)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      e.dataTransfer.dropEffect = "move";
+      const key = dropKeyOf(rowKind, rowId, true);
+      if (key !== dropKey) setDropKey(key);
+    },
+    onDrop: async (e: React.DragEvent) => {
+      const payload = drag ?? readDragPayload(e);
+      if (!payload || !acceptsPayload(payload)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      handleDragEnd();
+      await handleDrop(payload, rowKind, rowId, true);
+    },
+  });
 
   const handleRenameSession = (session: Session) => {
     setRenamingSessionId(session.id);
@@ -355,12 +492,12 @@ export default function ProjectNode({ project, sessions, categories }: ProjectNo
     },
   ];
 
-  const renderSessionItem = (session: Session, indentLeft: string = "pl-8", _categoryId?: string) => {
+  const renderSessionItem = (session: Session, indentLeft: string = "pl-8") => {
     const isActive = session.id === activeTabId;
     const isOpen = openTabIds.includes(session.id);
     const isHovered = hoveredSessionId === session.id;
     const isRenaming = session.id === renamingSessionId;
-    const isDragging = draggingSessionId === session.id;
+    const isDragging = drag?.kind === "session" && drag.id === session.id;
     const toolColor = TOOL_COLORS[session.toolType] || "#888";
 
     let textColor: string;
@@ -379,6 +516,12 @@ export default function ProjectNode({ project, sessions, categories }: ProjectNo
       borderStyle = "2px solid transparent";
     }
 
+    const at = dropKey?.startsWith(`session:${session.id}:`)
+      ? dropKey.endsWith(":after")
+        ? "after"
+        : "before"
+      : null;
+
     return (
       <Dropdown
         key={session.id}
@@ -387,8 +530,13 @@ export default function ProjectNode({ project, sessions, categories }: ProjectNo
       >
         <div
           draggable
-          onDragStart={(e) => handleDragStart(e, session.id)}
+          onDragStart={(e) => {
+            setDrag({ kind: "session", id: session.id });
+            writeDragPayload(e, { kind: "session", id: session.id });
+            e.dataTransfer.effectAllowed = "move";
+          }}
           onDragEnd={handleDragEnd}
+          {...rowDropProps("session", session.id)}
           onClick={() => {
             if (isRenaming) return;
             if (isOpen) {
@@ -408,6 +556,7 @@ export default function ProjectNode({ project, sessions, categories }: ProjectNo
             backgroundColor: isHovered && !isActive ? "var(--ant-color-bg-elevated)" : bgColor,
           }}
         >
+          {at && <DropIndicator at={at} />}
           <span className="w-3 flex-shrink-0 flex items-center gap-1.5">
             {TOOL_ICONS[session.toolType as ToolType] ? (
               <span
@@ -462,25 +611,37 @@ export default function ProjectNode({ project, sessions, categories }: ProjectNo
     );
     const isCollapsed = collapsedCategoryIds.includes(category.id);
     const isRenaming = category.id === renamingCategoryId;
-    const isDragOver = draggingSessionId !== null;
+    const isDragging = drag?.kind === "category" && drag.id === category.id;
+    const at = dropKey?.startsWith(`category:${category.id}:`)
+      ? dropKey.endsWith(":after")
+        ? "after"
+        : "before"
+      : null;
 
     return (
       <div
         key={category.id}
         className="mb-0.5 w-full min-w-0"
-        onDragOver={(e) => handleDragOver(e, category.id)}
-        onDrop={(e) => handleDrop(e, category.id)}
-        onDragLeave={() => {}}
+        {...containerDropProps("category", category.id, (p) => p.kind === "session")}
       >
         <Dropdown
           menu={{ items: getCategoryContextMenu(category) }}
           trigger={["contextMenu"]}
         >
           <div
-            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs text-[var(--ant-color-text-secondary)] cursor-pointer hover:text-[var(--ant-color-text)] transition-colors group min-w-0 ${isDragOver ? "bg-[var(--ant-color-primary-bg)]" : ""}`}
+            draggable
+            onDragStart={(e) => {
+              setDrag({ kind: "category", id: category.id });
+              writeDragPayload(e, { kind: "category", id: category.id });
+              e.dataTransfer.effectAllowed = "move";
+            }}
+            onDragEnd={handleDragEnd}
+            {...rowDropProps("category", category.id)}
+            className={`relative flex items-center gap-1.5 px-3 py-1.5 text-xs text-[var(--ant-color-text-secondary)] cursor-pointer hover:text-[var(--ant-color-text)] transition-colors group min-w-0 ${isDragging ? "opacity-50" : ""}`}
             style={{ paddingLeft: "24px" }}
             onClick={() => toggleCategoryCollapsed(category.id)}
           >
+            {at && <DropIndicator at={at} />}
             <FolderOpenOutlined style={{ fontSize: 12, color: category.color || undefined }} />
             {isRenaming ? (
               <Input
@@ -519,22 +680,36 @@ export default function ProjectNode({ project, sessions, categories }: ProjectNo
             </span>
           </div>
         </Dropdown>
-        {!isCollapsed && categorySessions.map((s) => renderSessionItem(s, "pl-12", category.id))}
+        {!isCollapsed && categorySessions.map((s) => renderSessionItem(s, "pl-12"))}
       </div>
     );
   };
 
+  const projectAt = dropKey?.startsWith(`project:${project.id}:`)
+    ? dropKey.endsWith(":after")
+      ? "after"
+      : "before"
+    : null;
+
   return (
     <div
       className="mb-0.5 w-full min-w-0 border-t border-[var(--ant-color-border-secondary)]"
-      onDragOver={handleDragOverProject}
-      onDrop={handleDropToProject}
+      {...containerDropProps("project", project.id, (p) => p.kind === "session")}
     >
       <Dropdown menu={{ items: contextMenuItems }} trigger={["contextMenu"]}>
         <div
-          className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-[var(--ant-color-text-tertiary)] cursor-pointer hover:text-[var(--ant-color-text-secondary)] transition-colors group font-medium min-w-0"
+          draggable={reorderEnabled}
+          onDragStart={(e) => {
+            setDrag({ kind: "project", id: project.id });
+            writeDragPayload(e, { kind: "project", id: project.id });
+            e.dataTransfer.effectAllowed = "move";
+          }}
+          onDragEnd={handleDragEnd}
+          {...rowDropProps("project", project.id)}
+          className={`relative flex items-center gap-1.5 px-3 py-1.5 text-xs text-[var(--ant-color-text-tertiary)] cursor-pointer hover:text-[var(--ant-color-text-secondary)] transition-colors group font-medium min-w-0 ${drag?.kind === "project" && drag.id === project.id ? "opacity-50" : ""}`}
           onClick={() => toggleProjectCollapsed(project.id)}
         >
+          {projectAt && <DropIndicator at={projectAt} />}
           <FolderOutlined style={{ fontSize: 12, color: project.color || undefined }} />
           {renaming ? (
             <Input

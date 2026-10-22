@@ -21,20 +21,24 @@ import {
   projectCreate,
   projectUpdate,
   projectDelete,
+  projectReorder,
   sessionList,
   sessionCreate,
   sessionUpdate,
   sessionDelete,
+  sessionReorder,
   categoryList,
   categoryCreate,
   categoryUpdate,
   categoryDelete,
+  categoryReorder,
   claudeJsonlExists,
   listLlmProviders,
   createLlmProvider as createLlmProviderIpc,
   updateLlmProvider as updateLlmProviderIpc,
   deleteLlmProvider as deleteLlmProviderIpc,
 } from "../utils/ipc";
+import type { SessionMove } from "../utils/ipc";
 import { parseClaudeModels, serializeClaudeModels } from "../utils/claudeModels";
 import type { ClaudeModels } from "../utils/claudeModels";
 import { stripResumeArgs } from "../utils/cliArgs";
@@ -222,6 +226,15 @@ function saveQuickCommands(map: Record<string, string>) {
   }
 }
 
+/**
+ * 内存里的数组顺序必须和后端 `ORDER BY sort_order ASC, updated_at DESC` 保持一致。
+ * 重排只改 sortOrder 字段、不动数组位置，不重排的话界面上的先后会停在拖之前，
+ * 要等下次从数据库重新加载才对上。
+ */
+function bySortOrder<T extends { sortOrder: number; updatedAt: number }>(a: T, b: T) {
+  return a.sortOrder - b.sortOrder || b.updatedAt - a.updatedAt;
+}
+
 const GENERAL_SETTINGS_KEY = "teacoder_general_settings";
 
 function loadAppTheme(): string {
@@ -302,6 +315,8 @@ interface AppState {
   createProject: (name: string, path: string, color?: string) => Promise<Project>;
   updateProject: (id: string, updates: { name?: string; color?: string }) => Promise<void>;
   deleteProject: (id: string) => Promise<void>;
+  /** 按给定顺序重排项目（从 0 连续编号）。传全量 id，顺序即展示顺序。 */
+  reorderProjects: (ids: string[]) => Promise<void>;
 
   // 会话列表（从后端加载，替换旧的 sessions: TabState[]）
   sessions: Session[];
@@ -334,6 +349,11 @@ interface AppState {
   }) => Promise<Session>;
   updateSession: (id: string, updates: Partial<Session>) => Promise<void>;
   deleteSession: (id: string) => Promise<void>;
+  /**
+   * 批量重排会话的归属与位置。`moves` 需包含受影响的**全部分组**（拖动时的源组与
+   * 目标组）并各自从 0 连续编号，否则会出现重复 sortOrder。
+   */
+  reorderSessions: (moves: SessionMove[]) => Promise<void>;
 
   // 会话分类
   categories: SessionCategory[];
@@ -350,6 +370,8 @@ interface AppState {
     sortOrder?: number;
   }) => Promise<void>;
   deleteCategory: (id: string) => Promise<void>;
+  /** 按给定顺序重排分类（从 0 连续编号）。传全量 id，顺序即展示顺序。 */
+  reorderCategories: (ids: string[]) => Promise<void>;
 
   // 折叠的分类 ID 列表
   collapsedCategoryIds: string[];
@@ -590,6 +612,18 @@ export const useAppStore = create<AppState>((set, get) => ({
       return { projects: state.projects.filter((p) => p.id !== id), sessions: state.sessions.filter((s) => s.projectId !== id), panes, activePaneId, openTabIds, activeTabId };
     });
   },
+  reorderProjects: async (ids) => {
+    await projectReorder(ids);
+    // 后端只回传成功，不回列表；这里按传入顺序重写 sortOrder，与后端保持同一套编号
+    set((state) => {
+      const order = new Map(ids.map((id, i) => [id, i]));
+      return {
+        projects: state.projects
+          .map((p) => (order.has(p.id) ? { ...p, sortOrder: order.get(p.id)! } : p))
+          .sort(bySortOrder),
+      };
+    });
+  },
 
   // 会话
   sessions: [],
@@ -743,6 +777,24 @@ export const useAppStore = create<AppState>((set, get) => ({
       };
     });
   },
+  reorderSessions: async (moves) => {
+    await sessionReorder(moves);
+    set((state) => ({
+      sessions: state.sessions
+        .map((s) => {
+          const move = moves.find((m) => m.id === s.id);
+          if (!move) return s;
+          // projectId 不传表示留在原项目，别用 undefined 把它抹掉
+          return {
+            ...s,
+            projectId: move.projectId ?? s.projectId,
+            categoryId: move.categoryId ?? undefined,
+            sortOrder: move.sortOrder,
+          };
+        })
+        .sort(bySortOrder),
+    }));
+  },
 
   // 会话分类
   categories: [],
@@ -776,6 +828,17 @@ export const useAppStore = create<AppState>((set, get) => ({
         s.categoryId === id ? { ...s, categoryId: undefined } : s,
       ),
     }));
+  },
+  reorderCategories: async (ids) => {
+    await categoryReorder(ids);
+    set((state) => {
+      const order = new Map(ids.map((id, i) => [id, i]));
+      return {
+        categories: state.categories
+          .map((c) => (order.has(c.id) ? { ...c, sortOrder: order.get(c.id)! } : c))
+          .sort(bySortOrder),
+      };
+    });
   },
 
   openTabIds: flattenPaneOpenIds(initialPanes),

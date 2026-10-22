@@ -88,7 +88,18 @@ pub fn create_category(db: &AppDatabase, input: CreateCategoryInput) -> Result<S
 
     let id = uuid::Uuid::new_v4().to_string();
     let now = chrono::Utc::now().timestamp_millis();
-    let sort_order = input.sort_order.unwrap_or(0);
+    // 调用方显式指定就照用,否则追加到该项目内末尾。此前一律缺省写 0,导致所有新
+    // 分类排序值相同、实际靠 name ASC 兜底,拖拽排序无从下手。
+    let sort_order: i32 = match input.sort_order {
+        Some(v) => v,
+        None => conn
+            .query_row(
+                "SELECT COALESCE(MAX(sort_order), -1) + 1 FROM session_categories WHERE project_id = ?1",
+                [&input.project_id],
+                |row| row.get(0),
+            )
+            .map_err(|e| format!("Failed to compute category sort_order: {}", e))?,
+    };
 
     conn.execute(
         "INSERT INTO session_categories (id, project_id, name, color, sort_order, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
@@ -173,4 +184,28 @@ pub fn delete_category(db: &AppDatabase, id: &str) -> Result<(), String> {
         .map_err(|e| format!("Failed to delete category: {}", e))?;
 
     Ok(())
+}
+
+/// 按调用方给定的顺序重写分类排序号。调用方需把完整顺序传进来、从 0 连续编号。
+/// 不刷新 `updated_at` —— 排序是纯展示位,分类不该因为被换个位置就"看起来刚被编辑过"。
+pub fn reorder_categories(db: &AppDatabase, ids: Vec<String>) -> Result<(), String> {
+    let mut conn = db.conn.lock().map_err(|e| e.to_string())?;
+
+    let tx = conn
+        .transaction()
+        .map_err(|e| format!("Failed to begin transaction: {}", e))?;
+
+    {
+        let mut stmt = tx
+            .prepare("UPDATE session_categories SET sort_order = ?2 WHERE id = ?1")
+            .map_err(|e| format!("Failed to prepare reorder statement: {}", e))?;
+
+        for (index, id) in ids.iter().enumerate() {
+            stmt.execute(rusqlite::params![id, index as i32])
+                .map_err(|e| format!("Failed to reorder category {}: {}", id, e))?;
+        }
+    }
+
+    tx.commit()
+        .map_err(|e| format!("Failed to commit category reorder: {}", e))
 }

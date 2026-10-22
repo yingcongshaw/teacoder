@@ -30,3 +30,11 @@ pub fn project_delete(
 ) -> Result<(), String> {
     project::delete_project(&db, &id)
 }
+
+#[tauri::command]
+pub fn project_reorder(
+    db: tauri::State<AppDatabase>,
+    ids: Vec<String>,
+) -> Result<(), String> {
+    project::reorder_projects(&db, ids)
+}

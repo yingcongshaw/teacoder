@@ -63,6 +63,8 @@ export interface Project {
   color?: string;
   createdAt: number;
   updatedAt: number;
+  /** 侧边栏展示序号，越小越靠前 */
+  sortOrder: number;
 }
 
 /** Claude Code transcript 主线中的一条记录（真人输入 / AI 回复 / 工具调用）。 */
@@ -117,6 +119,8 @@ export interface Session {
     fable1M?: boolean;
     subagent1M?: boolean;
   };
+  /** 同级（同项目同分类）内的展示序号，越小越靠前 */
+  sortOrder: number;
 }
 
 export interface SessionTemplate {

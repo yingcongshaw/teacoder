@@ -33,3 +33,11 @@ pub fn category_delete(
 ) -> Result<(), String> {
     session_category::delete_category(&db, &id)
 }
+
+#[tauri::command]
+pub fn category_reorder(
+    db: tauri::State<AppDatabase>,
+    ids: Vec<String>,
+) -> Result<(), String> {
+    session_category::reorder_categories(&db, ids)
+}
