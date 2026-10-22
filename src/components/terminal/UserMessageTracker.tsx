@@ -1,8 +1,20 @@
 import { useState, useRef, useCallback, useEffect } from "react";
-import { Dropdown, Modal } from "antd";
-import { MessageOutlined, AimOutlined } from "@ant-design/icons";
+import { Dropdown, Modal, message, Popconfirm } from "antd";
+import {
+  MessageOutlined,
+  AimOutlined,
+  LockOutlined,
+  UnlockOutlined,
+  DeleteOutlined,
+} from "@ant-design/icons";
 import { Terminal } from "@xterm/xterm";
-import { sessionMessageList, sessionMessageCreate } from "../../utils/ipc";
+import { listen } from "@tauri-apps/api/event";
+import {
+  sessionMessageList,
+  sessionMessageCreate,
+  sessionMessageMarkSensitive,
+  sessionMessageDeleteOne,
+} from "../../utils/ipc";
 
 interface TrackedMessage {
   id: string;
@@ -10,6 +22,13 @@ interface TrackedMessage {
   timestamp: number;
   messageIndex: number;
   cursorY: number; // 用户输入时的光标 Y 位置
+  isSensitive: boolean;
+  /**
+   * 是否已成功持久化到后端。
+   * 后端 uuid::Uuid::new_v4() 与前端 crypto.randomUUID() 都是 v4 UUID，形状相同无法靠 id 区分，
+   * 故需显式字段。后端失败时的本地兜底行 persisted=false,只能从前端 state 移除,无法走真擦除命令。
+   */
+  persisted: boolean;
 }
 
 interface UserMessageTrackerProps {
@@ -22,7 +41,6 @@ interface UserMessageTrackerProps {
     // 由 TerminalView 监听 textarea 的 input 事件 + compositionend 标记后转发
     captureImeText: (text: string) => void;
     flushInput: () => void;
-    handleEnter: () => void;
   } | null>;
 }
 
@@ -99,9 +117,57 @@ export default function UserMessageTracker({ tabId, xtermRef, trackerRef }: User
   const [popupVisible, setPopupVisible] = useState(false);
   const [selectedMessage, setSelectedMessage] = useState<TrackedMessage | null>(null);
   const [detailVisible, setDetailVisible] = useState(false);
+  // 详情 Modal 中暂态允许显示标记为敏感消息的原文 —— 通过 Popconfirm 二次确认后置 true。
+  // 关闭 Modal 时随详情一起重置为 false。
+  const [revealSensitiveInModal, setRevealSensitiveInModal] = useState(false);
+
+  const closeDetail = useCallback(() => {
+    setDetailVisible(false);
+    setRevealSensitiveInModal(false);
+  }, []);
   const pendingInputRef = useRef<string>("");
   const [loaded, setLoaded] = useState(false);
   const messageIndexRef = useRef(0);
+
+  // 敏感输入抑制：
+  //   sensitivePendingRef —— 下一次 Enter-flush 是否应被吞掉
+  //   sensitiveTimeoutRef —— 30s 后自动解除武装,防止 armed 状态长期挂起后误吞
+  // 设计:后端 PtyManager 在 PTY 输出流上识别常见密码提示串(sudo / ssh passphrase /
+  //      MySQL "Enter password:" 等),命中后 emit "pty:sensitive_prompt_detected"。
+  //      我们订阅该事件并只吞"提示后的下一次"输入,避免级联误伤。
+  const sensitivePendingRef = useRef(false);
+  const sensitiveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [messageApi, contextHolder] = message.useMessage();
+
+  // 卸载时清理定时器
+  useEffect(() => {
+    return () => {
+      if (sensitiveTimeoutRef.current) {
+        clearTimeout(sensitiveTimeoutRef.current);
+        sensitiveTimeoutRef.current = null;
+      }
+    };
+  }, []);
+
+  // 订阅后端敏感提示事件（mirrors TerminalView.tsx 的 listen + .then(fn => fn()) 模式）
+  useEffect(() => {
+    if (!tabId) return;
+    const unlisten = listen<{ tabId: string }>(
+      "pty:sensitive_prompt_detected",
+      (e) => {
+        if (e.payload.tabId !== tabId) return;
+        sensitivePendingRef.current = true;
+        if (sensitiveTimeoutRef.current) clearTimeout(sensitiveTimeoutRef.current);
+        sensitiveTimeoutRef.current = setTimeout(() => {
+          sensitivePendingRef.current = false;
+          sensitiveTimeoutRef.current = null;
+        }, 30_000);
+      },
+    );
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, [tabId]);
 
   // 加载历史消息
   useEffect(() => {
@@ -114,6 +180,8 @@ export default function UserMessageTracker({ tabId, xtermRef, trackerRef }: User
             timestamp: m.createdAt,
             messageIndex: idx,
             cursorY: m.lineIndex, // 使用 lineIndex 作为 cursorY
+            isSensitive: m.isSensitive,
+            persisted: true,
           }));
           if (msgs.length > 0) {
             messageIndexRef.current = msgs.length;
@@ -150,6 +218,8 @@ export default function UserMessageTracker({ tabId, xtermRef, trackerRef }: User
           timestamp: msg.createdAt,
           messageIndex: currentIndex,
           cursorY: cursorY,
+          isSensitive: msg.isSensitive,
+          persisted: true,
         };
         setMessages((prev) => {
           const updated = [trackedMessage, ...prev];
@@ -157,13 +227,15 @@ export default function UserMessageTracker({ tabId, xtermRef, trackerRef }: User
         });
       })
       .catch(() => {
-        // 失败时也保存到本地
+        // 失败时也保存到本地 —— 这种行 persisted=false,只能从本地 state 移除,无法走真擦除命令。
         const trackedMessage: TrackedMessage = {
           id: crypto.randomUUID(),
           text: trimmedText,
           timestamp: Date.now(),
           messageIndex: currentIndex,
           cursorY: cursorY,
+          isSensitive: false,
+          persisted: false,
         };
         setMessages((prev) => {
           const updated = [trackedMessage, ...prev];
@@ -190,23 +262,22 @@ export default function UserMessageTracker({ tabId, xtermRef, trackerRef }: User
     const input = pendingInputRef.current;
     const cleaned = cleanMessage(input);
     pendingInputRef.current = "";
+
+    // 敏感输入抑制:若刚被后端告知有密码提示,清空本行内容并直接吞回,不持久化。
+    // 同步清除 ref(不延后),避免双 Enter 路径下重复判定见 A/B 防御。
+    if (sensitivePendingRef.current) {
+      sensitivePendingRef.current = false;
+      if (sensitiveTimeoutRef.current) {
+        clearTimeout(sensitiveTimeoutRef.current);
+        sensitiveTimeoutRef.current = null;
+      }
+      messageApi.info("已识别密码输入，该行未记录");
+      return;
+    }
     if (cleaned) {
       handleMessageSend(cleaned);
     }
-  }, [handleMessageSend]);
-
-  // 处理 Enter 键时,确保所有字节都已到达
-  const handleFlushWithDelay = useCallback(() => {
-    // 延迟 50ms 确保 IME/输入法完成组合
-    setTimeout(() => {
-      flushInput();
-    }, 50);
-  }, [flushInput]);
-
-  const handleEnter = useCallback(() => {
-    // 延迟 flush 确保 IME/输入法完成组合(如 emoji)
-    handleFlushWithDelay();
-  }, [handleFlushWithDelay]);
+  }, [handleMessageSend, messageApi]);
 
   // 接收 xterm 的 onKey 派发的按键(xterm 内 escape 序列化的 key 字符串,
   // 如 "a"、"A"、"\r"、"\x1b[A")。IME 上屏字符不走 onKey,
@@ -252,10 +323,9 @@ export default function UserMessageTracker({ tabId, xtermRef, trackerRef }: User
         captureKey,
         captureImeText,
         flushInput,
-        handleEnter,
       };
     }
-  }, [trackerRef, captureKey, captureImeText, flushInput, handleEnter]);
+  }, [trackerRef, captureKey, captureImeText, flushInput]);
 
   const scrollToMessage = useCallback((message: TrackedMessage) => {
     const term = xtermRef.current;
@@ -283,6 +353,7 @@ export default function UserMessageTracker({ tabId, xtermRef, trackerRef }: User
 
   const handleMessageClick = useCallback((message: TrackedMessage) => {
     setSelectedMessage(message);
+    setRevealSensitiveInModal(false);
     setDetailVisible(true);
     setPopupVisible(false);
   }, []);
@@ -292,6 +363,62 @@ export default function UserMessageTracker({ tabId, xtermRef, trackerRef }: User
     scrollToMessage(message);
     setPopupVisible(false);
   }, [scrollToMessage]);
+
+  // 切换敏感标记 —— 仅对已持久化消息生效。本地兜底行(persisted=false)
+  // 没有真正的密码泄露（仅前端 state 持有,清列表即可），不再走 IPC。
+  const handleToggleSensitive = useCallback(
+    (msg: TrackedMessage, e: React.MouseEvent) => {
+      e.stopPropagation();
+      if (!msg.persisted) return;
+      const next = !msg.isSensitive;
+      sessionMessageMarkSensitive(msg.id, next)
+        .then(() => {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === msg.id ? { ...m, isSensitive: next } : m,
+            ),
+          );
+          // 同步更新详情 Modal 中的选中引用
+          setSelectedMessage((sel) =>
+            sel && sel.id === msg.id ? { ...sel, isSensitive: next } : sel,
+          );
+        })
+        .catch((err) => {
+          messageApi.error(
+            (next ? "标记敏感失败: " : "取消标记失败: ") +
+              (typeof err === "string" ? err : "未知错误"),
+          );
+        });
+    },
+    [messageApi],
+  );
+
+  // 真擦除单条 —— 仅已持久化消息。成功后从本地 state 移除。
+  const handleDeleteOne = useCallback(
+    (msg: TrackedMessage, e: React.MouseEvent) => {
+      e.stopPropagation();
+      if (msg.persisted) {
+        sessionMessageDeleteOne(msg.id)
+          .then(() => {
+            setMessages((prev) => prev.filter((m) => m.id !== msg.id));
+            if (selectedMessage?.id === msg.id) {
+              setRevealSensitiveInModal(false);
+              setDetailVisible(false);
+              setSelectedMessage(null);
+            }
+          })
+          .catch((err) => {
+            messageApi.error(
+              "删除失败: " + (typeof err === "string" ? err : "未知错误"),
+            );
+          });
+      } else {
+        // 本地兜底行:仅前端移除,无后端记录可删
+        setMessages((prev) => prev.filter((m) => m.id !== msg.id));
+      }
+    },
+    [messageApi, selectedMessage, setRevealSensitiveInModal],
+  );
 
   const formatTime = (timestamp: number): string => {
     const date = new Date(timestamp);
@@ -379,36 +506,91 @@ export default function UserMessageTracker({ tabId, xtermRef, trackerRef }: User
               <span className="text-xs text-[var(--ant-color-text-secondary)]">
                 #{msg.messageIndex + 1} · {formatTime(msg.timestamp)}
               </span>
-              <span className="text-sm text-[var(--ant-color-text)] truncate">
-                {formatPreview(msg.text)}
-              </span>
+              {msg.isSensitive ? (
+                <span className="text-sm text-[var(--ant-color-text-tertiary)] italic truncate">
+                  •••••••（{msg.text.length} 字符已脱敏）
+                </span>
+              ) : (
+                <span className="text-sm text-[var(--ant-color-text)] truncate">
+                  {formatPreview(msg.text)}
+                </span>
+              )}
             </div>
-            <button
-              title="跳转到此消息"
-              className="flex items-center justify-center rounded transition-colors flex-shrink-0"
-              style={{
-                width: 24,
-                height: 24,
-                color: "var(--ant-color-text-secondary)",
-              }}
-              onClick={(e) => handleJumpClick(msg, e)}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.color = "var(--ant-color-primary)";
-                e.currentTarget.style.backgroundColor = "var(--ant-color-bg-elevated)";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.color = "var(--ant-color-text-secondary)";
-                e.currentTarget.style.backgroundColor = "transparent";
-              }}
-            >
-              <AimOutlined style={{ fontSize: 12 }} />
-            </button>
+            <div className="flex items-center gap-1 flex-shrink-0">
+              <button
+                title="跳转到此消息"
+                className="flex items-center justify-center rounded transition-colors"
+                style={{
+                  width: 24,
+                  height: 24,
+                  color: "var(--ant-color-text-secondary)",
+                }}
+                onClick={(e) => handleJumpClick(msg, e)}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.color = "var(--ant-color-primary)";
+                  e.currentTarget.style.backgroundColor = "var(--ant-color-bg-elevated)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.color = "var(--ant-color-text-secondary)";
+                  e.currentTarget.style.backgroundColor = "transparent";
+                }}
+              >
+                <AimOutlined style={{ fontSize: 12 }} />
+              </button>
+              {msg.persisted && (
+                <button
+                  title={msg.isSensitive ? "取消标记" : "标记为敏感"}
+                  className="flex items-center justify-center rounded transition-colors"
+                  style={{
+                    width: 24,
+                    height: 24,
+                    color: msg.isSensitive
+                      ? "var(--ant-color-warning)"
+                      : "var(--ant-color-text-secondary)",
+                  }}
+                  onClick={(e) => handleToggleSensitive(msg, e)}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = "var(--ant-color-bg-elevated)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = "transparent";
+                  }}
+                >
+                  {msg.isSensitive ? (
+                    <UnlockOutlined style={{ fontSize: 12 }} />
+                  ) : (
+                    <LockOutlined style={{ fontSize: 12 }} />
+                  )}
+                </button>
+              )}
+              <button
+                title={msg.persisted ? "删除此消息" : "从列表移除"}
+                className="flex items-center justify-center rounded transition-colors"
+                style={{
+                  width: 24,
+                  height: 24,
+                  color: "var(--ant-color-text-secondary)",
+                }}
+                onClick={(e) => handleDeleteOne(msg, e)}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.color = "var(--ant-color-error)";
+                  e.currentTarget.style.backgroundColor = "var(--ant-color-bg-elevated)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.color = "var(--ant-color-text-secondary)";
+                  e.currentTarget.style.backgroundColor = "transparent";
+                }}
+              >
+                <DeleteOutlined style={{ fontSize: 12 }} />
+              </button>
+            </div>
           </div>
         ),
       }));
 
   return (
     <>
+      {contextHolder}
       <Dropdown
         menu={{ items: menuItems }}
         trigger={["click"]}
@@ -444,14 +626,14 @@ export default function UserMessageTracker({ tabId, xtermRef, trackerRef }: User
       <Modal
         title={`用户消息 #${(selectedMessage?.messageIndex ?? 0) + 1}`}
         open={detailVisible}
-        onCancel={() => setDetailVisible(false)}
+        onCancel={closeDetail}
         footer={[
           <button
             key="jump"
             onClick={() => {
               if (selectedMessage) {
                 scrollToMessage(selectedMessage);
-                setDetailVisible(false);
+                closeDetail();
               }
             }}
             style={{
@@ -467,7 +649,7 @@ export default function UserMessageTracker({ tabId, xtermRef, trackerRef }: User
           </button>,
           <button
             key="close"
-            onClick={() => setDetailVisible(false)}
+            onClick={closeDetail}
             style={{
               padding: "4px 16px",
               backgroundColor: "transparent",
@@ -484,20 +666,72 @@ export default function UserMessageTracker({ tabId, xtermRef, trackerRef }: User
       >
         {selectedMessage && (
           <div className="py-2">
-            <div className="text-xs text-[var(--ant-color-text-secondary)] mb-2">
-              {new Date(selectedMessage.timestamp).toLocaleString("zh-CN")}
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-xs text-[var(--ant-color-text-secondary)]">
+                {new Date(selectedMessage.timestamp).toLocaleString("zh-CN")}
+              </span>
+              {selectedMessage.isSensitive && (
+                <span
+                  className="text-xs px-2 py-0.5 rounded"
+                  style={{
+                    backgroundColor: "var(--ant-color-warning-bg)",
+                    color: "var(--ant-color-warning)",
+                    border: "1px solid var(--ant-color-warning-border)",
+                  }}
+                >
+                  已标记为敏感（脱敏显示）
+                </span>
+              )}
             </div>
-            <pre
-              className="whitespace-pre-wrap break-all text-sm"
-              style={{
-                fontFamily: "inherit",
-                color: "var(--ant-color-text)",
-                maxHeight: 300,
-                overflow: "auto",
-              }}
-            >
-              {selectedMessage.text}
-            </pre>
+            {selectedMessage.isSensitive && !revealSensitiveInModal ? (
+              <div
+                className="py-3 px-3 rounded text-sm"
+                style={{
+                  backgroundColor: "var(--ant-color-bg-elevated)",
+                  color: "var(--ant-color-text-secondary)",
+                  fontFamily: "inherit",
+                  maxHeight: 300,
+                  overflow: "auto",
+                }}
+              >
+                •••••••（{selectedMessage.text.length} 字符已脱敏）
+                <div className="mt-2">
+                  <Popconfirm
+                    title="显示原文"
+                    description="密码等敏感内容将以明文形式显示在屏幕上，确认继续？"
+                    okText="显示"
+                    cancelText="取消"
+                    onConfirm={() => setRevealSensitiveInModal(true)}
+                  >
+                    <button
+                      style={{
+                        padding: "2px 10px",
+                        fontSize: 12,
+                        backgroundColor: "transparent",
+                        color: "var(--ant-color-warning)",
+                        border: "1px solid var(--ant-color-warning-border)",
+                        borderRadius: 4,
+                        cursor: "pointer",
+                      }}
+                    >
+                      显示原文
+                    </button>
+                  </Popconfirm>
+                </div>
+              </div>
+            ) : (
+              <pre
+                className="whitespace-pre-wrap break-all text-sm"
+                style={{
+                  fontFamily: "inherit",
+                  color: "var(--ant-color-text)",
+                  maxHeight: 300,
+                  overflow: "auto",
+                }}
+              >
+                {selectedMessage.text}
+              </pre>
+            )}
           </div>
         )}
       </Modal>
