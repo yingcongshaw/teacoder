@@ -155,7 +155,7 @@ export function OnboardingGuide({
       accent: "#722ed1",
       accentSoft: "rgba(114, 46, 209, 0.10)",
       description:
-        "在项目下「新建会话」，起一个会话名，选择 CLI 工具（Claude Code / Codex / Gemini CLI / OpenCode），再选择 LLM 供应商和模型即可启动。",
+        "在项目下「新建会话」，选择「CLI工具」（Claude Code/ Codex/ Gemini CLI/ OpenCode），再选择「LLM供应商」和模型。",
       tips: [
         { label: "入口", value: "项目卡片右下角 ＋按钮" },
         { label: "必填", value: "会话名 · CLI 工具 · LLM 供应商 · 模型" },
@@ -262,7 +262,7 @@ export function OnboardingGuide({
         </div>
 
         {/* 描述 */}
-        <p className="text-sm leading-relaxed text-[var(--ant-color-text-secondary)] mb-5 max-w-md">
+        <p className="mt-0 text-sm leading-relaxed text-[var(--ant-color-text-secondary)] mb-5 max-w-md">
           {step.description}
         </p>
       </div>

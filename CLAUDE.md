@@ -66,7 +66,7 @@ TeaCoder 是一款 AI 编程 CLI 工具的桌面管理客户端（Tauri 2.x）�
 │   ├── App.tsx
 │   └── main.tsx
 ├── doc/
-│   ├── aicoder.md          # 产品路线文档
+│   ├── teacoder-roadmap.md # 产品路线文档
 │   └── requirements.md     # 需求说明书
 ├── package.json
 ├── tsconfig.json
