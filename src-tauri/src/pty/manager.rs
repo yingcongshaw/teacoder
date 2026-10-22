@@ -55,14 +55,21 @@ fn parse_ssh_args(json_str: &str) -> Option<SshArgs> {
 }
 
 /// 打印前脱敏 JSON 中常见敏感字段，避免密码等原文落进 stderr 与日志采集。
-/// 失败时返回原字符串（宁可记录原文也不丢上下文）。
+///
+/// 两处调用点都在失败分支，此时已无业务需要原文，故解析失败或结构异常时只返回
+/// 元信息：回落到 `json.to_string()` 会把明文密码直接写进日志。
 fn redact_secrets(json: &str) -> String {
     match serde_json::from_str::<serde_json::Value>(json) {
         Ok(mut v) => {
             redact_value(&mut v);
+            // 顶层是标量时无键名可依据，而 SSH 的 cli_args 约定必须是 JSON 对象，
+            // 这类内容本身就可能是密码原文，只能整体屏蔽。
+            if !v.is_object() && !v.is_array() {
+                return "<非对象/数组的 JSON，已屏蔽>".to_string();
+            }
             v.to_string()
         }
-        Err(_) => json.to_string(),
+        Err(e) => format!("<无法解析的 JSON，长度 {}，错误: {e}>", json.len()),
     }
 }
 
@@ -665,6 +672,30 @@ fn find_valid_utf8_boundary(data: &[u8]) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn redact_masks_password_field() {
+        let out = redact_secrets(
+            r#"{"hostname":"10.0.0.1","username":"root","password":"hunter2"}"#,
+        );
+        assert!(!out.contains("hunter2"), "密码原文泄漏: {out}");
+        assert!(out.contains("10.0.0.1"), "非敏感字段应保留: {out}");
+    }
+
+    /// 回归：解析失败时曾回落成原文，把明文密码直接写进 stderr。
+    #[test]
+    fn redact_does_not_leak_on_malformed_json() {
+        let out = redact_secrets(r#"{"password":"hunter2""#);
+        assert!(!out.contains("hunter2"), "密码原文泄漏: {out}");
+        assert!(out.contains("无法解析"), "应说明无法解析: {out}");
+    }
+
+    /// 回归：顶层标量没有键名可依据，其内容本身就可能是密码。
+    #[test]
+    fn redact_masks_top_level_scalar() {
+        assert!(!redact_secrets("\"hunter2\"").contains("hunter2"));
+        assert!(!redact_secrets("42").contains("42"));
+    }
 
     #[test]
     fn test_parse_ssh_args_valid() {
