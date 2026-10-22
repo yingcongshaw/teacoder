@@ -16,6 +16,7 @@ import QuickCommands from "../quick-commands/QuickCommands";
 import PaneView from "../panes/PaneView";
 import PaneSplitter from "../panes/PaneSplitter";
 import { TOOL_DISPLAY_NAMES } from "../../types";
+import { reportOpenTabError } from "../../utils/openTabError";
 
 const TOOL_COLORS: Record<string, string> = {
   claude: "#9254de",
@@ -230,9 +231,7 @@ export default function AppContent() {
                         setActiveTab(session.id);
                       } else {
                         openTab(session.id).catch((err) => {
-                          if (err?.message === "SESSION_DELETED") {
-                            message.error("会话被删除或不存在");
-                          }
+                          reportOpenTabError(message, err);
                         });
                       }
                     }}
@@ -301,9 +300,7 @@ export default function AppContent() {
                                 setActiveTab(session.id);
                               } else {
                                 openTab(session.id).catch((err) => {
-                                  if (err?.message === "SESSION_DELETED") {
-                                    message.error("会话被删除或不存在");
-                                  }
+                                  reportOpenTabError(message, err);
                                 });
                               }
                             }}

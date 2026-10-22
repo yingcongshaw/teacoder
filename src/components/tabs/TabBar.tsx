@@ -263,9 +263,9 @@ export default function TabBar({ paneId }: TabBarProps = {}) {
   return (
     <>
       <div
-        className="flex items-center overflow-x-auto"
+        className="flex flex-wrap items-center"
         style={{
-          height: 32,
+          minHeight: 32,
           backgroundColor: "var(--ant-color-bg-container)",
           borderBottom: "1px solid var(--ant-color-border-secondary)",
         }}
@@ -346,8 +346,9 @@ export default function TabBar({ paneId }: TabBarProps = {}) {
                   locateSession(tab.id);
                 }}
                 onDoubleClick={() => handleRename(tab)}
-                className="flex items-center gap-1 px-3 h-full cursor-pointer whitespace-nowrap text-xs"
+                className="flex items-center gap-1 px-3 h-8 cursor-pointer whitespace-nowrap text-xs"
                 style={{
+                  boxSizing: "border-box",
                   color: isActive ? "var(--ant-color-text)" : "var(--ant-color-text-secondary)",
                   borderRight: "1px solid var(--ant-color-border-secondary)",
                   backgroundColor: isActive ? "var(--ant-color-bg-layout)" : undefined,

@@ -18,6 +18,7 @@ import { useAppStore } from "../../stores/appStore";
 import { TOOL_DISPLAY_NAMES } from "../../types";
 import type { Project, Session, ToolType, SessionCategory } from "../../types";
 import { openPathInFileManager, openTerminal } from "../../utils/ipc";
+import { reportOpenTabError } from "../../utils/openTabError";
 
 const TOOL_COLORS: Record<string, string> = {
   claude: "#722ed1",
@@ -394,9 +395,7 @@ export default function ProjectNode({ project, sessions, categories }: ProjectNo
               setActiveTab(session.id);
             } else {
               openTab(session.id).catch((err) => {
-                if (err?.message === "SESSION_DELETED") {
-                  message.error("会话被删除或不存在");
-                }
+                reportOpenTabError(message, err);
               });
             }
           }}

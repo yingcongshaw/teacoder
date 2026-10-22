@@ -45,6 +45,11 @@ const QUICK_COMMANDS_KEY = "teacoder_quick_commands";
 const SPLIT_RATIO_KEY = "teacoder_split_ratio";
 const PANES_LAYOUT_KEY = "teacoder_panes_layout";
 
+// 已打开窗口数上限。每个 tab 常驻一个 PTY 子进程，超量会显著吃内存和 CPU。
+const MAX_OPEN_TABS = 18;
+// 超限时 openTab 抛这个哨兵码，由 UI 层翻译成提示文案（store 不碰 antd message）
+export const ERR_TOO_MANY_OPEN_TABS = "TOO_MANY_OPEN_TABS";
+
 function loadOpenTabIds(): string[] {
   try {
     const raw = localStorage.getItem(OPEN_TABS_KEY);
@@ -1074,6 +1079,11 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
     if (!targetSession) return;
     const session = targetSession;
+    // 数量上限：openTabIds 已按 session 去重，长度即"当前打开的窗口数"。
+    // 已在任意 pane 打开的 tab 只是切焦点，不占新名额。
+    if (!state.openTabIds.includes(id) && state.openTabIds.length >= MAX_OPEN_TABS) {
+      throw new Error(ERR_TOO_MANY_OPEN_TABS);
+    }
     // 从 projects 查找 workDir
     const project = state.projects.find((p) => p.id === session.projectId);
     const envVars = parseEnvVars(session.envVars || "");
@@ -1210,8 +1220,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         // 预设 activePaneId = p.id（p.id 当前不在 panes 里），openTab 看到后会按这个 id 新建 pane
         set((s) => ({ ...s, activePaneId: p.id }));
         for (const tabId of p.openTabIds) {
-          // 启动期静默吞掉 SESSION_DELETED：用户首次启动 app 不在屏幕前,
-          // 立即弹"会话被删除"会骚扰；该 tab 会以"未打开"呈现,
+          // 启动期静默吞掉 SESSION_DELETED / ERR_TOO_MANY_OPEN_TABS：用户首次启动 app
+          // 不在屏幕前，立即弹提示会骚扰；这些 tab 会以"未打开"呈现，
           // 后续在侧边栏点击时会再次触发预检并正常提示。
           get().openTab(tabId).catch(() => {});
         }
