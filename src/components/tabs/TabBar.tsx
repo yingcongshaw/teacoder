@@ -349,7 +349,7 @@ export default function TabBar({ paneId }: TabBarProps = {}) {
                 className="flex items-center gap-1 px-3 h-8 cursor-pointer whitespace-nowrap text-xs"
                 style={{
                   boxSizing: "border-box",
-                  color: isActive ? "var(--ant-color-text)" : "var(--ant-color-text-secondary)",
+                  color: isActive ? "var(--ant-color-text)" : "var(--ant-color-text-inactive)",
                   borderRight: "1px solid var(--ant-color-border-secondary)",
                   backgroundColor: isActive ? "var(--ant-color-bg-layout)" : undefined,
                   borderBottom: isActive ? "4px solid var(--ant-color-primary)" : "4px solid transparent",
@@ -379,7 +379,9 @@ export default function TabBar({ paneId }: TabBarProps = {}) {
                     onClick={(e) => e.stopPropagation()}
                   />
                 ) : (
-                  <span className="truncate max-w-[120px]">{tab.title || TOOL_DISPLAY_NAMES[tab.toolType]}</span>
+                  <span className={`truncate max-w-[120px] ${isActive ? "font-semibold" : ""}`}>
+                    {tab.title || TOOL_DISPLAY_NAMES[tab.toolType]}
+                  </span>
                 )}
                 {(() => {
                   const provider = llmProviders.find((p) => p.id === tab.llmProviderId);

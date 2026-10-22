@@ -435,7 +435,9 @@ export default function ProjectNode({ project, sessions, categories }: ProjectNo
               autoFocus
             />
           ) : (
-            <span className="flex-1 min-w-0 truncate">
+            <span
+              className={`flex-1 min-w-0 truncate ${isActive || isOpen ? "font-semibold" : ""}`}
+            >
               {session.title || TOOL_DISPLAY_NAMES[session.toolType]}
             </span>
           )}
