@@ -295,7 +295,7 @@ export default function ProjectNode({
       const rect = e.currentTarget.getBoundingClientRect();
       const after = e.clientY > rect.top + rect.height / 2;
       handleDragEnd();
-      await handleDrop(payload, rowKind, rowId, after);
+      await runDrop(payload, rowKind, rowId, after);
     },
   });
 
@@ -324,9 +324,23 @@ export default function ProjectNode({
       e.preventDefault();
       e.stopPropagation();
       handleDragEnd();
-      await handleDrop(payload, rowKind, rowId, true);
+      await runDrop(payload, rowKind, rowId, true);
     },
   });
+
+  /** 排序写库失败必须看得见 —— 静默失败会让人以为是拖拽没生效。 */
+  async function runDrop(
+    payload: SidebarDrag,
+    rowKind: DropRowKind,
+    rowId: string,
+    after: boolean,
+  ) {
+    try {
+      await handleDrop(payload, rowKind, rowId, after);
+    } catch (err) {
+      message.error(`排序保存失败：${err}`);
+    }
+  }
 
   const handleRenameSession = (session: Session) => {
     setRenamingSessionId(session.id);
@@ -694,7 +708,16 @@ export default function ProjectNode({
   return (
     <div
       className="mb-0.5 w-full min-w-0 border-t border-[var(--ant-color-border-secondary)]"
-      {...containerDropProps("project", project.id, (p) => p.kind === "session")}
+      {...containerDropProps(
+        "project",
+        project.id,
+        // 项目块可能有好几百像素高（分类 + 会话），只有顶上那条项目头认项目拖拽的话，
+        // 往块面里落等于没落。所以整块都接：头上一半/下一半仍按它自己的位置精确插入，
+        // 落在块面里则按"排到这个项目后面"处理 —— 块面就在它项目头的下方。
+        (p) =>
+          p.kind === "session" ||
+          (p.kind === "project" && p.id !== project.id && reorderEnabled),
+      )}
     >
       <Dropdown menu={{ items: contextMenuItems }} trigger={["contextMenu"]}>
         <div
