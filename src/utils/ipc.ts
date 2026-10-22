@@ -13,6 +13,7 @@ import type {
   CreateLlmProviderInput,
   UpdateLlmProviderInput,
   PresetProviderView,
+  TranscriptEntry,
 } from "../types";
 
 export async function detectCliTools(): Promise<CliTool[]> {
@@ -232,6 +233,20 @@ export async function claudeJsonlExists(
     cliSessionId,
     workDir,
     claudeConfigDir,
+  });
+}
+
+export async function claudeTranscriptRead(
+  cliSessionId: string,
+  workDir: string,
+  claudeConfigDir: string | null,
+  limit?: number,
+): Promise<TranscriptEntry[] | null> {
+  return invoke<TranscriptEntry[] | null>("claude_transcript_read", {
+    cliSessionId,
+    workDir,
+    claudeConfigDir,
+    limit,
   });
 }
 

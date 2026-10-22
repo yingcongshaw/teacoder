@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use crate::storage::AppDatabase;
 
 pub(crate) mod claude_path;
+pub mod claude_transcript;
 pub mod dedupe;
 mod ssh_secret;
 

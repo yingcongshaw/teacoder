@@ -150,6 +150,7 @@ pub fn run() {
             commands::session::session_update,
             commands::session::session_delete,
             commands::session::claude_jsonl_exists,
+            commands::session::claude_transcript_read,
             commands::session_category::category_list,
             commands::session_category::category_create,
             commands::session_category::category_update,

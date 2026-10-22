@@ -53,3 +53,21 @@ pub fn session_delete(
 ) -> Result<(), String> {
     session::delete_session(&db, &id)
 }
+
+/// 读取该 Claude 会话的 transcript 主线（真人输入 / AI 回复 / 工具调用）。
+///
+/// 返回 `None` 表示 transcript 不存在或无法定位（`cli_session_id` 缺失、
+/// 工作目录不匹配等），调用方应据此显示「未找到记录」而不是报错。
+#[tauri::command]
+pub fn claude_transcript_read(
+    work_dir: String,
+    claude_config_dir: Option<String>,
+    cli_session_id: String,
+    limit: Option<usize>,
+) -> Option<Vec<session::claude_transcript::TranscriptEntry>> {
+    let path = resolve_session_jsonl(claude_config_dir.as_deref(), &work_dir, &cli_session_id)
+        .filter(|p| p.exists())
+        .or_else(|| find_session_jsonl_anywhere(claude_config_dir.as_deref(), &cli_session_id))?;
+
+    session::claude_transcript::read_transcript(&path, limit.unwrap_or(300)).ok()
+}

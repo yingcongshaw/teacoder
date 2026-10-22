@@ -10,6 +10,7 @@ import { TERMINAL_COLOR_THEMES, DEFAULT_ANSI_COLORS } from "../../types";
 import { terminalThemeForAppTheme } from "../../themes";
 import { clipboardImageToProtocol, fileToProtocol } from "../../utils/image";
 import UserMessageTracker from "./UserMessageTracker";
+import TranscriptPanel from "../transcript/TranscriptPanel";
 import "@xterm/xterm/css/xterm.css";
 
 interface TerminalViewProps {
@@ -301,6 +302,24 @@ const TerminalView = forwardRef<TerminalViewHandle, TerminalViewProps>(function 
 
   const terminalSettings = useAppStore((s) => s.terminalSettings);
   const appTheme = useAppStore((s) => s.theme);
+
+  // 会话记录面板所需的定位信息。拆成独立 selector 而非一次返回对象，
+  // 避免每次渲染构造新对象触发无谓重渲染。
+  const sessionToolType = useAppStore(
+    (s) => s.sessions.find((x) => x.id === tabId)?.toolType ?? "terminal",
+  );
+  const sessionCliSessionId = useAppStore(
+    (s) => s.sessions.find((x) => x.id === tabId)?.cliSessionId ?? null,
+  );
+  const sessionWorkDir = useAppStore((s) => {
+    const pid = s.sessions.find((x) => x.id === tabId)?.projectId;
+    return pid ? s.projects.find((p) => p.id === pid)?.path ?? null : null;
+  });
+  // CLAUDE_CONFIG_DIR 由 Profile 的 appDataRoot 决定，与 pty.rs 启动时的注入保持一致
+  const sessionClaudeConfigDir = useAppStore((s) => {
+    const profId = s.sessions.find((x) => x.id === tabId)?.profileId;
+    return profId ? s.profiles.find((p) => p.id === profId)?.appDataRoot ?? null : null;
+  });
   const [systemDark, setSystemDark] = useState(
     () => window.matchMedia("(prefers-color-scheme: dark)").matches
   );
@@ -649,6 +668,16 @@ const TerminalView = forwardRef<TerminalViewHandle, TerminalViewProps>(function 
           tabId={tabId}
           xtermRef={xtermRef}
           trackerRef={trackerRef}
+        />
+      </div>
+      <div className="absolute top-2 right-2 z-10 flex items-center gap-2">
+        <TranscriptPanel
+          tabId={tabId}
+          toolType={sessionToolType}
+          cliSessionId={sessionCliSessionId}
+          workDir={sessionWorkDir}
+          claudeConfigDir={sessionClaudeConfigDir}
+          xtermRef={xtermRef}
         />
       </div>
     </div>
