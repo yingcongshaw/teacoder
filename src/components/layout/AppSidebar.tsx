@@ -64,7 +64,7 @@ export default function AppSidebar() {
             style={{ backgroundColor: "var(--ant-color-bg-elevated)", color: "var(--ant-color-text-secondary)", fontSize: 10 }}
             size="small"
           />
-          <span className="text-xs text-[var(--ant-color-text-secondary)] font-semibold tracking-wide">项目管理</span>
+          <span className="text-xs text-[var(--ant-color-text-secondary)] font-semibold tracking-wide">项目|会话管理</span>
         </div>
         <Tooltip title="新建项目">
           <Button
