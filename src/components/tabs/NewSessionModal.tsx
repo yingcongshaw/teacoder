@@ -1,12 +1,14 @@
 import { useState, useEffect, useRef } from "react";
-import { Input, Select, Tooltip, App, Button, Checkbox } from "antd";
+import { Input, Select, Tooltip, App, Checkbox } from "antd";
 import { useAppStore } from "../../stores/appStore";
 import { detectCliTools, testSshConnection, getToolSettings } from "../../utils/ipc";
 import { CLAUDE_TIER_ENTRIES } from "../../utils/claudeModels";
 import { BUILTIN_SESSION_TEMPLATES, TOOL_PROVIDER_KIND_MAP } from "../../types";
-import type { ToolType, CliTool, LlmProvider } from "../../types";
+import type { ToolType, CliTool, LlmProvider, SshArgs } from "../../types";
+import { EMPTY_SSH_ARGS, serializeSshArgs } from "../../utils/sshArgs";
 import { CLI_TOOLS, sortCliToolsByAvailability, isCliToolAvailable, type CliToolMeta } from "../cli/cliTools";
 import CliArgsClaude from "../cli/CliArgsClaude";
+import SshArgsFields from "../cli/SshArgsFields";
 
 interface NewSessionModalProps {
   open: boolean;
@@ -90,12 +92,7 @@ export default function NewSessionModal({ open: isOpen, projectId, categoryId, o
   }>({});
   const [profileLlmDefaults, setProfileLlmDefaults] = useState<{ defaultLlmProviderId?: string }>({});
 
-  const [sshHostname, setSshHostname] = useState("");
-  const [sshPort, setSshPort] = useState(22);
-  const [sshUsername, setSshUsername] = useState("root");
-  const [sshPassword, setSshPassword] = useState("");
-  const [sshPasswordVisible, setSshPasswordVisible] = useState(false);
-  const [sshIdentityFile, setSshIdentityFile] = useState("");
+  const [sshArgs, setSshArgs] = useState<SshArgs>(EMPTY_SSH_ARGS);
   const [testingConnection, setTestingConnection] = useState(false);
 
   const project = projects.find((p) => p.id === projectId);
@@ -168,12 +165,7 @@ export default function NewSessionModal({ open: isOpen, projectId, categoryId, o
       setTemplateId(undefined);
       setEnvVars("");
       setCliParams({});
-      setSshHostname("");
-      setSshPort(22);
-      setSshUsername("root");
-      setSshPassword("");
-      setSshPasswordVisible(false);
-      setSshIdentityFile("");
+      setSshArgs(EMPTY_SSH_ARGS);
       setSessionCategoryId(categoryId || undefined);
       setLlmProviderId(undefined);
       setModelName(undefined);
@@ -268,14 +260,7 @@ export default function NewSessionModal({ open: isOpen, projectId, categoryId, o
   const getToolInfo = (toolType: ToolType): CliTool | undefined =>
     cliTools.find((t) => t.toolType === toolType);
 
-  const buildSshArgs = (): string =>
-    JSON.stringify({
-      hostname: sshHostname,
-      port: sshPort,
-      username: sshUsername,
-      password: sshPassword,
-      identityFile: sshIdentityFile,
-    });
+  const buildSshArgs = (): string => serializeSshArgs(sshArgs);
 
   const compatibleProviders = (toolType: ToolType | null): LlmProvider[] => {
     if (!toolType) return [];
@@ -286,18 +271,18 @@ export default function NewSessionModal({ open: isOpen, projectId, categoryId, o
   };
 
   const handleTestSsh = async () => {
-    if (!sshHostname.trim()) {
+    if (!sshArgs.hostname.trim()) {
       message.warning("请填写主机名");
       return;
     }
     setTestingConnection(true);
     try {
       const result = await testSshConnection({
-        hostname: sshHostname,
-        port: sshPort,
-        username: sshUsername,
-        password: sshPassword || undefined,
-        identity_file: sshIdentityFile || undefined,
+        hostname: sshArgs.hostname,
+        port: sshArgs.port,
+        username: sshArgs.username,
+        password: sshArgs.password || undefined,
+        identity_file: sshArgs.identityFile || undefined,
       });
       message.success(result);
     } catch (err) {
@@ -316,7 +301,7 @@ export default function NewSessionModal({ open: isOpen, projectId, categoryId, o
       message.warning("请先创建或选择项目");
       return;
     }
-    if (selectedTool === "ssh" && !sshHostname.trim()) {
+    if (selectedTool === "ssh" && !sshArgs.hostname.trim()) {
       message.warning("请填写主机名");
       return;
     }
@@ -693,59 +678,12 @@ export default function NewSessionModal({ open: isOpen, projectId, categoryId, o
               <label style={{ display: "block", fontSize: 12, color: "#aaaaaa", marginBottom: 6 }}>
                 SSH 连接参数
               </label>
-              <div className="flex flex-col gap-2">
-                <div className="flex gap-2 items-center">
-                  <Input
-                    size="small"
-                    placeholder="主机名 *"
-                    value={sshHostname}
-                    onChange={(e) => setSshHostname(e.target.value)}
-                    style={{ flex: 2, backgroundColor: "var(--ant-color-bg-elevated)", borderColor: "var(--ant-color-border)", color: "var(--ant-color-text)" }}
-                  />
-                  <Input
-                    size="small"
-                    placeholder="端口"
-                    type="number"
-                    value={sshPort}
-                    onChange={(e) => setSshPort(parseInt(e.target.value) || 22)}
-                    style={{ flex: 1, backgroundColor: "var(--ant-color-bg-elevated)", borderColor: "var(--ant-color-border)", color: "var(--ant-color-text)" }}
-                  />
-                </div>
-                <Input
-                  size="small"
-                  placeholder="用户名（默认为 root）"
-                  value={sshUsername}
-                  onChange={(e) => setSshUsername(e.target.value)}
-                  style={{ backgroundColor: "var(--ant-color-bg-elevated)", borderColor: "var(--ant-color-border)", color: "var(--ant-color-text)" }}
-                />
-                <Input.Password
-                  size="small"
-                  placeholder="密码（PublicKey 优先）"
-                  value={sshPassword}
-                  onChange={(e) => setSshPassword(e.target.value)}
-                  visibilityToggle={{
-                    visible: sshPasswordVisible,
-                    onVisibleChange: setSshPasswordVisible,
-                  }}
-                  style={{ backgroundColor: "var(--ant-color-bg-elevated)", borderColor: "var(--ant-color-border)", color: "var(--ant-color-text)" }}
-                />
-                <Input
-                  size="small"
-                  placeholder="PublicKey 路径（如 ~/.ssh/id_rsa）"
-                  value={sshIdentityFile}
-                  onChange={(e) => setSshIdentityFile(e.target.value)}
-                  style={{ backgroundColor: "var(--ant-color-bg-elevated)", borderColor: "var(--ant-color-border)", color: "var(--ant-color-text)" }}
-                />
-                <div className="flex justify-end">
-                  <Button
-                    size="small"
-                    onClick={handleTestSsh}
-                    loading={testingConnection}
-                  >
-                    测试连接
-                  </Button>
-                </div>
-              </div>
+              <SshArgsFields
+                value={sshArgs}
+                onChange={setSshArgs}
+                onTest={handleTestSsh}
+                testing={testingConnection}
+              />
             </div>
           )}
 

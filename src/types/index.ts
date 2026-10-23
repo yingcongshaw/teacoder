@@ -67,6 +67,15 @@ export interface Project {
   sortOrder: number;
 }
 
+/** SSH 工具会话的连接参数。跨 IPC 传输时是明文，只有落 SQLite 时才被编码。 */
+export interface SshArgs {
+  hostname: string;
+  port: number;
+  username: string;
+  password: string;
+  identityFile: string;
+}
+
 /** Claude Code transcript 主线中的一条记录（真人输入 / AI 回复 / 工具调用）。 */
 export interface TranscriptEntry {
   uuid: string;
