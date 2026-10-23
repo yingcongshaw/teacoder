@@ -398,13 +398,29 @@ export default function FileTransferPanel({
             <div className="flex flex-col gap-2 px-3 py-2">
               {mode === "upload" ? (
                 <>
-                  <Input
-                    size="small"
-                    aria-label="远程目录"
-                    value={remoteDir}
-                    onChange={(e) => setRemoteDir(e.target.value)}
-                    placeholder="远程目录，如 ~/ 或 /var/log"
-                  />
+                  <div className="flex flex-col gap-1">
+                    <span className="text-xs text-[var(--ant-color-text-secondary)]">远程目录</span>
+                    <Input
+                      size="small"
+                      aria-label="远程目录"
+                      value={remoteDir}
+                      onChange={(e) => setRemoteDir(e.target.value)}
+                      placeholder="如 ~/ 或 /var/log"
+                    />
+                  </div>
+                  {uploadPaths.length > 0 ? (
+                    <ul className="text-xs text-[var(--ant-color-text-secondary)] max-h-24 overflow-y-auto">
+                      {uploadPaths.map((p) => (
+                        <li key={p} className="truncate">
+                          {p}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <span className="text-xs text-[var(--ant-color-text-tertiary)]">
+                      尚未选择文件
+                    </span>
+                  )}
                   <div className="flex gap-2">
                     <Button
                       size="small"
@@ -424,19 +440,6 @@ export default function FileTransferPanel({
                       上传
                     </Button>
                   </div>
-                  {uploadPaths.length > 0 ? (
-                    <ul className="text-xs text-[var(--ant-color-text-secondary)] max-h-24 overflow-y-auto">
-                      {uploadPaths.map((p) => (
-                        <li key={p} className="truncate">
-                          {p}
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <span className="text-xs text-[var(--ant-color-text-tertiary)]">
-                      尚未选择文件
-                    </span>
-                  )}
                 </>
               ) : (
                 <>
