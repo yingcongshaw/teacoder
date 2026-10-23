@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { Button, Input, Tooltip, Badge } from "antd";
 import {
   PlusOutlined,
@@ -6,6 +6,7 @@ import {
 } from "@ant-design/icons";
 import { useAppStore } from "../../stores/appStore";
 import ProjectNode from "../project/ProjectNode";
+import type { SidebarDrag } from "../../utils/sidebarSort";
 
 export default function AppSidebar() {
   const projects = useAppStore((s) => s.projects);
@@ -15,6 +16,18 @@ export default function AppSidebar() {
   const setNewSessionModalOpen = useAppStore((s) => s.setNewSessionModalOpen);
 
   const [searchQuery, setSearchQuery] = useState("");
+
+  /**
+   * 拖拽状态由这里统一持有，不能放进单个 ProjectNode —— 每个项目是独立组件实例，
+   * 拖 A 落到 B 时事件派发给 B 的实例，A 的实例里的 state 对 B 不可见。
+   * HTML5 的 dragover 阶段读不到 dataTransfer，落点判断只能靠这份共享状态。
+   */
+  const [drag, setDrag] = useState<SidebarDrag | null>(null);
+  const [dropKey, setDropKey] = useState<string | null>(null);
+  const endDrag = useCallback(() => {
+    setDrag(null);
+    setDropKey(null);
+  }, []);
 
   const filteredProjects = useMemo(() => {
     if (!searchQuery.trim()) return projects;
@@ -112,6 +125,11 @@ export default function AppSidebar() {
               project={project}
               sessions={getProjectSessions(project.id)}
               categories={categories}
+              drag={drag}
+              dropKey={dropKey}
+              onDragBegin={setDrag}
+              onDragEnd={endDrag}
+              onDropKeyChange={setDropKey}
               reorderEnabled={!searchQuery.trim()}
             />
           ))

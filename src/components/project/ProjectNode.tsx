@@ -79,6 +79,18 @@ interface ProjectNodeProps {
   sessions: Session[];
   categories: SessionCategory[];
   /**
+   * 手上正拖着什么。由 AppSidebar 持有而不是各 ProjectNode 自持 ——
+   * 每个项目是一个独立组件实例，拖 A 放到 B 时事件落在 B 的实例上，
+   * B 自己的 state 永远是 null，所有落点都会因为「没在拖」被拒掉。
+   * dragover 阶段读不到 dataTransfer，只能靠这份共享状态。
+   */
+  drag: SidebarDrag | null;
+  onDragBegin: (payload: SidebarDrag) => void;
+  onDragEnd: () => void;
+  /** 当前落点提示（`${行类型}:${行 id}:${before|after}`），null 表示没有提示。 */
+  dropKey: string | null;
+  onDropKeyChange: (key: string | null) => void;
+  /**
    * 是否允许项目换位。侧边栏搜索时列表是过滤过的，视口里的先后不等于真实顺序，
    * 此时按上下半重排会算错，所以由 AppSidebar 关掉。
    */
@@ -89,6 +101,11 @@ export default function ProjectNode({
   project,
   sessions,
   categories,
+  drag,
+  onDragBegin,
+  onDragEnd,
+  dropKey,
+  onDropKeyChange,
   reorderEnabled = true,
 }: ProjectNodeProps) {
   const projects = useAppStore((s) => s.projects);
@@ -132,9 +149,6 @@ export default function ProjectNode({
     (s) => s.projectId === project.id && !s.categoryId,
   );
 
-  /** 手上正拖着什么。HTML5 DnD 在 dragover 阶段读不到 dataTransfer，只能靠这个。 */
-  const [drag, setDrag] = useState<SidebarDrag | null>(null);
-  const [dropKey, setDropKey] = useState<string | null>(null);
 
   const handleRename = () => {
     setRenameValue(project.name);
@@ -198,8 +212,17 @@ export default function ProjectNode({
   };
 
   const handleDragEnd = () => {
-    setDrag(null);
-    setDropKey(null);
+    onDragEnd();
+  };
+
+  /**
+   * dropKey 也归 AppSidebar 持有：拖拽结束时要一次性清掉所有实例上的提示线，
+   * 而 dragend 只在拖拽源那个实例上触发，各实例自持就清不干净。
+   */
+  const setDropKey = (next: string | null | ((k: string | null) => string | null)) => {
+    const resolved = typeof next === "function" ? next(dropKey) : next;
+    // dragover 是高频事件，只在真的变了才往上抛
+    if (resolved !== dropKey) onDropKeyChange(resolved);
   };
 
   /** 这一行认不认当前手上的手势。不认就 return，让事件继续冒泡给外层原有逻辑。 */
@@ -545,7 +568,7 @@ export default function ProjectNode({
         <div
           draggable
           onDragStart={(e) => {
-            setDrag({ kind: "session", id: session.id });
+            onDragBegin({ kind: "session", id: session.id });
             writeDragPayload(e, { kind: "session", id: session.id });
             e.dataTransfer.effectAllowed = "move";
           }}
@@ -645,7 +668,7 @@ export default function ProjectNode({
           <div
             draggable
             onDragStart={(e) => {
-              setDrag({ kind: "category", id: category.id });
+              onDragBegin({ kind: "category", id: category.id });
               writeDragPayload(e, { kind: "category", id: category.id });
               e.dataTransfer.effectAllowed = "move";
             }}
@@ -723,7 +746,7 @@ export default function ProjectNode({
         <div
           draggable={reorderEnabled}
           onDragStart={(e) => {
-            setDrag({ kind: "project", id: project.id });
+            onDragBegin({ kind: "project", id: project.id });
             writeDragPayload(e, { kind: "project", id: project.id });
             e.dataTransfer.effectAllowed = "move";
           }}
