@@ -16,6 +16,9 @@ dist
 dist-ssr
 *.local
 
+# 一次性调试脚本：Playwright 打桩 IPC 复现交互问题，验证完即弃
+sidebar-dnd-*.mjs
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
