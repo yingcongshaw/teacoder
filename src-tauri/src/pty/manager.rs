@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use std::io::{Read, Write};
-use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
@@ -11,124 +10,19 @@ use portable_pty::{
 use tauri::Emitter;
 
 use super::ToolType;
-
-/// SSH 密码认证辅助脚本和密码文件的路径。
-/// stop_session 时清理。
-#[cfg(unix)]
-type SshAskpassPaths = Option<(PathBuf, PathBuf)>;
+use crate::ssh::askpass::AskpassGuard;
+use crate::ssh::{parse_ssh_args, redact_secrets, SshAuth};
 
 struct PtyEntry {
     master: Box<dyn MasterPty + Send>,
     writer: Mutex<Box<dyn std::io::Write + Send>>,
     reader_handle: Option<std::thread::JoinHandle<()>>,
     child: Box<dyn Child + Send>,
-    #[cfg(unix)]
-    ssh_askpass_paths: SshAskpassPaths,
-}
-
-/// SSH 连接参数
-#[derive(Debug, Default)]
-struct SshArgs {
-    hostname: String,
-    port: u16,
-    username: String,
-    password: String,
-    identity_file: String,
-}
-
-/// 解析 SSH 参数（从前端传入的 JSON 对象字符串）
-/// 前端 buildSshArgs() 返回的 JSON 形如：
-///   {"hostname":"...","port":22,"username":"root","password":"...","identityFile":"..."}
-/// 注意:SSH 的 cli_args 始终是 JSON 对象,不能用 `Vec<String>` 反序列化,
-/// 否则会被静默丢弃(unwrap_or_default() → 空 vec),导致 ssh 以零参数启动。
-fn parse_ssh_args(json_str: &str) -> Option<SshArgs> {
-    let json: serde_json::Value = serde_json::from_str(json_str).ok()?;
-    let obj = json.as_object()?;
-
-    Some(SshArgs {
-        hostname: obj.get("hostname").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-        port: obj.get("port").and_then(|v| v.as_u64()).unwrap_or(22) as u16,
-        username: obj.get("username").and_then(|v| v.as_str()).unwrap_or("root").to_string(),
-        password: obj.get("password").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-        identity_file: obj.get("identityFile").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-    })
-}
-
-/// 打印前脱敏 JSON 中常见敏感字段，避免密码等原文落进 stderr 与日志采集。
-///
-/// 两处调用点都在失败分支，此时已无业务需要原文，故解析失败或结构异常时只返回
-/// 元信息：回落到 `json.to_string()` 会把明文密码直接写进日志。
-fn redact_secrets(json: &str) -> String {
-    match serde_json::from_str::<serde_json::Value>(json) {
-        Ok(mut v) => {
-            redact_value(&mut v);
-            // 顶层是标量时无键名可依据，而 SSH 的 cli_args 约定必须是 JSON 对象，
-            // 这类内容本身就可能是密码原文，只能整体屏蔽。
-            if !v.is_object() && !v.is_array() {
-                return "<非对象/数组的 JSON，已屏蔽>".to_string();
-            }
-            v.to_string()
-        }
-        Err(e) => format!("<无法解析的 JSON，长度 {}，错误: {e}>", json.len()),
-    }
-}
-
-fn redact_value(v: &mut serde_json::Value) {
-    const KEYS: &[&str] = &[
-        "password", "passphrase", "token", "secret", "apiKey", "api_key", "privateKey",
-        "private_key", "identityFile", "identity_file",
-    ];
-    match v {
-        serde_json::Value::Object(map) => {
-            for (k, val) in map.iter_mut() {
-                if KEYS.iter().any(|name| name.eq_ignore_ascii_case(k)) {
-                    *val = serde_json::Value::String("***".into());
-                } else {
-                    redact_value(val);
-                }
-            }
-        }
-        serde_json::Value::Array(arr) => {
-            for item in arr.iter_mut() {
-                redact_value(item);
-            }
-        }
-        _ => {}
-    }
-}
-
-/// 创建 SSH_ASKPASS 辅助脚本与密码文件。
-/// 脚本读取密码文件并打印到 stdout;密码文件权限 0600,脚本权限 0755。
-/// 调用方负责在会话关闭时清理(`remove_ssh_askpass`)。
-#[cfg(unix)]
-fn create_ssh_askpass(password: &str) -> Result<(PathBuf, PathBuf), String> {
-    use std::os::unix::fs::PermissionsExt;
-
-    let pid = std::process::id();
-    let tmp_dir = std::env::temp_dir();
-    let script_path = tmp_dir.join(format!("teacoder-ssh-askpass-{pid}.sh"));
-    let pwd_file = tmp_dir.join(format!("teacoder-ssh-pwd-{pid}.txt"));
-
-    std::fs::write(&pwd_file, password)
-        .map_err(|e| format!("写入 SSH 密码临时文件失败: {e}"))?;
-    std::fs::set_permissions(&pwd_file, std::fs::Permissions::from_mode(0o600))
-        .map_err(|e| format!("设置 SSH 密码文件权限失败: {e}"))?;
-
-    let script = format!("#!/bin/sh\ncat '{path}'\n", path = pwd_file.display());
-    std::fs::write(&script_path, script)
-        .map_err(|e| format!("写入 SSH askpass 脚本失败: {e}"))?;
-    std::fs::set_permissions(&script_path, std::fs::Permissions::from_mode(0o755))
-        .map_err(|e| format!("设置 SSH askpass 脚本权限失败: {e}"))?;
-
-    Ok((script_path, pwd_file))
-}
-
-#[cfg(unix)]
-fn remove_ssh_askpass(paths: &SshAskpassPaths) {
-    if let Some((script, pwd)) = paths {
-        let _ = std::fs::remove_file(script);
-        let _ = std::fs::remove_file(pwd);
-    }
+    /// 密码认证的临时文件。Drop 即清理，进程被 kill 之外的所有路径都覆盖到。
+    ///
+    /// 字段从不被读取 —— 它存在的全部意义就是让 guard 活到 session 结束。
+    #[allow(dead_code)]
+    ssh_askpass: Option<AskpassGuard>,
 }
 
 /// 剥除 ANSI / VT 转义序列(CSI / SGR / 光标移动),Claude Code Ink TUI 反复重绘同一行
@@ -280,9 +174,8 @@ impl PtyManager {
 
         let mut cmd = CommandBuilder::new(&cmd_name);
 
-        // SSH 密码认证时保存 askpass 路径,会话关闭时清理
-        #[cfg(unix)]
-        let mut ssh_askpass_paths: SshAskpassPaths = None;
+        // SSH 密码认证时持有 askpass guard,会话关闭（或提前返回）时自动清理
+        let mut ssh_askpass: Option<AskpassGuard> = None;
         // SSH 不需要本地 work_dir，但 PTY 需要一个有效的目录
         #[cfg(unix)]
         cmd.cwd(if work_dir == "~" || work_dir.is_empty() {
@@ -344,55 +237,42 @@ impl PtyManager {
                     }
 
                     // 添加用户@主机
-                    let user_host = if ssh_args.username.is_empty() {
-                        ssh_args.hostname.clone()
-                    } else {
-                        format!("{}@{}", ssh_args.username, ssh_args.hostname)
-                    };
-                    cmd.arg(&user_host);
+                    cmd.arg(ssh_args.target());
 
-                    // 添加端口（如果不是默认22）
+                    // ssh 的端口是小写 -p（非默认 22 时才加）
                     if ssh_args.port != 22 {
                         cmd.arg("-p");
                         cmd.arg(ssh_args.port.to_string());
                     }
 
-                    // PublicKey 优先于 Password
-                    if !ssh_args.identity_file.is_empty() {
-                        // 使用公钥认证
-                        cmd.arg("-i");
-                        cmd.arg(&ssh_args.identity_file);
-                        cmd.arg("-o");
-                        cmd.arg("PreferredAuthentications=publickey");
-                    } else if !ssh_args.password.is_empty() {
-                        // 使用密码认证
-                        cmd.arg("-o");
-                        cmd.arg("PreferredAuthentications=password");
-                        cmd.arg("-o");
-                        cmd.arg("PubkeyAuthentication=no");
+                    match ssh_args.auth() {
+                        SshAuth::PublicKey(key_path) => {
+                            cmd.arg("-i");
+                            cmd.arg(&key_path);
+                            cmd.args(ssh_args.auth_opts());
+                        }
+                        SshAuth::Password(password) => {
+                            cmd.args(ssh_args.auth_opts());
 
-                        // 通过 SSH_ASKPASS 设置密码(动态生成辅助脚本与 0600 密码文件)
-                        match create_ssh_askpass(&ssh_args.password) {
-                            Ok((script_path, _pwd_file)) => {
-                                cmd.env("SSH_ASKPASS", &script_path);
-                                cmd.env("SSH_ASKPASS_REQUIRE", "force");
-                                #[cfg(unix)]
-                                {
-                                    ssh_askpass_paths = Some((script_path, _pwd_file));
+                            // 通过 SSH_ASKPASS 设置密码(动态生成辅助脚本与 0600 密码文件)
+                            match AskpassGuard::create(&password) {
+                                Ok(guard) => {
+                                    cmd.env("SSH_ASKPASS", guard.script_path());
+                                    cmd.env("SSH_ASKPASS_REQUIRE", "force");
+                                    ssh_askpass = Some(guard);
+                                }
+                                Err(e) => {
+                                    eprintln!("[PTY] 创建 SSH_ASKPASS 失败: {e}");
+                                    return Err(e);
                                 }
                             }
-                            Err(e) => {
-                                eprintln!("[PTY] 创建 SSH_ASKPASS 失败: {e}");
-                                return Err(e);
-                            }
                         }
+                        // 既无私钥也无密码：交给 ssh 走 agent 与默认密钥
+                        SshAuth::AgentOrDefault => {}
                     }
 
                     // 禁用严格的主机密钥检查（首次连接友好）
-                    cmd.arg("-o");
-                    cmd.arg("StrictHostKeyChecking=no");
-                    cmd.arg("-o");
-                    cmd.arg("UserKnownHostsFile=/dev/null");
+                    cmd.args(crate::ssh::SshArgs::common_opts());
                 } else {
                     eprintln!("[PTY] SSH 参数 JSON 解析失败，原始 cli_args: {}", redact_secrets(json));
                     return Err("SSH 参数 JSON 解析失败".to_string());
@@ -532,8 +412,6 @@ impl PtyManager {
             if let Some(handle) = existing.reader_handle.take() {
                 let _ = handle.join();
             }
-            #[cfg(unix)]
-            remove_ssh_askpass(&existing.ssh_askpass_paths);
         }
         sessions.remove(&tab_id);
         sessions.insert(
@@ -543,8 +421,7 @@ impl PtyManager {
                 writer: Mutex::new(writer),
                 reader_handle: Some(reader_handle),
                 child,
-                #[cfg(unix)]
-                ssh_askpass_paths,
+                ssh_askpass,
             },
         );
 
@@ -599,9 +476,7 @@ impl PtyManager {
             if let Some(handle) = entry.reader_handle.take() {
                 let _ = handle.join();
             }
-            // 清理 SSH askpass 临时文件
-            #[cfg(unix)]
-            remove_ssh_askpass(&entry.ssh_askpass_paths);
+            // entry 在此 drop，ssh_askpass guard 随之清理临时文件
         }
         Ok(())
     }
@@ -672,67 +547,6 @@ fn find_valid_utf8_boundary(data: &[u8]) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn redact_masks_password_field() {
-        let out = redact_secrets(
-            r#"{"hostname":"10.0.0.1","username":"root","password":"hunter2"}"#,
-        );
-        assert!(!out.contains("hunter2"), "密码原文泄漏: {out}");
-        assert!(out.contains("10.0.0.1"), "非敏感字段应保留: {out}");
-    }
-
-    /// 回归：解析失败时曾回落成原文，把明文密码直接写进 stderr。
-    #[test]
-    fn redact_does_not_leak_on_malformed_json() {
-        let out = redact_secrets(r#"{"password":"hunter2""#);
-        assert!(!out.contains("hunter2"), "密码原文泄漏: {out}");
-        assert!(out.contains("无法解析"), "应说明无法解析: {out}");
-    }
-
-    /// 回归：顶层标量没有键名可依据，其内容本身就可能是密码。
-    #[test]
-    fn redact_masks_top_level_scalar() {
-        assert!(!redact_secrets("\"hunter2\"").contains("hunter2"));
-        assert!(!redact_secrets("42").contains("42"));
-    }
-
-    #[test]
-    fn test_parse_ssh_args_valid() {
-        let json = r#"{"hostname":"192.168.1.1","port":2222,"username":"admin","password":"secret","identityFile":""}"#;
-        let parsed = parse_ssh_args(json).expect("should parse valid SSH JSON");
-        assert_eq!(parsed.hostname, "192.168.1.1");
-        assert_eq!(parsed.port, 2222);
-        assert_eq!(parsed.username, "admin");
-        assert_eq!(parsed.password, "secret");
-        assert_eq!(parsed.identity_file, "");
-    }
-
-    #[test]
-    fn test_parse_ssh_args_defaults() {
-        // 缺省字段应使用默认值
-        let json = r#"{"hostname":"host"}"#;
-        let parsed = parse_ssh_args(json).expect("should parse minimal SSH JSON");
-        assert_eq!(parsed.hostname, "host");
-        assert_eq!(parsed.port, 22);
-        assert_eq!(parsed.username, "root");
-        assert_eq!(parsed.password, "");
-        assert_eq!(parsed.identity_file, "");
-    }
-
-    #[test]
-    fn test_parse_ssh_args_rejects_array() {
-        // 数组形式(其他工具的 cli_args)不能作为 SSH 参数解析
-        let json = r#"["--some-arg","value"]"#;
-        assert!(parse_ssh_args(json).is_none());
-    }
-
-    #[test]
-    fn test_parse_ssh_args_rejects_invalid_json() {
-        assert!(parse_ssh_args("not-json").is_none());
-        assert!(parse_ssh_args("").is_none());
-    }
-
     #[test]
     fn test_valid_utf8_boundary_ascii() {
         assert_eq!(find_valid_utf8_boundary(b"hello"), 5);

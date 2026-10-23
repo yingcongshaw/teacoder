@@ -9,6 +9,7 @@ mod pty;
 mod session;
 mod session_category;
 mod session_message;
+mod ssh;
 mod storage;
 mod tool_settings;
 mod tray;
