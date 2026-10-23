@@ -352,7 +352,8 @@ export default function TabBar({ paneId }: TabBarProps = {}) {
                   color: isActive ? "var(--ant-color-text)" : "var(--ant-color-text-inactive)",
                   borderRight: "1px solid var(--ant-color-border-secondary)",
                   backgroundColor: isActive ? "var(--ant-color-bg-layout)" : undefined,
-                  borderBottom: isActive ? "4px solid var(--ant-color-primary)" : "4px solid transparent",
+                  // 激活/未激活同宽，未激活用 transparent 占位，切换时下边框不会顶动内容
+                  borderBottom: isActive ? "2px solid var(--ant-color-primary)" : "2px solid transparent",
                   transition: "background-color 0.15s",
                 }}
                 onMouseEnter={(e) => {
