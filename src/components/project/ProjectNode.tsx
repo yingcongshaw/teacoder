@@ -622,7 +622,7 @@ export default function ProjectNode({
             />
           ) : (
             <span
-              className={`flex-1 min-w-0 truncate ${isActive || isOpen ? "font-semibold" : ""}`}
+              className={`flex-1 min-w-0 truncate ${isActive ? "font-semibold" : ""}`}
             >
               {session.title || TOOL_DISPLAY_NAMES[session.toolType]}
             </span>
