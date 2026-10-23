@@ -10,6 +10,7 @@ import {
 } from "@ant-design/icons";
 import { Tooltip } from "antd";
 import { claudeTranscriptRead } from "../../utils/ipc";
+import { MarkdownBody } from "./MarkdownBody";
 import type { TranscriptEntry } from "../../types";
 
 interface TranscriptPanelProps {
@@ -287,7 +288,7 @@ const load = useCallback(async (background = false) => {
           ref={panelRef}
           className="absolute top-10 right-10 z-20 flex flex-col"
           style={{
-            width: 400,
+            width: 500,
             // 相对终端容器高度(panelHostRef)解析,不是视口高度。
             maxHeight: "78%",
             background: "var(--ant-color-bg-elevated)",
@@ -446,17 +447,8 @@ const load = useCallback(async (background = false) => {
                             </button>
                           </div>
                         </div>
-                        <div
-                          className="text-xs whitespace-pre-wrap break-words"
-                          style={{
-                            color: "var(--ant-color-text)",
-                            display: "-webkit-box",
-                            WebkitLineClamp: 6,
-                            WebkitBoxOrient: "vertical",
-                            overflow: "hidden",
-                          }}
-                        >
-                          {t.prompt.text}
+                        <div className="text-xs">
+                          <MarkdownBody text={t.prompt.text} clampLines={6} />
                         </div>
                       </div>
                     </div>
@@ -504,17 +496,8 @@ const load = useCallback(async (background = false) => {
                                   </button>
                                 )}
                               </div>
-                              <div
-                                className="text-xs whitespace-pre-wrap break-words"
-                                style={{
-                                  color: "var(--ant-color-text)",
-                                  display: "-webkit-box",
-                                  WebkitLineClamp: 6,
-                                  WebkitBoxOrient: "vertical",
-                                  overflow: "hidden",
-                                }}
-                              >
-                                {r.text}
+                              <div className="text-xs">
+                                <MarkdownBody text={r.text} clampLines={6} />
                               </div>
                             </div>
                           );

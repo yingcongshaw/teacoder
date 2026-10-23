@@ -77,3 +77,109 @@ html, body, #root {
   width: 20px !important;
   min-width: 20px !important;
 }
+
+/*
+ * 会话记录面板的 markdown 正文。
+ * 正文是 text-xs(12px) 且面板只有 500px 宽，markdown 默认的标题尺寸、
+ * 段落外边距、代码块留白都会撑破版面，因此整体压缩。
+ * 放在这里而非内联样式，是因为"pre 内的 code 要抹掉行内背景"这类
+ * 父子覆盖无法用 inline style 表达。
+ */
+.md-body {
+  color: var(--ant-color-text);
+  line-height: 1.6;
+  word-break: break-word;
+}
+
+.md-body > *:first-child { margin-top: 0; }
+.md-body > *:last-child { margin-bottom: 0; }
+
+/* 标题是段落的定位锚点而非版式元素，统一压成加粗行，只用字号区分层级 */
+.md-body h1, .md-body h2, .md-body h3,
+.md-body h4, .md-body h5, .md-body h6 {
+  font-weight: 600;
+  line-height: 1.5;
+  color: var(--ant-color-text);
+}
+.md-body h1 { font-size: 1.15em; margin: 8px 0 4px; }
+.md-body h2 { font-size: 1.1em;  margin: 7px 0 3px; }
+.md-body h3 { font-size: 1.05em; margin: 6px 0 3px; }
+.md-body h4, .md-body h5, .md-body h6 { font-size: 1em; margin: 5px 0 2px; }
+
+.md-body p { margin: 0 0 5px; }
+
+.md-body ul, .md-body ol { margin: 0 0 5px; padding-left: 18px; }
+.md-body li { margin: 1px 0; }
+/* 松散列表里的条目会再套一层 <p>，默认外边距会把列表撑得很松 */
+.md-body li > p { margin: 0; }
+.md-body li > p + p { margin-top: 4px; }
+
+.md-body blockquote {
+  margin: 0 0 5px;
+  padding-left: 8px;
+  border-left: 2px solid var(--ant-color-border);
+  color: var(--ant-color-text-secondary);
+}
+
+.md-body hr {
+  border: none;
+  border-top: 1px solid var(--ant-color-border-secondary);
+  margin: 6px 0;
+}
+
+/* 表格列多时横向溢出。滚动容器必须是 table 外的独立 div ——
+   display:table 自身加 overflow-x 不会溢出,内部匿名表格会被压回容器宽度。
+   max-content + min-width:100% 的组合让窄表铺满面板、宽表溢出后可滚。 */
+.md-table-wrap {
+  overflow-x: auto;
+  margin: 0 0 6px;
+}
+.md-body table {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: collapse;
+  font-size: 0.95em;
+}
+/* 边框不能用 border-secondary:该色在亮色下是 #f0f0f0、暗色下是 #303030,
+   两种主题里都几乎看不见格子边界 */
+.md-body th, .md-body td {
+  border: 1px solid var(--ant-color-border);
+  padding: 3px 6px;
+  text-align: left;
+}
+.md-body th {
+  font-weight: 600;
+  background: var(--ant-color-fill-quaternary);
+  white-space: nowrap;
+}
+
+.md-body code {
+  font-family: 'Sarasa Mono SC', 'Noto Sans Mono CJK SC', Consolas, monospace;
+  font-size: 0.92em;
+  background: rgba(127, 127, 127, 0.16);
+  padding: 0 3px;
+  border-radius: 3px;
+}
+
+.md-body pre {
+  background: var(--ant-color-fill-quaternary);
+  padding: 6px 8px;
+  border-radius: 4px;
+  overflow-x: auto;
+  margin: 0 0 6px;
+}
+/* 块级代码的 code 复用行内样式会叠一层底色,外层 pre 已经提供底色 */
+.md-body pre code { background: transparent; padding: 0; border-radius: 0; }
+
+/* 横向滚动条默认 15px 高,在 500px 宽的面板里太占地方 */
+.md-body pre::-webkit-scrollbar,
+.md-table-wrap::-webkit-scrollbar { height: 6px; }
+.md-body pre::-webkit-scrollbar-thumb,
+.md-table-wrap::-webkit-scrollbar-thumb {
+  background: var(--ant-color-fill-secondary);
+  border-radius: 3px;
+}
+.md-body pre::-webkit-scrollbar-track,
+.md-table-wrap::-webkit-scrollbar-track { background: transparent; }
+
+.md-body a { color: var(--ant-color-primary); text-decoration: underline; }
