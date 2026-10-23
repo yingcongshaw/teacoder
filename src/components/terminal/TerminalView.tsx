@@ -11,6 +11,7 @@ import { terminalThemeForAppTheme } from "../../themes";
 import { clipboardImageToProtocol, fileToProtocol } from "../../utils/image";
 import { useUserMessageCapture, type UserMessageCaptureHandle } from "./useUserMessageCapture";
 import TranscriptPanel from "../transcript/TranscriptPanel";
+import FileTransferPanel from "./FileTransferPanel";
 import "@xterm/xterm/css/xterm.css";
 
 interface TerminalViewProps {
@@ -676,6 +677,12 @@ const TerminalView = forwardRef<TerminalViewHandle, TerminalViewProps>(function 
           workDir={sessionWorkDir}
           claudeConfigDir={sessionClaudeConfigDir}
           xtermRef={xtermRef}
+          panelHostRef={panelHostRef}
+        />
+        <FileTransferPanel
+          tabId={tabId}
+          toolType={sessionToolType}
+          workDir={sessionWorkDir}
           panelHostRef={panelHostRef}
         />
       </div>

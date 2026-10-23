@@ -60,8 +60,10 @@ pub struct TransferSummary {
 }
 
 /// 传输目标。SSH 工具会话的凭据由后端从数据库解析，前端碰不到密码。
-#[derive(Debug, serde::Deserialize)]
-#[serde(tag = "kind", rename_all = "camelCase")]
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+// rename_all 只管变体名；变体里的字段名要另写 rename_all_fields 才会跟着变，
+// 漏了它 session_id / identity_file 会以蛇形过 IPC，与前端其余接口的 camelCase 不一致。
+#[serde(tag = "kind", rename_all = "camelCase", rename_all_fields = "camelCase")]
 pub enum SshTarget {
     /// 已有 SSH 会话：按 session_id 从库里取 cli_args。
     FromSession { session_id: String },
@@ -382,6 +384,21 @@ async fn run_scp_once(
     let mut child = cmd.spawn().map_err(|e| TransferError::Spawn(e.to_string()))?;
     let stderr_task = child.stderr.take().map(|s| tokio::spawn(async move { StderrTail::pump(s).await }));
 
+    // 先发一次 0 字节的进度：transferId 只在这里和最终结果里出现，
+    // 第一次节流事件要等 300ms 之后的第一个 tick —— 那之前前端拿不到 id，
+    // 「取消」按钮点了也是空的。
+    let _ = ctx.app.emit(
+        "ssh_transfer:progress",
+        serde_json::json!({
+            "tabId": spec.tab_id,
+            "transferId": ctx.transfer_id,
+            "direction": spec.direction.as_str(),
+            "bytes": probe(),
+            "totalBytes": total_bytes,
+            "elapsedMs": 0,
+        }),
+    );
+
     let mut ticker = tokio::time::interval(Duration::from_millis(300));
     ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     let started = Instant::now();
@@ -689,6 +706,53 @@ mod tests {
         let p = std::env::temp_dir().join(format!("teacoder-t-{tag}-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&p).unwrap();
         p
+    }
+
+    /// 钉死过 IPC 的 JSON 形状。前端按 `kind` + camelCase 字段构造请求，
+    /// serde 在枚举上的 `rename_all` 与 `rename_all_fields` 作用对象不同，
+    /// 少写后者只会让字段悄悄退回蛇形 —— 从 TS 侧看不出来，只在真机上表现为
+    /// 「参数全空」。所以这里断言完整字面量而不是靠推理。
+    #[test]
+    fn ssh_target_json_shape_is_camel_case() {
+        let json = serde_json::to_string(&SshTarget::FromSession {
+            session_id: "s1".into(),
+        })
+        .unwrap();
+        assert_eq!(json, r#"{"kind":"fromSession","sessionId":"s1"}"#);
+
+        let json = serde_json::to_string(&SshTarget::Manual {
+            hostname: "h".into(),
+            port: Some(2222),
+            username: Some("root".into()),
+            password: None,
+            identity_file: Some("/k".into()),
+        })
+        .unwrap();
+        assert_eq!(
+            json,
+            r#"{"kind":"manual","hostname":"h","port":2222,"username":"root","password":null,"identityFile":"/k"}"#,
+            "可选字段缺省时序列化成 null；反序列化侧有 #[serde(default)]，null 与缺失等价"
+        );
+    }
+
+    #[test]
+    fn ssh_target_roundtrips_from_frontend_json() {
+        let t: SshTarget = serde_json::from_str(
+            r#"{"kind":"manual","hostname":"10.0.0.9","identityFile":"/home/u/.ssh/id_ed25519"}"#,
+        )
+        .unwrap();
+        let SshTarget::Manual {
+            hostname,
+            port,
+            identity_file,
+            ..
+        } = t
+        else {
+            panic!("应解析成 Manual");
+        };
+        assert_eq!(hostname, "10.0.0.9");
+        assert_eq!(port, None, "缺省应回落成 None，由后端补 22");
+        assert_eq!(identity_file.as_deref(), Some("/home/u/.ssh/id_ed25519"));
     }
 
     /// 建一个会话，返回它的 id。

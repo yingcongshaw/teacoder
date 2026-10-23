@@ -76,6 +76,53 @@ export interface SshArgs {
   identityFile: string;
 }
 
+/**
+ * 传输目标。与后端 `ssh::transfer::SshTarget` 一一对应，字段名的 camelCase
+ * 由 Rust 侧的 `rename_all_fields` 保证（形状有单测钉死）。
+ */
+export type SshTarget =
+  | { kind: "fromSession"; sessionId: string }
+  | {
+      kind: "manual";
+      hostname: string;
+      port?: number;
+      username?: string;
+      password?: string;
+      identityFile?: string;
+    };
+
+/** 传输完成后的单个文件落点。 */
+export interface TransferredFile {
+  source: string;
+  destination: string;
+  bytes: number;
+}
+
+export interface TransferSummary {
+  transferId: string;
+  direction: "upload" | "download";
+  files: TransferredFile[];
+  /** 实际用到的协议。legacy-scp 表示远程没装 sftp-server，已回退。 */
+  protocol: "sftp" | "legacy-scp";
+  usedFallback: boolean;
+  elapsedMs: number;
+}
+
+/**
+ * `ssh_transfer:progress` 事件载荷。
+ *
+ * 下载的 totalBytes 恒为 null —— 拿远程文件大小要另开一条连接，代价大于收益。
+ * 所以上传可给百分比，下载只能报已收字节数，不编造总量。
+ */
+export interface TransferProgress {
+  tabId: string;
+  transferId: string;
+  direction: "upload" | "download";
+  bytes: number;
+  totalBytes: number | null;
+  elapsedMs: number;
+}
+
 /** Claude Code transcript 主线中的一条记录（真人输入 / AI 回复 / 工具调用）。 */
 export interface TranscriptEntry {
   uuid: string;

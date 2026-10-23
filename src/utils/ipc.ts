@@ -14,6 +14,8 @@ import type {
   UpdateLlmProviderInput,
   PresetProviderView,
   TranscriptEntry,
+  SshTarget,
+  TransferSummary,
 } from "../types";
 
 export async function detectCliTools(): Promise<CliTool[]> {
@@ -59,6 +61,50 @@ export async function testSshConnection(params: {
   identity_file?: string;
 }): Promise<string> {
   return invoke("test_ssh_connection", { params });
+}
+
+/** 把若干本地文件上传到远程目录。传输期间进度走 `ssh_transfer:progress` 事件。 */
+export async function sshUpload(params: {
+  target: SshTarget;
+  tabId: string;
+  localPaths: string[];
+  remotePath: string;
+}): Promise<TransferSummary> {
+  return invoke("ssh_upload", {
+    target: params.target,
+    tabId: params.tabId,
+    localPaths: params.localPaths,
+    remotePath: params.remotePath,
+  });
+}
+
+/** 把单个远程文件下载到本地目录。重名时后端自动加序号。 */
+export async function sshDownload(params: {
+  target: SshTarget;
+  tabId: string;
+  remotePath: string;
+  localDir: string;
+}): Promise<TransferSummary> {
+  return invoke("ssh_download", {
+    target: params.target,
+    tabId: params.tabId,
+    remotePath: params.remotePath,
+    localDir: params.localDir,
+  });
+}
+
+/** 请求取消进行中的传输。返回 false 表示该任务已结束或 id 未知。 */
+export async function sshTransferCancel(transferId: string): Promise<boolean> {
+  return invoke("ssh_transfer_cancel", { transferId });
+}
+
+/**
+ * 探测 SSH 会话远程的当前目录。仅 SSH 工具会话有意义 ——
+ * Terminal 会话的 PTY 是本地 shell，返回的会是本地路径，故不在其上调用。
+ * 失败或超时时抛错，调用方应回落 `~/`。
+ */
+export async function sshProbeRemoteCwd(tabId: string): Promise<string> {
+  return invoke("ssh_probe_remote_cwd", { tabId });
 }
 
 export async function listProfiles(toolType?: string): Promise<Profile[]> {
