@@ -129,6 +129,7 @@ pub fn run() {
             }
         })
         .manage(PtyManager::new())
+        .manage(crate::ssh::registry::TransferRegistry::new())
         .invoke_handler(tauri::generate_handler![
             commands::cli::detect_cli_tools,
             commands::pty::start_session,
@@ -136,6 +137,10 @@ pub fn run() {
             commands::pty::write_to_pty,
             commands::pty::resize_pty,
             commands::pty::test_ssh_connection,
+            commands::ssh::ssh_upload,
+            commands::ssh::ssh_download,
+            commands::ssh::ssh_transfer_cancel,
+            commands::ssh::ssh_probe_remote_cwd,
             commands::profile::list_profiles,
             commands::profile::create_profile,
             commands::profile::update_profile,

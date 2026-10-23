@@ -102,6 +102,27 @@ fn row_to_session(row: &rusqlite::Row) -> Result<Session, rusqlite::Error> {
 
 const SESSION_COLUMNS: &str = "id, project_id, title, tool_type, profile_id, color, thinking_intensity, template_id, cli_args, env_vars, is_running, created_at, updated_at, closed_at, cli_session_id, category_id, llm_provider_id, model_name, claude_models, sort_order";
 
+/// 按 id 取单个会话。
+///
+/// 走 [`row_to_session`] 因而与 `list_sessions` 同一口径：`cli_args` 里的 SSH
+/// 密码已被解回明文。这让文件传输能在后端直接取到连接参数，前端无需参与，
+/// 因此也无需改动 `ssh_secret` 的模块可见性。
+pub fn find_session(db: &AppDatabase, id: &str) -> Result<Option<Session>, String> {
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let mut stmt = conn
+        .prepare(&format!(
+            "SELECT {} FROM sessions WHERE id = ?1",
+            SESSION_COLUMNS
+        ))
+        .map_err(|e| format!("Failed to prepare query: {}", e))?;
+
+    match stmt.query_row([id], row_to_session) {
+        Ok(session) => Ok(Some(session)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(format!("Failed to query session: {}", e)),
+    }
+}
+
 pub fn list_sessions(
     db: &AppDatabase,
     project_id: Option<&str>,

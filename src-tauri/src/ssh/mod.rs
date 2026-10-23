@@ -10,6 +10,8 @@
 //!   `-P`，由各调用方按自己的语法追加。
 
 pub mod askpass;
+pub mod registry;
+pub mod transfer;
 
 use std::fmt;
 
@@ -96,6 +98,12 @@ impl SshArgs {
             "-o".into(),
             "UserKnownHostsFile=/dev/null".into(),
         ]
+    }
+
+    /// 协议能力缓存的 key。同一主机的多次传输必须命中同一条记录，
+    /// 否则每传一次都要双跑一遍才能发现「这台机器没装 sftp-server」。
+    pub fn cache_key(&self) -> String {
+        format!("{}@{}:{}", self.username, self.hostname, self.port)
     }
 }
 
