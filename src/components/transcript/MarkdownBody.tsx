@@ -1,14 +1,20 @@
-import { memo } from "react";
+import { memo, useMemo } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeSanitize from "rehype-sanitize";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { message } from "antd";
+import { rehypeHighlight } from "./markdownHighlight";
 
 /** 插件数组必须是模块级常量:react-markdown 按数组引用判断是否重跑
  *  unified 流水线,每次渲染传新字面量会把整棵 markdown 树重新解析+消毒。 */
 const REMARK_PLUGINS = [remarkGfm];
-const REHYPE_PLUGINS = [rehypeSanitize];
+
+/** 从组件自身反推 rehypePlugins 的类型 —— unified 的 Pluggable 元组类型
+ *  推不出来(嵌套数组会被当成联合数组),为此单独引 unified 只为拿类型不划算。 */
+type RehypePlugins = NonNullable<
+  React.ComponentProps<typeof ReactMarkdown>["rehypePlugins"]
+>;
 
 /**
  * 打开链接。
@@ -76,6 +82,11 @@ interface MarkdownBodyProps {
   text: string;
   /** 超过该行数就截断;不传则完整展开 */
   clampLines?: number;
+  /**
+   * 搜索关键词。非空时命中文字会包成 <mark>。
+   * 调用方必须用 useMemo 保住引用，否则每次渲染都会重跑整条流水线。
+   */
+  tokens: readonly string[];
 }
 
 /**
@@ -87,7 +98,16 @@ interface MarkdownBodyProps {
 export const MarkdownBody = memo(function MarkdownBody({
   text,
   clampLines,
+  tokens,
 }: MarkdownBodyProps) {
+  // 高亮插件要闭包住 tokens，只能在这里现造 —— 但数组引用只在 tokens 变化时
+  // 才变，等于"关键词变了才重跑流水线"，正是需要的粒度。
+  const rehypePlugins = useMemo(
+    () =>
+      [rehypeSanitize, [rehypeHighlight, { tokens: tokens as string[] }]] as unknown as RehypePlugins,
+    [tokens],
+  );
+
   return (
     <div
       className="md-body"
@@ -104,7 +124,7 @@ export const MarkdownBody = memo(function MarkdownBody({
     >
       <ReactMarkdown
         remarkPlugins={REMARK_PLUGINS}
-        rehypePlugins={REHYPE_PLUGINS}
+        rehypePlugins={rehypePlugins}
         components={MARKDOWN_COMPONENTS}
       >
         {text}

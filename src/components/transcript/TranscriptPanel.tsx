@@ -7,10 +7,14 @@ import {
   ReloadOutlined,
   CloseOutlined,
   ToolOutlined,
+  SearchOutlined,
+  FullscreenOutlined,
+  FullscreenExitOutlined,
 } from "@ant-design/icons";
-import { Tooltip } from "antd";
+import { Input, Tooltip } from "antd";
 import { claudeTranscriptRead } from "../../utils/ipc";
 import { MarkdownBody } from "./MarkdownBody";
+import { tokenizeQuery } from "./markdownHighlight";
 import type { TranscriptEntry } from "../../types";
 
 interface TranscriptPanelProps {
@@ -141,11 +145,25 @@ export default function TranscriptPanel({
   const [state, setState] = useState<LoadState>("idle");
   const [hint, setHint] = useState("");
   const [toolFilter, setToolFilter] = useState(true);
+  const [maximized, setMaximized] = useState(false);
+  const [query, setQuery] = useState("");
   const [expandedKeys, setExpandedKeys] = useState<ReadonlySet<string>>(() => new Set());
   const scrollRef = useRef<HTMLDivElement>(null);
   const cursorRef = useRef(0);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
+  const threadRefs = useRef(new Map<string, HTMLDivElement>());
+
+  // 输入框跟手、高亮允许滞后:每敲一个键若同步重跑一遍 markdown 流水线,
+  // 11 条提问会明显卡顿。这里用防抖而非 useDeferredValue —— 后者虽然不阻塞
+  // 输入,但后台渲染仍与主线程争抢时间,长会话里表现反而更糟。
+  const [settledQuery, setSettledQuery] = useState("");
+  useEffect(() => {
+    const timer = setTimeout(() => setSettledQuery(query), 220);
+    return () => clearTimeout(timer);
+  }, [query]);
+  const tokens = useMemo(() => tokenizeQuery(settledQuery), [settledQuery]);
+  const searching = tokens.length > 0;
 
   const supported = AI_TOOLS.has(toolType);
 
@@ -234,11 +252,56 @@ const load = useCallback(async (background = false) => {
     });
   }, []);
 
+  /**
+   * 命中「提问 + 其后回应」的 thread。
+   *
+   * 按 visibleReplies 判定而非全量 replies:工具调用被过滤掉时用户看不到那些文字,
+   * 让它们参与命中会出现"标了命中却找不到在哪"的困惑。
+   */
+  const matchedKeys = useMemo(() => {
+    const hit = new Set<string>();
+    if (!searching) return hit;
+    for (const t of threads) {
+      const haystack = [t.prompt.text, ...visibleReplies(t).map((r) => r.text)];
+      if (haystack.some((text) => tokens.some((k) => text.includes(k)))) {
+        hit.add(t.key);
+      }
+    }
+    return hit;
+  }, [threads, tokens, searching, visibleReplies]);
+
+  const firstMatchKey = useMemo(
+    () => threads.find((t) => matchedKeys.has(t.key))?.key ?? null,
+    [threads, matchedKeys],
+  );
+
+  // 跳到首个命中。依赖只有 firstMatchKey —— 轮询新增条目时它通常不变，
+  // 列表不会被反复拽走。
   useEffect(() => {
-    if (open && scrollRef.current) {
+    if (!firstMatchKey) return;
+    threadRefs.current
+      .get(firstMatchKey)
+      ?.scrollIntoView({ block: "start", inline: "start", behavior: "smooth" });
+  }, [firstMatchKey]);
+
+  // 命中可能落在收起的回应里，不展开就看不到高亮。
+  // 返回 prev 保住引用，用户手动收起后不会因为依赖没变而被重新展开。
+  useEffect(() => {
+    if (!firstMatchKey) return;
+    setExpandedKeys((prev) => {
+      if (prev.has(firstMatchKey)) return prev;
+      const next = new Set(prev);
+      next.add(firstMatchKey);
+      return next;
+    });
+  }, [firstMatchKey]);
+
+  useEffect(() => {
+    // 搜索期间不抢滚动：定位由上面的跳转负责，否则两处会互相抢位置
+    if (open && scrollRef.current && !searching) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [threads, open]);
+  }, [threads, open, searching]);
 
   const jumpTo = useCallback(
     (entry: TranscriptEntry) => {
@@ -286,11 +349,11 @@ const load = useCallback(async (background = false) => {
       {open && panelHostRef.current && createPortal(
         <div
           ref={panelRef}
-          className="absolute top-10 right-10 z-20 flex flex-col"
+          className={`absolute z-20 flex flex-col ${maximized ? "top-0 right-0" : "top-10 right-10"}`}
           style={{
-            width: 500,
+            width: maximized ? "100%" : 500,
             // 相对终端容器高度(panelHostRef)解析,不是视口高度。
-            maxHeight: "78%",
+            maxHeight: maximized ? "100%" : "78%",
             background: "var(--ant-color-bg-elevated)",
             border: "1px solid var(--ant-color-border-secondary)",
             borderRadius: 8,
@@ -298,12 +361,32 @@ const load = useCallback(async (background = false) => {
             overflow: "hidden",
           }}
         >
+          {/* 三栏网格让搜索框严格居中 —— flex 居中会因为左右两侧宽度不等而偏移。 */}
           <div
-            className="flex items-center justify-between px-3 py-2"
-            style={{ borderBottom: "1px solid var(--ant-color-border-secondary)" }}
+            className="grid items-center gap-2 px-3 py-2"
+            style={{
+              gridTemplateColumns: "1fr minmax(0, 260px) 1fr",
+              borderBottom: "1px solid var(--ant-color-border-secondary)",
+            }}
           >
-            <span className="text-sm font-medium">会话记录</span>
-            <div className="flex items-center gap-1">
+            <span className="text-sm font-medium" style={{ justifySelf: "start" }}>
+              会话记录
+            </span>
+
+            <Input
+              size="small"
+              allowClear
+              aria-label="搜索本会话记录"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="搜索本会话记录"
+              prefix={
+                <SearchOutlined style={{ color: "var(--ant-color-text-tertiary)", fontSize: 12 }} />
+              }
+              style={{ padding: "0 6px", fontSize: 12 }}
+            />
+
+            <div className="flex items-center gap-1" style={{ justifySelf: "end" }}>
               <Tooltip title={toolFilter ? `已隐藏 ${toolCount} 条工具调用` : "显示工具调用"}>
                 <button
                   onClick={() => setToolFilter((v) => !v)}
@@ -332,8 +415,28 @@ const load = useCallback(async (background = false) => {
               >
                 <ReloadOutlined style={{ fontSize: 13 }} />
               </button>
+              <Tooltip title={maximized ? "恢复默认大小" : "最大化"}>
+                <button
+                  onClick={() => setMaximized((v) => !v)}
+                  aria-label={maximized ? "恢复默认大小" : "最大化"}
+                  style={{
+                    background: "transparent",
+                    border: "none",
+                    cursor: "pointer",
+                    color: "var(--ant-color-text-secondary)",
+                    padding: 2,
+                  }}
+                >
+                  {maximized ? (
+                    <FullscreenExitOutlined style={{ fontSize: 13 }} />
+                  ) : (
+                    <FullscreenOutlined style={{ fontSize: 13 }} />
+                  )}
+                </button>
+              </Tooltip>
               <button
                 onClick={() => setOpen(false)}
+                aria-label="关闭"
                 style={{
                   background: "transparent",
                   border: "none",
@@ -347,7 +450,9 @@ const load = useCallback(async (background = false) => {
             </div>
           </div>
 
-          <div ref={scrollRef} className="flex-1 overflow-auto px-3 py-2">
+          {/* 横向滚动由 md-table-wrap / pre 各自负责；容器若也跟着横向滚，
+            跳转定位时会把内容左侧带出可视区。只留纵向滚动。 */}
+          <div ref={scrollRef} className="flex-1 overflow-y-auto overflow-x-hidden px-3 py-2">
             {state === "loading" && (
               <div className="text-xs text-[var(--ant-color-text-secondary)] py-4 text-center">
                 读取中…
@@ -368,10 +473,15 @@ const load = useCallback(async (background = false) => {
               threads.map((t) => {
                 const expanded = expandedKeys.has(t.key);
                 const replies = visibleReplies(t);
+                const matched = matchedKeys.has(t.key);
                 return (
                   <div
                     key={t.key}
-                    className="group mb-2"
+                    ref={(el) => {
+                      if (el) threadRefs.current.set(t.key, el);
+                      else threadRefs.current.delete(t.key);
+                    }}
+                    className={`group mb-2 ${matched ? "thread-hit" : ""}`}
                     style={{ borderRadius: 6, overflow: "hidden" }}
                   >
                     <div
@@ -448,7 +558,7 @@ const load = useCallback(async (background = false) => {
                           </div>
                         </div>
                         <div className="text-xs">
-                          <MarkdownBody text={t.prompt.text} clampLines={6} />
+                          <MarkdownBody text={t.prompt.text} clampLines={6} tokens={tokens} />
                         </div>
                       </div>
                     </div>
@@ -497,7 +607,7 @@ const load = useCallback(async (background = false) => {
                                 )}
                               </div>
                               <div className="text-xs">
-                                <MarkdownBody text={r.text} clampLines={6} />
+                                <MarkdownBody text={r.text} clampLines={6} tokens={tokens} />
                               </div>
                             </div>
                           );
@@ -528,6 +638,19 @@ const load = useCallback(async (background = false) => {
             >
               <span className="text-[var(--ant-color-text-tertiary)]">
                 共 {threads.length} 个提问
+                {searching && (
+                  <span
+                    style={{
+                      color:
+                        matchedKeys.size > 0
+                          ? "var(--ant-color-primary)"
+                          : "var(--ant-color-text-tertiary)",
+                    }}
+                  >
+                    {" · "}
+                    {matchedKeys.size > 0 ? `命中 ${matchedKeys.size}` : "无匹配"}
+                  </span>
+                )}
               </span>
             </div>
           )}
