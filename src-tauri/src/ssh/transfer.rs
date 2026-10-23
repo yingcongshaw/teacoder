@@ -5,6 +5,8 @@
 //!
 //! 协议选择见 [`should_try_legacy_fallback`]：OpenSSH ≥9.0 的 scp 默认走 SFTP 子系统，
 //! 而 `openssh-sftp-server` 在 Debian/Ubuntu 上是独立包，远端没装就会失败。
+//!
+//! 两种协议对远程路径的处理**完全相反**，必须分开对待 —— 见 [`build_remote_arg`]。
 
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
@@ -325,16 +327,79 @@ fn friendly_error(stderr: &str) -> String {
     }
 }
 
-/// 远程路径的字面转义。
+/// 远程路径传给 scp 时的形态。
 ///
-/// SFTP 模式下路径由 sftp-server 按字面解析；`-O` 回退下路径交给远程 shell，
-/// 空格会让它裂成多个词。统一加引号让两种协议行为一致。
-fn quote_remote(path: &str) -> String {
-    if path.contains('\'') {
-        format!("'{}'", path.replace('\'', r"'\''"))
+/// 两种协议对路径的处理完全不同，混用必然失败：
+///
+/// - **SFTP 模式**（OpenSSH ≥9.0 默认）：路径由 sftp-server 按字面解析，没有 shell 参与。
+///   加引号等于把引号写进路径 —— 实测 `root@host:'/root/'` 报 `dest open "'/root/'"`。
+///   好消息是 `~` 由 sftp-server 自己展开成远程 home，空格与单引号也都是字面安全的。
+/// - **`-O` 回退模式**：路径交给远程 shell，必须转义成完整的一个词；
+///   但 `~` 又必须留着不转义，否则远程 shell 不会展开成 home。
+///
+/// 故按协议分派：SFTP 原样透传，`-O` 走 [`escape_remote_legacy`]。
+fn build_remote_arg(path: &str, legacy: bool) -> String {
+    if legacy {
+        escape_remote_legacy(path)
     } else {
-        format!("'{path}'")
+        path.to_string()
     }
+}
+
+/// `-O` 模式下远程路径的 shell 转义：逐字符反斜杠转义，而不是加引号。
+///
+/// 为什么不能加引号：legacy scp 的**下载**方向有文件名握手校验 —— 远程 `scp -f`
+/// 把路径原样回传，本地拿它跟请求串比对。加了引号后引号留在比对串里
+/// （`'/root/x'` vs `/root/x`），直接报 `protocol error: filename does not match request`。
+/// 实测单引号、双引号在下载方向都失败。
+///
+/// 反斜杠转义则上下两个方向都成立：远程 shell 吃掉反斜杠，路径原样到达；
+/// 本地比对前同样把反斜杠还原。上传方向实测也可行。
+///
+/// `~` 前缀是例外：它必须不转义才能被远程 shell 展开成 home，
+/// 所以开头的 `~` / `~user` 原样保留。
+fn escape_remote_legacy(path: &str) -> String {
+    let (prefix, rest) = split_home_prefix(path);
+    format!("{prefix}{}", escape_shell_word(rest))
+}
+
+/// 拆出路径开头的 `~` / `~user` 前缀（连同紧随的 `/`）。
+///
+/// `~/a b` → `("~/", "a b")`；`~user/a` → `("~user/", "a")`；
+/// `/root/a` → `("", "/root/a")`；`~` → `("~", "")`。
+fn split_home_prefix(path: &str) -> (&str, &str) {
+    let Some(rest) = path.strip_prefix('~') else {
+        return ("", path);
+    };
+    match rest.find('/') {
+        Some(i) => (&path[..1 + i + 1], &rest[i + 1..]),
+        None => (path, ""),
+    }
+}
+
+/// 逐字符反斜杠转义 shell 元字符。
+///
+/// 非 ASCII 字符原样保留：它们不是 shell 元字符，按字节透传即可，
+/// 中英文路径在远程 shell 里天然安全。
+fn escape_shell_word(word: &str) -> String {
+    let mut out = String::with_capacity(word.len());
+    for ch in word.chars() {
+        if is_shell_meta(ch) {
+            out.push('\\');
+        }
+        out.push(ch);
+    }
+    out
+}
+
+/// 无引号 word 里会被 shell 解释的字符。
+fn is_shell_meta(ch: char) -> bool {
+    matches!(
+        ch,
+        ' ' | '\t' | '\n' | '\r' | '\u{b}' | '\u{c}'
+            | '\\' | '"' | '\'' | '`' | '$' | '&' | '|' | ';' | '<' | '>'
+            | '(' | ')' | '*' | '?' | '[' | ']' | '{' | '}' | '!' | '#' | '~' | '='
+    )
 }
 
 /// 进度探测：返回当前已传字节数（可为 0，表示本批尚未产生可观测进展）。
@@ -356,7 +421,7 @@ async fn run_scp_once(
     ctx: &CallCtx<'_>,
     spec: &TransferSpec,
     local_arg: &[String],
-    remote_arg: &str,
+    remote_path: &str,
     legacy: bool,
     total_bytes: Option<u64>,
     probe: ProgressProbe,
@@ -364,7 +429,11 @@ async fn run_scp_once(
     let mut cmd = Command::new("scp");
     cmd.args(build_scp(&spec.ssh, legacy));
     cmd.args(local_arg);
-    cmd.arg(format!("{}:{}", spec.ssh.target(), remote_arg));
+    cmd.arg(format!(
+        "{}:{}",
+        spec.ssh.target(),
+        build_remote_arg(remote_path, legacy)
+    ));
     cmd.stdout(Stdio::null());
     cmd.stderr(Stdio::piped());
     // 兜住任务 panic / 被丢弃时残留的孤儿 scp
@@ -458,7 +527,7 @@ async fn run_with_fallback(
     ctx: &CallCtx<'_>,
     spec: &TransferSpec,
     local_arg: &[String],
-    remote_arg: &str,
+    remote_path: &str,
     total_bytes: Option<u64>,
     probe: ProgressProbe,
 ) -> Result<(Protocol, u64, bool), TransferError> {
@@ -466,7 +535,7 @@ async fn run_with_fallback(
     let cached = ctx.registry.known_protocol(&cache_key);
     let first_legacy = cached == Some(Protocol::LegacyScp);
 
-    let attempt = run_scp_once(ctx, spec, local_arg, remote_arg, first_legacy, total_bytes, probe)
+    let attempt = run_scp_once(ctx, spec, local_arg, remote_path, first_legacy, total_bytes, probe)
         .await?;
 
     match attempt {
@@ -477,7 +546,7 @@ async fn run_with_fallback(
                 ctx.registry.remember_protocol(&cache_key, Protocol::LegacyScp);
                 // 第二跑无法观察进度（第一跑的已传字节数对它没有意义），报 0。
                 let probe2: ProgressProbe = Box::new(|| 0);
-                match run_scp_once(ctx, spec, local_arg, remote_arg, true, total_bytes, probe2)
+                match run_scp_once(ctx, spec, local_arg, remote_path, true, total_bytes, probe2)
                     .await?
                 {
                     ScpOutcome::Done { protocol, moved } => Ok((protocol, moved, true)),
@@ -596,7 +665,8 @@ async fn do_upload(
     for chunk in local.chunks(MAX_FILES_PER_CALL) {
         let args: Vec<String> = chunk.iter().map(|(p, _)| p.display().to_string()).collect();
         let chunk_len: u64 = chunk.iter().map(|(_, n)| n).sum();
-        let remote_arg = quote_remote(&format!("{remote_dir}/"));
+        // 原始路径交给协议层：SFTP 原样透传，`-O` 才做 shell 转义
+        let remote_path = format!("{remote_dir}/");
 
         // 上传方向看不到远端，scp 在非 tty 下也不吐可解析的进度。
         // 唯一诚实且单调的信号是"已完整送达的批次字节数"——所以上传是
@@ -607,7 +677,7 @@ async fn do_upload(
         });
 
         let (p, _moved, fell_back) =
-            run_with_fallback(ctx, spec, &args, &remote_arg, Some(total), probe).await?;
+            run_with_fallback(ctx, spec, &args, &remote_path, Some(total), probe).await?;
         protocol = p;
         used_fallback |= fell_back;
         completed.fetch_add(chunk_len, std::sync::atomic::Ordering::SeqCst);
@@ -654,7 +724,6 @@ async fn do_download(
     // 实际被截断的文件；进度 poll 的目标也天然单调递增。
     let temp_path = dir.join(format!(".{}.teatmp", uuid::Uuid::new_v4()));
 
-    let remote_arg = quote_remote(remote);
     // 下载能看到临时文件实时增长，因此有真实的已收字节数（但没有总量）。
     let probe_path = temp_path.clone();
     let probe: ProgressProbe = Box::new(move || {
@@ -665,7 +734,7 @@ async fn do_download(
         ctx,
         spec,
         &[temp_path.display().to_string()],
-        &remote_arg,
+        remote,
         None,
         probe,
     )
@@ -1016,9 +1085,48 @@ mod tests {
     }
 
     #[test]
-    fn quote_remote_escapes_single_quotes() {
-        assert_eq!(quote_remote("/tmp/a b"), "'/tmp/a b'");
-        assert_eq!(quote_remote("/tmp/it's"), r"'/tmp/it'\''s'");
+    fn sftp_mode_passes_the_remote_path_through_verbatim() {
+        // SFTP 模式下路径由 sftp-server 按字面解析，加引号会让引号成为路径的一部分
+        // （实测 root@host:'/root/' → dest open "'/root/'"）。这是「远程路径不存在」的根因。
+        assert_eq!(build_remote_arg("/root/", false), "/root/");
+        assert_eq!(build_remote_arg("/root/a b", false), "/root/a b");
+        assert_eq!(build_remote_arg("/root/it's", false), "/root/it's");
+        assert_eq!(build_remote_arg("~/", false), "~/");
+    }
+
+    #[test]
+    fn legacy_mode_escapes_the_remote_path_for_the_remote_shell() {
+        // 不能加引号：legacy 下载方向会拿回传的文件名跟请求串比对，
+        // 引号留在串里 → protocol error: filename does not match request
+        assert_eq!(build_remote_arg("/root/a b", true), "/root/a\\ b");
+        assert_eq!(build_remote_arg("/root/it's", true), "/root/it\\'s");
+        assert_eq!(build_remote_arg("/root/", true), "/root/");
+        assert_eq!(build_remote_arg("/root/a\"b", true), "/root/a\\\"b");
+    }
+
+    #[test]
+    fn legacy_mode_keeps_the_tilde_prefix_unescaped() {
+        // ~ 必须留给远程 shell 展开成 home；转义了就成字面目录名
+        assert_eq!(build_remote_arg("~/a.txt", true), "~/a.txt");
+        assert_eq!(build_remote_arg("~/a b.txt", true), "~/a\\ b.txt");
+        assert_eq!(build_remote_arg("~/a'b.txt", true), "~/a\\'b.txt");
+        assert_eq!(build_remote_arg("~/", true), "~/");
+        assert_eq!(build_remote_arg("~", true), "~");
+        assert_eq!(build_remote_arg("~user/a.txt", true), "~user/a.txt");
+    }
+
+    #[test]
+    fn legacy_mode_leaves_non_meta_characters_alone() {
+        assert_eq!(build_remote_arg("/root/中文名.txt", true), "/root/中文名.txt");
+        assert_eq!(build_remote_arg("/root/a-b_c.d", true), "/root/a-b_c.d");
+    }
+
+    #[test]
+    fn split_home_prefix_handles_the_absence_of_a_tilde() {
+        assert_eq!(split_home_prefix("/root/a"), ("", "/root/a"));
+        assert_eq!(split_home_prefix("~/a"), ("~/", "a"));
+        assert_eq!(split_home_prefix("~user/a"), ("~user/", "a"));
+        assert_eq!(split_home_prefix("~"), ("~", ""));
     }
 
     #[test]
