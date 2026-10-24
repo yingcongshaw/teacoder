@@ -218,14 +218,6 @@ export default function FileTransferPanel({
 
   const buttonRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
-  const panesRef = useRef<HTMLDivElement>(null);
-  /**
-   * 日志表体的高度。
-   *
-   * 放大后文件列表不再无限长高（那会把日志表挤出可视区），多出来的空间给日志表。
-   * 表体高度得按面板实际高度算 —— 终端尺寸是变的，写死会在矮终端里被裁掉。
-   */
-  const [logHeight, setLogHeight] = useState(132);
 
   const targetFor = useCallback((): SshTarget | null => {
     if (isSsh) return { kind: "fromSession", sessionId: tabId };
@@ -384,27 +376,6 @@ export default function FileTransferPanel({
   useEffect(() => {
     if (!localPath && workDir) applyLocal(workDir);
   }, [workDir, localPath, applyLocal]);
-
-  // 放大时按面板实际高度算日志表体的高度
-  useEffect(() => {
-    if (!maximized) {
-      setLogHeight(132);
-      return;
-    }
-    const el = panelRef.current;
-    if (!el) return;
-    const measure = () => {
-      const panesH = panesRef.current?.offsetHeight ?? 0;
-      // 面板里除文件列表与日志表体外的部分：头部 40 + 日志标题 25
-      // + 表头 18 + 表格容器上内边距 8 + 底部留白 5
-      const chrome = 96;
-      setLogHeight(Math.max(72, el.clientHeight - panesH - chrome));
-    };
-    measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [maximized, open]);
 
   // 点击按钮或面板之外的任何位置都收起面板。pointerdown 早于 click，
   // 打开面板的那一次点击不会落到这里（此时 open 还是 false）。
@@ -738,12 +709,12 @@ export default function FileTransferPanel({
             </div>
 
             <div
-              ref={panesRef}
+
               className="flex px-3 pt-2"
               style={{
                 gap: 6,
-                // 放大时两栏不再长高 —— 长高会把日志表挤出可视区
-                flex: maximized ? "0 0 auto" : "1 1 auto",
+                // 多出来的空间给文件列表，日志表紧贴面板底部（下方不留空白）
+                flex: "1 1 auto",
                 minHeight: 0,
                 // 列表底边到下方分隔线的留白，两栏统一
                 paddingBottom: 5,
@@ -767,7 +738,7 @@ export default function FileTransferPanel({
                 }
                 onNavigate={(p) => applyRemote(p)}
                 onActivate={(e) => startDownloads([e])}
-                listMaxHeight={300}
+                listMaxHeight={maximized ? "none" : 300}
                 placeholder="远程目录，如 /var/log"
                 hint={
                   isSsh
@@ -857,7 +828,7 @@ export default function FileTransferPanel({
                 }
                 onNavigate={(p) => applyLocal(p)}
                 onActivate={(e) => startUploads([e])}
-                listMaxHeight={300}
+                listMaxHeight={maximized ? "none" : 300}
                 placeholder="本地目录，如 /home/me/proj"
                 extra={
                   !isSsh ? (
@@ -891,7 +862,7 @@ export default function FileTransferPanel({
                 dataSource={rows}
                 rowKey="requestId"
                 pagination={false}
-                scroll={{ y: logHeight }}
+                scroll={{ y: 132 }}
                 locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无传输记录" /> }}
               />
             </div>
