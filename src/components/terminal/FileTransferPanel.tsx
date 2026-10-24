@@ -611,25 +611,26 @@ export default function FileTransferPanel({
       title: "大小",
       dataIndex: "bytes",
       width: 92,
-      align: "right",
+      align: "center",
       render: (b: number | null) => (b === null ? "—" : formatBytes(b)),
     },
     {
       title: "开始时间",
       dataIndex: "createdAt",
       width: 88,
+      align: "center",
       render: (t: number) => formatClock(t),
     },
     {
-      title: "进度",
+      title: "状态/进度",
       dataIndex: "liveBytes",
       width: 168,
+      align: "center",
       render: (_, row) => {
         if (row.state === "error") {
           return (
             <span
-              className="text-xs"
-              style={{ color: "var(--ant-color-error)" }}
+              style={{ color: "var(--ant-color-error)", fontSize: 10 }}
               title={row.error ?? undefined}
             >
               {row.error ?? "失败"}
@@ -639,7 +640,12 @@ export default function FileTransferPanel({
         // 删除是瞬时操作，没有进度可言
         if (row.kind === "delete") {
           return (
-            <span className="text-xs text-[var(--ant-color-text-secondary)]">
+            <span
+              style={{
+                color: "var(--ant-color-text-secondary)",
+                fontSize: 10,
+              }}
+            >
               已删除
             </span>
           );
@@ -650,7 +656,12 @@ export default function FileTransferPanel({
         if (total <= 0) {
           // 拿不到总量就不编造百分比，只报已传字节
           return (
-            <span className="text-xs text-[var(--ant-color-text-secondary)]">
+            <span
+              style={{
+                color: "var(--ant-color-text-secondary)",
+                fontSize: 10,
+              }}
+            >
               {row.state === "running" ? `已传 ${formatBytes(bytes)}` : "已完成"}
             </span>
           );
