@@ -772,7 +772,15 @@ export default function FileTransferPanel({
               className="flex items-center gap-2 px-3 py-2"
               style={{ borderBottom: "1px solid var(--ant-color-border-secondary)" }}
             >
-              <span className="text-sm font-medium flex-1">文件传输</span>
+              <span className="text-sm font-medium flex-1 truncate">
+                文件传输
+                <span
+                  className="ml-2 text-[var(--ant-color-text-tertiary)]"
+                  style={{ fontSize: 10 }}
+                >
+                  （文件列表左右拖动文件名可以删除文件）
+                </span>
+              </span>
               <Tooltip title={showHidden ? "不显示隐藏文件" : "显示隐藏文件"}>
                 <button
                   onClick={() => setShowHidden((v) => !v)}
