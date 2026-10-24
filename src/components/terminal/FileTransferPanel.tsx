@@ -981,10 +981,14 @@ export default function FileTransferPanel({
                 <Tooltip title="切到全部会话的记录" placement="left">
                   <Switch
                     size="small"
+                    style={{ transform: "scale(0.85)" }}
                     checked={showAllHistory}
                     onChange={(v) => setShowAllHistory(v)}
                   />
-                  <span className="text-xs ml-1 text-[var(--ant-color-text-secondary)]">
+                  <span
+                    className="ml-1 text-[var(--ant-color-text-secondary)]"
+                    style={{ fontSize: 10 }}
+                  >
                     全部历史
                   </span>
                 </Tooltip>
