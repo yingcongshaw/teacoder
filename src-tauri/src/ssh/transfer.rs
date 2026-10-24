@@ -415,6 +415,33 @@ struct CallCtx<'a> {
     cancel: &'a CancelToken,
 }
 
+/// 拼出 scp 的完整参数（不含程序名）。
+///
+/// **本地与远程的先后由方向决定**：上传是 `本地 远程`，下载是 `远程 本地`。
+/// 弄反了 scp 会把本地文件当源往远端传 —— 下载看起来「成功」，实际什么都没下，
+/// 而且本地临时文件还没建，scp 直接报 `stat local ...: No such file or directory`。
+fn build_scp_args(
+    ssh: &SshArgs,
+    legacy: bool,
+    direction: Direction,
+    local_arg: &[String],
+    remote_path: &str,
+) -> Vec<String> {
+    let mut a = build_scp(ssh, legacy);
+    let remote_spec = format!("{}:{}", ssh.target(), build_remote_arg(remote_path, legacy));
+    match direction {
+        Direction::Upload => {
+            a.extend(local_arg.iter().cloned());
+            a.push(remote_spec);
+        }
+        Direction::Download => {
+            a.push(remote_spec);
+            a.extend(local_arg.iter().cloned());
+        }
+    }
+    a
+}
+
 /// 跑一次 scp，带进度上报与取消。不做任何清理 —— 临时文件归调用方管，
 /// 因为只有调用方知道下载时那个临时文件在哪。
 async fn run_scp_once(
@@ -426,14 +453,15 @@ async fn run_scp_once(
     total_bytes: Option<u64>,
     probe: ProgressProbe,
 ) -> Result<ScpOutcome, TransferError> {
+    let argv = build_scp_args(
+        &spec.ssh,
+        legacy,
+        spec.direction,
+        local_arg,
+        remote_path,
+    );
     let mut cmd = Command::new("scp");
-    cmd.args(build_scp(&spec.ssh, legacy));
-    cmd.args(local_arg);
-    cmd.arg(format!(
-        "{}:{}",
-        spec.ssh.target(),
-        build_remote_arg(remote_path, legacy)
-    ));
+    cmd.args(&argv);
     cmd.stdout(Stdio::null());
     cmd.stderr(Stdio::piped());
     // 兜住任务 panic / 被丢弃时残留的孤儿 scp
@@ -511,6 +539,10 @@ async fn run_scp_once(
     }
     let stderr_text = tail.text();
     if !status.success() {
+        // 失败时把真实 argv 与原始 stderr 落日志：界面上的文案是归纳过的
+        // （「远程路径不存在」之类），排查时需要原样。密码走 SSH_ASKPASS，
+        // 不在 argv 里。
+        eprintln!("[SCP] 失败 argv={argv:?} stderr={stderr_text:?}");
         return Ok(ScpOutcome::Failed { stderr: stderr_text });
     }
     Ok(ScpOutcome::Done {
@@ -991,6 +1023,52 @@ mod tests {
         std::fs::write(d.join("README"), b"x").unwrap();
         assert_eq!(unique_destination(&d, "README").unwrap(), d.join("README_1"));
         std::fs::remove_dir_all(&d).ok();
+    }
+
+    /// 回归：上传必须是「本地在前、远程在后」。
+    #[test]
+    fn upload_puts_the_local_path_before_the_remote_spec() {
+        let ssh = SshArgs {
+            hostname: "h".into(),
+            port: 10022,
+            username: "root".into(),
+            password: "pw".into(),
+            identity_file: String::new(),
+        };
+        let args = build_scp_args(
+            &ssh,
+            false,
+            Direction::Upload,
+            &["/tmp/a.txt".to_string()],
+            "/root/",
+        );
+        let local = args.iter().position(|a| a == "/tmp/a.txt").unwrap();
+        let remote = args.iter().position(|a| a.starts_with("root@h:")).unwrap();
+        assert!(local < remote, "上传时本地路径应在远程之前: {args:?}");
+    }
+
+    /// 回归：下载必须是「远程在前、本地在后」。
+    ///
+    /// 弄反了 scp 会把本地临时文件当源往远端传 —— 下载看着成功，实际什么都没下。
+    #[test]
+    fn download_puts_the_remote_spec_before_the_local_path() {
+        let ssh = SshArgs {
+            hostname: "h".into(),
+            port: 10022,
+            username: "root".into(),
+            password: "pw".into(),
+            identity_file: String::new(),
+        };
+        let args = build_scp_args(
+            &ssh,
+            false,
+            Direction::Download,
+            &["/tmp/.x.teatmp".to_string()],
+            "/root/text",
+        );
+        let remote = args.iter().position(|a| a.starts_with("root@h:")).unwrap();
+        let local = args.iter().position(|a| a == "/tmp/.x.teatmp").unwrap();
+        assert!(remote < local, "下载时远程路径应在本地之前: {args:?}");
     }
 
     /// 回归：scp 的端口是大写 -P，ssh 是小写 -p。
