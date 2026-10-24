@@ -2,12 +2,22 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { listen } from "@tauri-apps/api/event";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
-import { Button, Empty, Input, Modal, Progress, Table, Tooltip } from "antd";
+import {
+  Button,
+  Empty,
+  Input,
+  Modal,
+  Progress,
+  Switch,
+  Table,
+  Tooltip,
+} from "antd";
 import type { ColumnsType } from "antd/es/table";
 import {
   CloseOutlined,
   CloudDownloadOutlined,
   CloudUploadOutlined,
+  DeleteOutlined,
   EyeInvisibleOutlined,
   EyeOutlined,
   FileOutlined,
@@ -27,6 +37,7 @@ import {
   sshProbeRemoteCwd,
   sshTransferCancel,
   sshUpload,
+  transferLogList,
   writeToPty,
 } from "../../utils/ipc";
 import { formatBytes, shellQuote } from "../../utils/shellQuote";
@@ -35,6 +46,7 @@ import type {
   DirEntry,
   SshArgs,
   SshTarget,
+  TransferLogRow,
   TransferProgress,
 } from "../../types";
 
@@ -50,25 +62,6 @@ interface FileTransferPanelProps {
   panelHostRef: React.RefObject<HTMLElement | null>;
 }
 
-type Direction = "upload" | "download";
-type RowState = "running" | "done" | "error";
-
-/** 同步日志里的一行 —— 对应一次文件传输。 */
-interface LogRow {
-  /** 前端生成的请求标识，进度事件靠它对上这一行。 */
-  requestId: string;
-  direction: Direction;
-  name: string;
-  size: number;
-  startedAt: number;
-  bytes: number;
-  /** 后端给的总量；下载方向为 null，改用列表里看到的文件大小。 */
-  totalBytes: number | null;
-  /** 后端的传输 id，取消时用。首个进度事件带来。 */
-  transferId?: string;
-  state: RowState;
-  error?: string;
-}
 
 /**
  * 日志表的紧凑渲染。
@@ -179,6 +172,12 @@ function formatClock(ms: number): string {
   return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
 }
 
+/** 表格行 = 库里的行 + 内存里的实时进度。 */
+interface LogRowView extends TransferLogRow {
+  liveBytes: number | null;
+  liveTotal: number | null;
+}
+
 export default function FileTransferPanel({
   tabId,
   toolType,
@@ -222,7 +221,23 @@ export default function FileTransferPanel({
   const [remoteError, setRemoteError] = useState<string | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
 
-  const [rows, setRows] = useState<LogRow[]>([]);
+  /**
+   * 日志表的行。数据源是数据库 —— 后端写完就发事件，前端收到后重新查。
+   * 前端不再自己维护行，否则内存一份、库里一份会对不上。
+   */
+  const [logs, setLogs] = useState<TransferLogRow[]>([]);
+  /**
+   * 实时进度。进度事件很密（每 200ms 一条），不落库，只在内存里跟着走，
+   * 按 request_id 对到具体某一行。
+   */
+  const [progressMap, setProgressMap] = useState<
+    Record<
+      string,
+      { bytes: number; totalBytes: number | null; transferId: string }
+    >
+  >({});
+  /** 「全部历史」：看所有会话的记录，而不只是当前会话的。 */
+  const [showAllHistory, setShowAllHistory] = useState(false);
   /**
    * 待删除的对象。用受控 Modal 而不是命令式的 Modal.confirm ——
    * 确认框弹出期间要屏蔽面板的「点外面关闭」，得知道它开着。
@@ -268,6 +283,14 @@ export default function FileTransferPanel({
   const refreshRemote = useCallback(() => setRemoteRev((v) => v + 1), []);
   const refreshLocal = useCallback(() => setLocalRev((v) => v + 1), []);
 
+  /** 重新查日志表。默认只看当前会话的，切到「全部历史」时看所有。 */
+  const reloadLogs = useCallback(async () => {
+    const rows = await transferLogList(showAllHistory ? null : tabId, 200).catch(
+      () => [] as TransferLogRow[],
+    );
+    setLogs(rows);
+  }, [tabId, showAllHistory]);
+
   const applyRemote = useCallback((p: string) => {
     setRemotePath(p);
     setRemoteRev((v) => v + 1);
@@ -277,25 +300,21 @@ export default function FileTransferPanel({
     setLocalRev((v) => v + 1);
   }, []);
 
-  // 进度事件 → 日志行。并发传输靠 requestId 对齐行与行。
+  // 进度事件 → 实时进度。进度很密，不落库，只在内存里按 requestId 跟着走。
   useEffect(() => {
     let disposed = false;
     let dispose: (() => void) | undefined;
     const unlisten = listen<TransferProgress>("ssh_transfer:progress", (event) => {
       const p = event.payload;
       if (p.tabId !== tabId) return;
-      setRows((prev) =>
-        prev.map((r) =>
-          r.requestId === p.requestId
-            ? {
-                ...r,
-                bytes: p.bytes,
-                totalBytes: p.totalBytes ?? r.totalBytes,
-                transferId: p.transferId,
-              }
-            : r,
-        ),
-      );
+      setProgressMap((prev) => ({
+        ...prev,
+        [p.requestId]: {
+          bytes: p.bytes,
+          totalBytes: p.totalBytes,
+          transferId: p.transferId,
+        },
+      }));
     });
     void unlisten.then(
       (fn) => {
@@ -395,6 +414,33 @@ export default function FileTransferPanel({
     if (!localPath && workDir) applyLocal(workDir);
   }, [workDir, localPath, applyLocal]);
 
+  // 后端写完日志会广播这个事件，收到就重新查表。
+  useEffect(() => {
+    if (!open) return;
+    let disposed = false;
+    let dispose: (() => void) | undefined;
+    const unlisten = listen("transfer_log_changed", () => {
+      void reloadLogs();
+    });
+    void unlisten.then(
+      (fn) => {
+        if (disposed) fn();
+        else dispose = fn;
+      },
+      () => {},
+    );
+    return () => {
+      disposed = true;
+      dispose?.();
+    };
+  }, [open, reloadLogs]);
+
+  // 打开面板时查一次库；「全部历史」切换后也重新查。
+  useEffect(() => {
+    if (!open) return;
+    void reloadLogs();
+  }, [open, reloadLogs]);
+
   // 点击按钮或面板之外的任何位置都收起面板。pointerdown 早于 click，
   // 打开面板的那一次点击不会落到这里（此时 open 还是 false）。
   // 按钮与面板分属两个容器（面板经 portal 挂在终端根节点下），必须分别判断。
@@ -419,25 +465,6 @@ export default function FileTransferPanel({
     return `r${Date.now().toString(36)}-${requestSeq.current}`;
   };
 
-  const pushRow = (row: LogRow) => {
-    setRows((prev) => [...prev, row]);
-  };
-
-  const settleRow = (
-    requestId: string,
-    state: RowState,
-    error?: string,
-    bytes?: number,
-  ) => {
-    setRows((prev) =>
-      prev.map((r) =>
-        r.requestId === requestId
-          ? { ...r, state, error, bytes: bytes ?? r.bytes }
-          : r,
-      ),
-    );
-  };
-
   /** 上传若干本地文件 → 远程当前目录。 */
   const startUploads = (files: DirEntry[]) => {
     if (!targetKey) {
@@ -449,16 +476,6 @@ export default function FileTransferPanel({
 
     for (const f of files) {
       const requestId = nextRequestId();
-      pushRow({
-        requestId,
-        direction: "upload",
-        name: f.name,
-        size: f.size,
-        startedAt: Date.now(),
-        bytes: 0,
-        totalBytes: null,
-        state: "running",
-      });
       void sshUpload({
         target,
         tabId,
@@ -466,14 +483,11 @@ export default function FileTransferPanel({
         remotePath: remotePathRef.current,
         requestId,
       })
-        .then((s) => {
-          settleRow(requestId, "done", undefined, s.files[0]?.bytes);
+        .then(() => {
           // 传完就把对端目录重新列一遍：刚落地的文件要立刻出现在列表里
           refreshRemote();
         })
-        .catch((e) =>
-          settleRow(requestId, "error", typeof e === "string" ? e : "上传失败"),
-        );
+        .catch(() => {});
     }
   };
 
@@ -488,16 +502,6 @@ export default function FileTransferPanel({
 
     for (const f of files) {
       const requestId = nextRequestId();
-      pushRow({
-        requestId,
-        direction: "download",
-        name: f.name,
-        size: f.size,
-        startedAt: Date.now(),
-        bytes: 0,
-        totalBytes: null,
-        state: "running",
-      });
       void sshDownload({
         target,
         tabId,
@@ -505,19 +509,16 @@ export default function FileTransferPanel({
         localDir: localPathRef.current,
         requestId,
       })
-        .then((s) => {
-          settleRow(requestId, "done", undefined, s.files[0]?.bytes);
-          refreshLocal();
-        })
-        .catch((e) =>
-          settleRow(requestId, "error", typeof e === "string" ? e : "下载失败"),
-        );
+        .then(() => refreshLocal())
+        .catch(() => {});
     }
   };
 
-  const cancelRow = async (row: LogRow) => {
-    if (!row.transferId) return;
-    await sshTransferCancel(row.transferId).catch(() => {});
+  /** 取消进行中的传输。后端的 transferId 由进度事件带来，存在进度 map 里。 */
+  const cancelRow = async (requestId: string | null) => {
+    const live = requestId ? progressMap[requestId] : undefined;
+    if (!live) return;
+    await sshTransferCancel(live.transferId).catch(() => {});
   };
 
   /** 确认删除：删完刷新**源列表**（远程删的刷远端，本地删的刷本地）。 */
@@ -529,10 +530,11 @@ export default function FileTransferPanel({
       if (pending.side === "remote") {
         const target = targetFor();
         if (!target) return;
-        await sshDelete(target, pending.entry.path);
+        // tabId 即会话 id —— 删除日志的会话归属要靠它按会话过滤
+        await sshDelete(target, pending.entry.path, tabId);
         refreshRemote();
       } else {
-        await fsDelete(pending.entry.path);
+        await fsDelete(pending.entry.path, tabId);
         refreshLocal();
       }
     } catch (e) {
@@ -555,43 +557,72 @@ export default function FileTransferPanel({
 
   if (!supported) return null;
 
-  const columns: ColumnsType<LogRow> = [
+  /**
+   * 表格行 = 库里的行 + 内存里的实时进度。
+   *
+   * 库里的行按 created_at 倒序，最新的在最上面。
+   */
+  const tableRows = logs.map((r) => {
+    const live = r.requestId ? progressMap[r.requestId] : undefined;
+    return {
+      ...r,
+      liveBytes: live?.bytes ?? null,
+      liveTotal: live?.totalBytes ?? null,
+    };
+  });
+
+  const columns: ColumnsType<LogRowView> = [
     {
       title: "方式",
-      dataIndex: "direction",
+      dataIndex: "kind",
       width: 52,
       align: "center",
-      render: (d: Direction) => (
-        <Tooltip title={d === "upload" ? "上传" : "下载"} placement="left">
-          {d === "upload" ? (
-            <CloudUploadOutlined style={{ color: "var(--ant-color-blue)" }} />
-          ) : (
-            <CloudDownloadOutlined style={{ color: "var(--ant-color-green)" }} />
-          )}
-        </Tooltip>
-      ),
+      render: (kind: TransferLogRow["kind"], row) => {
+        const label =
+          kind === "upload" ? "上传" : kind === "download" ? "下载" : "删除";
+        const tip =
+          kind === "delete"
+            ? `${label}（${row.side === "local" ? "本地" : "远程"}）`
+            : label;
+        return (
+          <Tooltip title={tip} placement="left">
+            {kind === "upload" ? (
+              <CloudUploadOutlined style={{ color: "var(--ant-color-blue)" }} />
+            ) : kind === "download" ? (
+              <CloudDownloadOutlined style={{ color: "var(--ant-color-green)" }} />
+            ) : (
+              <DeleteOutlined style={{ color: "var(--ant-color-error)" }} />
+            )}
+          </Tooltip>
+        );
+      },
     },
     {
       title: "文件名",
       dataIndex: "name",
       ellipsis: true,
+      render: (name: string, row) => (
+        <Tooltip title={row.path ?? name} placement="left">
+          {name}
+        </Tooltip>
+      ),
     },
     {
       title: "大小",
-      dataIndex: "size",
+      dataIndex: "bytes",
       width: 92,
       align: "right",
-      render: (s: number) => formatBytes(s),
+      render: (b: number | null) => (b === null ? "—" : formatBytes(b)),
     },
     {
       title: "开始时间",
-      dataIndex: "startedAt",
+      dataIndex: "createdAt",
       width: 88,
       render: (t: number) => formatClock(t),
     },
     {
       title: "进度",
-      dataIndex: "bytes",
+      dataIndex: "liveBytes",
       width: 168,
       render: (_, row) => {
         if (row.state === "error") {
@@ -599,25 +630,32 @@ export default function FileTransferPanel({
             <span
               className="text-xs"
               style={{ color: "var(--ant-color-error)" }}
-              title={row.error}
+              title={row.error ?? undefined}
             >
               {row.error ?? "失败"}
             </span>
           );
         }
+        // 删除是瞬时操作，没有进度可言
+        if (row.kind === "delete") {
+          return (
+            <span className="text-xs text-[var(--ant-color-text-secondary)]">
+              已删除
+            </span>
+          );
+        }
+        const bytes = row.liveBytes ?? row.bytes ?? 0;
         // 下载方向后端给不出总量（要另开连接问），用列表里看到的文件大小兜底
-        const total = row.totalBytes ?? row.size;
+        const total = row.liveTotal ?? row.bytes ?? 0;
         if (total <= 0) {
           // 拿不到总量就不编造百分比，只报已传字节
           return (
             <span className="text-xs text-[var(--ant-color-text-secondary)]">
-              {row.state === "running"
-                ? `已传 ${formatBytes(row.bytes)}`
-                : `已完成 ${formatBytes(row.bytes)}`}
+              {row.state === "running" ? `已传 ${formatBytes(bytes)}` : "已完成"}
             </span>
           );
         }
-        const percent = Math.min(100, Math.round((row.bytes / total) * 100));
+        const percent = Math.min(100, Math.round((bytes / total) * 100));
         return (
           <div className="flex items-center gap-1">
             {row.state === "running" ? (
@@ -644,7 +682,7 @@ export default function FileTransferPanel({
                   size="small"
                   type="text"
                   icon={<StopOutlined />}
-                  onClick={() => void cancelRow(row)}
+                  onClick={() => void cancelRow(row.requestId)}
                 />
               </Tooltip>
             )}
@@ -917,13 +955,25 @@ export default function FileTransferPanel({
                 paddingBottom: 5,
               }}
             >
-              <div className="text-xs font-medium mb-1">同步进度和日志</div>
-              <Table<LogRow>
+              <div className="flex items-center mb-1">
+                <span className="text-xs font-medium flex-1">同步进度和日志</span>
+                <Tooltip title="切到全部会话的记录" placement="left">
+                  <Switch
+                    size="small"
+                    checked={showAllHistory}
+                    onChange={(v) => setShowAllHistory(v)}
+                  />
+                  <span className="text-xs ml-1 text-[var(--ant-color-text-secondary)]">
+                    全部历史
+                  </span>
+                </Tooltip>
+              </div>
+              <Table<LogRowView>
                 className="transfer-log-table"
                 components={COMPACT_TABLE}
                 size="small"
                 columns={columns}
-                dataSource={rows}
+                dataSource={tableRows}
                 rowKey="requestId"
                 pagination={false}
                 scroll={{ y: 132 }}

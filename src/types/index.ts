@@ -149,6 +149,33 @@ export interface TransferProgress {
   elapsedMs: number;
 }
 
+/**
+ * 传输与删除操作日志的一行（落库）。
+ *
+ * 与后端 `crate::storage::transfer_log::TransferLogRow` 一一对应。
+ * 面板底部的日志表数据源在库里，前端只额外维护一份实时进度。
+ */
+export interface TransferLogRow {
+  id: string;
+  /** 前端生成的请求标识，用来把实时进度对应到这一行。 */
+  requestId: string | null;
+  /** 发起操作的会话 id。 */
+  sessionId: string | null;
+  kind: "upload" | "download" | "delete";
+  /** 删除时区分删的是哪一端。 */
+  side: "remote" | "local" | null;
+  name: string;
+  path: string | null;
+  bytes: number | null;
+  state: "running" | "done" | "error";
+  error: string | null;
+  protocol: string | null;
+  elapsedMs: number | null;
+  /** Unix 毫秒。 */
+  createdAt: number;
+  updatedAt: number;
+}
+
 /** Claude Code transcript 主线中的一条记录（真人输入 / AI 回复 / 工具调用）。 */
 export interface TranscriptEntry {
   uuid: string;

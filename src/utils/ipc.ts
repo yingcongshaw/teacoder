@@ -17,6 +17,7 @@ import type {
   TranscriptEntry,
   SshTarget,
   TransferSummary,
+  TransferLogRow,
 } from "../types";
 
 export async function detectCliTools(): Promise<CliTool[]> {
@@ -96,6 +97,24 @@ export async function sshDownload(params: {
  *
  * 连接参数由后端按 `target` 解析 —— 前端碰不到密码。
  */
+/**
+ * 取传输与删除日志。
+ *
+ * `sessionId` 为 null 时取全部会话的（「全部历史」视图）。按时间倒序，
+ * 最新的在最上面。
+ */
+export async function transferLogList(
+  sessionId: string | null,
+  limit = 200,
+): Promise<TransferLogRow[]> {
+  return invoke("transfer_log_list", { sessionId, limit });
+}
+
+/** 清空全部传输与删除日志。 */
+export async function transferLogClear(): Promise<void> {
+  return invoke("transfer_log_clear");
+}
+
 export async function sshListDir(
   target: SshTarget,
   path: string,
@@ -117,8 +136,11 @@ export async function fsListDir(
  *
  * **破坏性操作** —— 调用方必须先弹确认框。
  */
-export async function fsDelete(path: string): Promise<void> {
-  return invoke("fs_delete", { path });
+export async function fsDelete(
+  path: string,
+  sessionId: string,
+): Promise<void> {
+  return invoke("fs_delete", { path, sessionId });
 }
 
 /**
@@ -129,8 +151,9 @@ export async function fsDelete(path: string): Promise<void> {
 export async function sshDelete(
   target: SshTarget,
   path: string,
+  sessionId: string,
 ): Promise<void> {
-  return invoke("ssh_delete", { target, path });
+  return invoke("ssh_delete", { target, path, sessionId });
 }
 
 /** 请求取消进行中的传输。返回 false 表示该任务已结束或 id 未知。 */

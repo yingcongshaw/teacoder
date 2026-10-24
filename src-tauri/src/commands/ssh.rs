@@ -1,5 +1,7 @@
 use std::path::PathBuf;
 
+use tauri::Emitter;
+
 use crate::ssh::registry::TransferRegistry;
 use crate::ssh::transfer::{self, Direction, SshTarget, TransferSummary};
 use crate::storage::AppDatabase;
@@ -93,12 +95,34 @@ pub async fn ssh_probe_remote_cwd(
 /// **破坏性操作** —— 前端必须先弹确认框。
 #[tauri::command]
 pub async fn ssh_delete(
+    app: tauri::AppHandle,
     db: tauri::State<'_, AppDatabase>,
     target: SshTarget,
     path: String,
+    session_id: Option<String>,
 ) -> Result<(), String> {
     let ssh = transfer::resolve_ssh_args(&db, &target).map_err(|e| e.to_string())?;
-    crate::ssh::remote::delete_remote(&ssh, &path).await
+    let name = std::path::Path::new(&path)
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| path.clone());
+    let result = crate::ssh::remote::delete_remote(&ssh, &path).await;
+    if let Err(e) = crate::storage::transfer_log::insert_delete(
+        &db,
+        &name,
+        &path,
+        None,
+        session_id.as_deref(),
+        crate::storage::transfer_log::LogSide::Remote,
+        result.as_ref().err().map(|s| s.as_str()),
+    ) {
+        eprintln!("[TRANSFER-LOG] 写入失败: {e}");
+    }
+    let _ = app.emit(
+        transfer::TRANSFER_LOG_CHANGED,
+        serde_json::json!({ "tabId": session_id }),
+    );
+    result
 }
 
 /// 列出远程目录。

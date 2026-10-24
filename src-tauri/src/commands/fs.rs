@@ -4,7 +4,12 @@
 //! Rust 侧读。这与「下载落到哪个目录」是同一类能力：都是用户指定路径、
 //! 由后端去读。
 
+use tauri::Emitter;
+
 use crate::fsdir::DirEntry;
+use crate::ssh::transfer::TRANSFER_LOG_CHANGED;
+use crate::storage::transfer_log;
+use crate::storage::AppDatabase;
 
 /// 列出本地目录的内容。
 ///
@@ -18,6 +23,33 @@ pub fn fs_list_dir(path: String, show_hidden: bool) -> Result<Vec<DirEntry>, Str
 ///
 /// **破坏性操作** —— 前端必须先弹确认框。
 #[tauri::command]
-pub fn fs_delete(path: String) -> Result<(), String> {
-    crate::fsdir::delete_local(&path)
+pub fn fs_delete(
+    app: tauri::AppHandle,
+    db: tauri::State<'_, AppDatabase>,
+    path: String,
+    session_id: Option<String>,
+) -> Result<(), String> {
+    let name = std::path::Path::new(&path)
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| path.clone());
+    let bytes = std::fs::metadata(&path).ok().map(|m| m.len());
+
+    let result = crate::fsdir::delete_local(&path);
+    if let Err(e) = transfer_log::insert_delete(
+        &db,
+        &name,
+        &path,
+        bytes,
+        session_id.as_deref(),
+        transfer_log::LogSide::Local,
+        result.as_ref().err().map(|s| s.as_str()),
+    ) {
+        eprintln!("[TRANSFER-LOG] 写入失败: {e}");
+    }
+    let _ = app.emit(
+        TRANSFER_LOG_CHANGED,
+        serde_json::json!({ "tabId": session_id }),
+    );
+    result
 }

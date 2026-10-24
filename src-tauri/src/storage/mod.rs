@@ -3,6 +3,8 @@ use std::sync::Mutex;
 
 use rusqlite::Connection;
 
+pub mod transfer_log;
+
 pub struct AppDatabase {
     pub conn: Mutex<Connection>,
 }

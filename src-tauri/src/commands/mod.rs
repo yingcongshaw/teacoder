@@ -13,3 +13,4 @@ pub mod ssh;
 pub mod system;
 pub mod system_fonts;
 pub mod tool_settings;
+pub mod transfer_log;

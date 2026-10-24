@@ -146,6 +146,8 @@ pub fn run() {
             commands::ssh::ssh_delete,
             commands::fs::fs_list_dir,
             commands::fs::fs_delete,
+            commands::transfer_log::transfer_log_list,
+            commands::transfer_log::transfer_log_clear,
             commands::profile::list_profiles,
             commands::profile::create_profile,
             commands::profile::update_profile,

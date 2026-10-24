@@ -21,6 +21,17 @@ use super::askpass::AskpassGuard;
 use super::registry::{CancelToken, Protocol, TransferRegistry};
 use super::{SshArgs, SshAuth};
 
+/// 日志变更事件名。后端每次写库后发这个，前端收到后重新查库刷新表格。
+pub const TRANSFER_LOG_CHANGED: &str = "transfer_log_changed";
+
+/// 广播「日志变了」。前端按 tabId 决定要不要刷新。
+fn emit_log_changed(app: &tauri::AppHandle, tab_id: &str) {
+    let _ = app.emit(
+        TRANSFER_LOG_CHANGED,
+        serde_json::json!({ "tabId": tab_id }),
+    );
+}
+
 /// 传输方向。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -673,11 +684,21 @@ pub async fn execute(
     let transfer_id = uuid::Uuid::new_v4().to_string();
     let cancel = deps.registry.register(&transfer_id);
     let ctx = CallCtx {
-        app: deps.app,
+        // clone：下面还要用 deps.app 发日志变更事件
+        app: deps.app.clone(),
         registry: deps.registry,
         transfer_id: &transfer_id,
         cancel: &cancel,
     };
+
+    // 先落一行 running：这样面板的表格能立刻看到「进行中」的行，
+    // 后续的进度事件按 request_id 对上它，结束时再更新成 done/error。
+    let log_id = uuid::Uuid::new_v4().to_string();
+    let log_row = build_log_row(&log_id, &spec);
+    if let Err(e) = crate::storage::transfer_log::insert(deps.db, &log_row) {
+        eprintln!("[TRANSFER-LOG] 写入失败: {e}");
+    }
+    emit_log_changed(&deps.app, &spec.tab_id);
 
     let result = match spec.direction {
         Direction::Upload => do_upload(&ctx, &spec).await,
@@ -685,18 +706,97 @@ pub async fn execute(
     };
     deps.registry.finish(&transfer_id);
 
-    let (files, protocol, used_fallback) = result?;
-    Ok(TransferSummary {
-        transfer_id,
-        direction: spec.direction.as_str().to_string(),
-        files,
-        protocol: match protocol {
-            Protocol::Sftp => "sftp".to_string(),
-            Protocol::LegacyScp => "legacy-scp".to_string(),
+    let elapsed = started.elapsed().as_millis() as u64;
+    match result {
+        Ok((files, protocol, used_fallback)) => {
+            let protocol_str = match protocol {
+                Protocol::Sftp => "sftp".to_string(),
+                Protocol::LegacyScp => "legacy-scp".to_string(),
+            };
+            let bytes = files.iter().map(|f| f.bytes).sum::<u64>();
+            let _ = crate::storage::transfer_log::update_state(
+                deps.db,
+                &log_id,
+                crate::storage::transfer_log::LogState::Done,
+                Some(bytes),
+                None,
+                Some(&protocol_str),
+                Some(elapsed),
+            );
+            emit_log_changed(&deps.app, &spec.tab_id);
+            Ok(TransferSummary {
+                transfer_id,
+                direction: spec.direction.as_str().to_string(),
+                files,
+                protocol: protocol_str,
+                used_fallback,
+                elapsed_ms: elapsed,
+            })
+        }
+        Err(e) => {
+            let _ = crate::storage::transfer_log::update_state(
+                deps.db,
+                &log_id,
+                crate::storage::transfer_log::LogState::Error,
+                None,
+                Some(&e.to_string()),
+                None,
+                Some(elapsed),
+            );
+            emit_log_changed(&deps.app, &spec.tab_id);
+            Err(e)
+        }
+    }
+}
+
+/// 为一次传输造一行日志。传输的方向决定 kind 与路径的含义。
+fn build_log_row(
+    id: &str,
+    spec: &TransferSpec,
+) -> crate::storage::transfer_log::TransferLogRow {
+    let now = chrono::Utc::now().timestamp_millis();
+    let (name, bytes, path) = match spec.direction {
+        Direction::Upload => {
+            let name = spec
+                .local_paths
+                .first()
+                .and_then(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()))
+                .unwrap_or_default();
+            let bytes = spec
+                .local_paths
+                .iter()
+                .filter_map(|p| std::fs::metadata(p).ok())
+                .map(|m| m.len())
+                .sum();
+            (name, Some(bytes), Some(spec.remote_path.clone()))
+        }
+        Direction::Download => {
+            let name = Path::new(&spec.remote_path)
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_else(|| spec.remote_path.clone());
+            (name, None, Some(spec.remote_path.clone()))
+        }
+    };
+    crate::storage::transfer_log::TransferLogRow {
+        id: id.to_string(),
+        request_id: Some(spec.request_id.clone()),
+        session_id: Some(spec.tab_id.clone()),
+        kind: match spec.direction {
+            Direction::Upload => crate::storage::transfer_log::LogKind::Upload,
+            Direction::Download => crate::storage::transfer_log::LogKind::Download,
         },
-        used_fallback,
-        elapsed_ms: started.elapsed().as_millis() as u64,
-    })
+        side: None,
+        name,
+        path,
+        bytes,
+        state: crate::storage::transfer_log::LogState::Running,
+        error: None,
+        protocol: None,
+        elapsed_ms: None,
+        created_at: now,
+        updated_at: now,
+    }
 }
 
 async fn do_upload(
