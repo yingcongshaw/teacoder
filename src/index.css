@@ -202,3 +202,39 @@ html, body, #root {
 .thread-hit {
   box-shadow: inset 2px 0 0 var(--ant-color-primary);
 }
+
+/* 传输日志表：行高压到 18px，一屏能看更多条记录。
+   AntD 的 small 尺寸行高约 30px，传输日志动辄几十条，太占地方。
+
+   必须加 !important：AntD 6 的样式是运行时注入的 CSS-in-JS，注入时机在
+   index.css 之后，同特异性下它会赢。 */
+.transfer-log-table .ant-table-thead > tr > th,
+.transfer-log-table .ant-table-tbody > tr > td {
+  padding: 0 8px !important;
+  height: 18px !important;
+  line-height: 18px !important;
+}
+/* 表头文字居中 */
+.transfer-log-table .ant-table-thead > tr > th { text-align: center !important; }
+/* 进度条塞进 18px 的行里要收窄，否则行高被它撑开 */
+.transfer-log-table .ant-progress-inner { height: 6px !important; }
+.transfer-log-table .ant-progress-text { font-size: 11px; }
+/* 单元格里的进度条不撑行高 */
+.transfer-log-table .ant-progress { line-height: 1 !important; }
+/* 滚动条常驻：日志多了才知道下面还有内容 */
+.transfer-log-table .ant-table-body::-webkit-scrollbar { width: 8px; }
+.transfer-log-table .ant-table-body::-webkit-scrollbar-thumb {
+  background: var(--ant-color-fill-secondary);
+  border-radius: 4px;
+}
+.transfer-log-table .ant-table-body::-webkit-scrollbar-track { background: transparent; }
+
+/* AntD 固定表头时会在表体顶部插一行测量行（aria-hidden），它本不该占位。
+   但我们给所有单元格设了 18px 行高，会把它顶成一条空行 —— 这里压回 0。
+   用属性选择器而不是类名，不依赖 AntD 的前缀类名。 */
+.transfer-log-table tr[aria-hidden="true"] > td {
+  height: 0 !important;
+  padding: 0 !important;
+  line-height: 0 !important;
+  border: none !important;
+}

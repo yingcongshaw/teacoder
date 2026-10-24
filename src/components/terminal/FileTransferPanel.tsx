@@ -64,6 +64,52 @@ interface LogRow {
   error?: string;
 }
 
+/**
+ * 日志表的紧凑渲染。
+ *
+ * 用 AntD Table 的 `components` 覆盖行/单元格，而不是写 CSS：
+ * AntD 6 的表格样式是运行时注入的 CSS-in-JS，注入时机在 index.css 之后，
+ * 同特异性下它赢 —— 外部 CSS 压不住它的单元格 padding。行内样式优先级最高，
+ * 不受影响。
+ */
+const COMPACT_TABLE = {
+  header: {
+    row: (props: React.HTMLAttributes<HTMLTableRowElement>) => (
+      <tr {...props} style={{ ...props.style, height: 18 }} />
+    ),
+    cell: (props: React.ThHTMLAttributes<HTMLTableCellElement>) => (
+      <th
+        {...props}
+        style={{
+          ...props.style,
+          padding: "0 8px",
+          height: 18,
+          lineHeight: "18px",
+          textAlign: "center",
+        }}
+      />
+    ),
+  },
+  body: {
+    row: (props: React.HTMLAttributes<HTMLTableRowElement>) => {
+      // AntD 插的测量行不占位，别给它 18px 行高
+      const hidden = (props as { "aria-hidden"?: string })["aria-hidden"] === "true";
+      return <tr {...props} style={{ ...props.style, height: hidden ? 0 : 18 }} />;
+    },
+    cell: (props: React.TdHTMLAttributes<HTMLTableCellElement>) => (
+      <td
+        {...props}
+        style={{
+          ...props.style,
+          padding: "0 8px",
+          height: 18,
+          lineHeight: "18px",
+        }}
+      />
+    ),
+  },
+};
+
 const PANEL_STYLE = {
   width: 760,
   // 跟随终端区域高度：写死数值会在矮终端里被裁掉顶部
@@ -116,12 +162,20 @@ export default function FileTransferPanel({
   /** Terminal 会话没有远程信息，只能手填一次；填完存到 state，不落库。 */
   const [manualArgs, setManualArgs] = useState<SshArgs | null>(null);
 
-  // 路径分「输入框里的」与「实际列举的」两份：边打字边列举会连着开一堆
-  // SSH 连接，代价远大于收益。
+  // 路径只有一份状态（输入框里显示的就是被列举的路径），另配一个刷新计数：
+  // 边打字边列举会连着开一堆 SSH 连接，代价远大于收益；而计数让「路径没变也
+  // 重新列举」成为可能 —— 直接 set 同一个值会被 React 当成没变而跳过。
   const [remotePath, setRemotePath] = useState("~/");
-  const [remoteListed, setRemoteListed] = useState("~/");
+  const [remoteRev, setRemoteRev] = useState(0);
   const [localPath, setLocalPath] = useState(workDir ?? "");
-  const [localListed, setLocalListed] = useState(workDir ?? "");
+  const [localRev, setLocalRev] = useState(0);
+
+  // 列举时读路径的当前值。放 ref 是因为列举不该被「打字」触发，
+  // 但 ref 里的值永远是最新的。
+  const remotePathRef = useRef(remotePath);
+  remotePathRef.current = remotePath;
+  const localPathRef = useRef(localPath);
+  localPathRef.current = localPath;
 
   const [remoteEntries, setRemoteEntries] = useState<DirEntry[]>([]);
   const [localEntries, setLocalEntries] = useState<DirEntry[]>([]);
@@ -163,13 +217,19 @@ export default function FileTransferPanel({
       ? `m:${manualArgs.hostname}:${manualArgs.port}:${manualArgs.username}`
       : "";
 
+  // 版本号让「路径没变也重新列举」成为可能：直接 set 同一个路径值会被
+  // React 当成没变而跳过，列表就停在旧内容上。
+  /** 只重新列举当前目录，不动路径输入框。 */
+  const refreshRemote = useCallback(() => setRemoteRev((v) => v + 1), []);
+  const refreshLocal = useCallback(() => setLocalRev((v) => v + 1), []);
+
   const applyRemote = useCallback((p: string) => {
     setRemotePath(p);
-    setRemoteListed(p);
+    setRemoteRev((v) => v + 1);
   }, []);
   const applyLocal = useCallback((p: string) => {
     setLocalPath(p);
-    setLocalListed(p);
+    setLocalRev((v) => v + 1);
   }, []);
 
   // 进度事件 → 日志行。并发传输靠 requestId 对齐行与行。
@@ -237,8 +297,9 @@ export default function FileTransferPanel({
     const target = targetFor();
     if (!target) return;
     let cancelled = false;
+    const path = remotePathRef.current;
     setRemoteLoading(true);
-    void sshListDir(target, remoteListed)
+    void sshListDir(target, path)
       .then((entries) => {
         if (cancelled) return;
         setRemoteEntries(entries);
@@ -256,14 +317,15 @@ export default function FileTransferPanel({
     return () => {
       cancelled = true;
     };
-  }, [open, remoteListed, targetKey, targetFor]);
+  }, [open, remoteRev, targetKey, targetFor]);
 
   // 列举本地目录
   useEffect(() => {
-    if (!open || !localListed) return;
+    if (!open || !localPath) return;
     let cancelled = false;
+    const path = localPathRef.current;
     setLocalLoading(true);
-    void fsListDir(localListed)
+    void fsListDir(path)
       .then((entries) => {
         if (cancelled) return;
         setLocalEntries(entries);
@@ -281,12 +343,12 @@ export default function FileTransferPanel({
     return () => {
       cancelled = true;
     };
-  }, [open, localListed]);
+  }, [open, localRev]);
 
   // 项目目录后到时补上默认落点
   useEffect(() => {
-    if (!localListed && workDir) applyLocal(workDir);
-  }, [workDir, localListed, applyLocal]);
+    if (!localPath && workDir) applyLocal(workDir);
+  }, [workDir, localPath, applyLocal]);
 
   // 点击按钮或面板之外的任何位置都收起面板。pointerdown 早于 click，
   // 打开面板的那一次点击不会落到这里（此时 open 还是 false）。
@@ -328,18 +390,14 @@ export default function FileTransferPanel({
     );
   };
 
-  /** 上传：本地选中文件 → 远程当前目录。 */
-  const startUploads = () => {
+  /** 上传若干本地文件 → 远程当前目录。 */
+  const startUploads = (files: DirEntry[]) => {
     if (!targetKey) {
       setConnModalOpen(true);
       return;
     }
     const target = targetFor();
     if (!target) return;
-    const files = localEntries.filter(
-      (e) => !e.isDir && localSel.includes(e.path),
-    );
-    if (files.length === 0) return;
 
     for (const f of files) {
       const requestId = nextRequestId();
@@ -357,28 +415,28 @@ export default function FileTransferPanel({
         target,
         tabId,
         localPaths: [f.path],
-        remotePath: remoteListed,
+        remotePath: remotePathRef.current,
         requestId,
       })
-        .then((s) => settleRow(requestId, "done", undefined, s.files[0]?.bytes))
+        .then((s) => {
+          settleRow(requestId, "done", undefined, s.files[0]?.bytes);
+          // 传完就把对端目录重新列一遍：刚落地的文件要立刻出现在列表里
+          refreshRemote();
+        })
         .catch((e) =>
           settleRow(requestId, "error", typeof e === "string" ? e : "上传失败"),
         );
     }
   };
 
-  /** 下载：远程选中文件 → 本地当前目录。 */
-  const startDownloads = () => {
+  /** 下载若干远程文件 → 本地当前目录。 */
+  const startDownloads = (files: DirEntry[]) => {
     if (!targetKey) {
       setConnModalOpen(true);
       return;
     }
     const target = targetFor();
     if (!target) return;
-    const files = remoteEntries.filter(
-      (e) => !e.isDir && remoteSel.includes(e.path),
-    );
-    if (files.length === 0) return;
 
     for (const f of files) {
       const requestId = nextRequestId();
@@ -396,10 +454,13 @@ export default function FileTransferPanel({
         target,
         tabId,
         remotePath: f.path,
-        localDir: localListed,
+        localDir: localPathRef.current,
         requestId,
       })
-        .then((s) => settleRow(requestId, "done", undefined, s.files[0]?.bytes))
+        .then((s) => {
+          settleRow(requestId, "done", undefined, s.files[0]?.bytes);
+          refreshLocal();
+        })
         .catch((e) =>
           settleRow(requestId, "error", typeof e === "string" ? e : "下载失败"),
         );
@@ -427,11 +488,16 @@ export default function FileTransferPanel({
     {
       title: "方式",
       dataIndex: "direction",
-      width: 84,
+      width: 52,
+      align: "center",
       render: (d: Direction) => (
-        <span style={{ color: d === "upload" ? "var(--ant-color-blue)" : "var(--ant-color-green)" }}>
-          {d === "upload" ? "<<上传" : ">>下载"}
-        </span>
+        <Tooltip title={d === "upload" ? "上传" : "下载"} placement="left">
+          {d === "upload" ? (
+            <CloudUploadOutlined style={{ color: "var(--ant-color-blue)" }} />
+          ) : (
+            <CloudDownloadOutlined style={{ color: "var(--ant-color-green)" }} />
+          )}
+        </Tooltip>
       ),
     },
     {
@@ -488,14 +554,17 @@ export default function FileTransferPanel({
                 size="small"
                 percent={percent}
                 status="active"
-                style={{ flex: 1, marginBottom: 0 }}
+                style={{ flex: 1, marginBottom: 0, lineHeight: 1 }}
               />
             ) : (
+              // 完成的行也显示 100%，而不是 AntD 的对勾图标 ——
+              // status="success" 会把百分比文字换成对勾，得自己给 format
               <Progress
                 size="small"
                 percent={100}
-                status="success"
-                style={{ flex: 1, marginBottom: 0 }}
+                strokeColor="var(--ant-color-success)"
+                format={() => "100%"}
+                style={{ flex: 1, marginBottom: 0, lineHeight: 1 }}
               />
             )}
             {row.state === "running" && (
@@ -603,6 +672,7 @@ export default function FileTransferPanel({
                   )
                 }
                 onNavigate={(p) => applyRemote(p)}
+                onActivate={(e) => startDownloads([e])}
                 placeholder="远程目录，如 /var/log"
                 hint={
                   isSsh
@@ -619,25 +689,59 @@ export default function FileTransferPanel({
               />
               <div
                 className="flex flex-col items-center justify-center"
-                style={{ width: 46, gap: 8 }}
+                style={{ width: 30, gap: 6 }}
               >
                 <Tooltip title="上传到远程（本地 → 远程）" placement="left">
-                  <Button
-                    size="small"
-                    icon={<CloudUploadOutlined />}
-                    onClick={startUploads}
+                  <button
+                    onClick={() =>
+                      startUploads(
+                        localEntries.filter(
+                          (e) => !e.isDir && localSel.includes(e.path),
+                        ),
+                      )
+                    }
+                    className="flex flex-col items-center justify-center rounded transition-all"
+                    style={{
+                      width: 28,
+                      padding: "3px 0",
+                      gap: 1,
+                      background: "var(--ant-color-bg-elevated)",
+                      border: "1px solid var(--ant-color-border-secondary)",
+                      cursor: "pointer",
+                      color: "var(--ant-color-text-secondary)",
+                      fontSize: 10,
+                      lineHeight: "10px",
+                    }}
                   >
-                    &lt;&lt;
-                  </Button>
+                    <CloudUploadOutlined style={{ fontSize: 13 }} />
+                    <span>&lt;&lt;</span>
+                  </button>
                 </Tooltip>
                 <Tooltip title="从远程下载（远程 → 本地）" placement="right">
-                  <Button
-                    size="small"
-                    icon={<CloudDownloadOutlined />}
-                    onClick={startDownloads}
+                  <button
+                    onClick={() =>
+                      startDownloads(
+                        remoteEntries.filter(
+                          (e) => !e.isDir && remoteSel.includes(e.path),
+                        ),
+                      )
+                    }
+                    className="flex flex-col items-center justify-center rounded transition-all"
+                    style={{
+                      width: 28,
+                      padding: "3px 0",
+                      gap: 1,
+                      background: "var(--ant-color-bg-elevated)",
+                      border: "1px solid var(--ant-color-border-secondary)",
+                      cursor: "pointer",
+                      color: "var(--ant-color-text-secondary)",
+                      fontSize: 10,
+                      lineHeight: "10px",
+                    }}
                   >
-                    &gt;&gt;
-                  </Button>
+                    <CloudDownloadOutlined style={{ fontSize: 13 }} />
+                    <span>&gt;&gt;</span>
+                  </button>
                 </Tooltip>
               </div>
               <FilePane
@@ -657,6 +761,7 @@ export default function FileTransferPanel({
                   )
                 }
                 onNavigate={(p) => applyLocal(p)}
+                onActivate={(e) => startUploads([e])}
                 placeholder="本地目录，如 /home/me/proj"
                 extra={
                   !isSsh ? (
@@ -679,6 +784,8 @@ export default function FileTransferPanel({
             >
               <div className="text-xs font-medium mb-1">同步进度和日志</div>
               <Table<LogRow>
+                className="transfer-log-table"
+                components={COMPACT_TABLE}
                 size="small"
                 columns={columns}
                 dataSource={rows}
@@ -707,6 +814,7 @@ function FilePane({
   selected,
   onToggle,
   onNavigate,
+  onActivate,
   placeholder,
   hint,
   extra,
@@ -721,12 +829,39 @@ function FilePane({
   selected: string[];
   onToggle: (path: string) => void;
   onNavigate: (path: string) => void;
+  /** 双击文件条目时触发（文件夹的双击仍是进入目录）。 */
+  onActivate?: (entry: DirEntry) => void;
   placeholder: string;
   /** 没有内容可列时的原因说明，比「空目录」有信息量。 */
   hint?: string;
   extra?: React.ReactNode;
 }) {
   const selectedSet = useMemo(() => new Set(selected), [selected]);
+
+  /**
+   * 双击判定自己做，不靠 onDoubleClick。
+   *
+   * 浏览器把两次点击合成 dblclick 的条件（间隔、位置）在不同后端上并不一致，
+   * 合成事件更是常常只给出两次 click。自己记时间戳更可控。
+   */
+  const lastClickRef = useRef<{ path: string; at: number } | null>(null);
+
+  const handleClick = (e: DirEntry) => {
+    if (e.isDir) {
+      onNavigate(e.path);
+      return;
+    }
+    const now = Date.now();
+    const last = lastClickRef.current;
+    if (last && last.path === e.path && now - last.at < 400) {
+      // 第二次点击：当作双击，传文件
+      lastClickRef.current = null;
+      onActivate?.(e);
+      return;
+    }
+    lastClickRef.current = { path: e.path, at: now };
+    onToggle(e.path);
+  };
 
   return (
     <div
@@ -742,7 +877,6 @@ function FilePane({
           value={path}
           onChange={(e) => onPathChange(e.target.value)}
           onPressEnter={onApply}
-          onBlur={onApply}
           placeholder={placeholder}
           style={{ flex: 1 }}
         />
@@ -790,7 +924,7 @@ function FilePane({
                   ? "var(--ant-color-primary-bg)"
                   : "transparent",
               }}
-              onClick={() => (e.isDir ? onNavigate(e.path) : onToggle(e.path))}
+              onClick={() => handleClick(e)}
               title={e.path}
             >
               {e.isDir ? (
