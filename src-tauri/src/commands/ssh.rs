@@ -97,9 +97,10 @@ pub async fn ssh_list_dir(
     db: tauri::State<'_, AppDatabase>,
     target: SshTarget,
     path: String,
+    show_hidden: bool,
 ) -> Result<Vec<crate::fsdir::DirEntry>, String> {
     let ssh = transfer::resolve_ssh_args(&db, &target).map_err(|e| e.to_string())?;
-    crate::ssh::remote::list_dir(&ssh, &path)
+    crate::ssh::remote::list_dir(&ssh, &path, show_hidden)
         .await
         .map_err(|e| e.to_string())
 }

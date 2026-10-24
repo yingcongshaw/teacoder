@@ -8,8 +8,8 @@ use crate::fsdir::DirEntry;
 
 /// 列出本地目录的内容。
 ///
-/// 路径由用户（或前端默认的项目目录）给出。隐藏文件一并列出。
+/// 路径由用户（或前端默认的项目目录）给出。`show_hidden` 控制是否列出隐藏文件。
 #[tauri::command]
-pub fn fs_list_dir(path: String) -> Result<Vec<DirEntry>, String> {
-    crate::fsdir::list_local_dir(&path)
+pub fn fs_list_dir(path: String, show_hidden: bool) -> Result<Vec<DirEntry>, String> {
+    crate::fsdir::list_local_dir(&path, show_hidden)
 }

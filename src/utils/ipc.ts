@@ -99,13 +99,17 @@ export async function sshDownload(params: {
 export async function sshListDir(
   target: SshTarget,
   path: string,
+  showHidden: boolean,
 ): Promise<DirEntry[]> {
-  return invoke("ssh_list_dir", { target, path });
+  return invoke("ssh_list_dir", { target, path, showHidden });
 }
 
 /** 列出本地目录。前端拿不到文件系统，只能由后端读。 */
-export async function fsListDir(path: string): Promise<DirEntry[]> {
-  return invoke("fs_list_dir", { path });
+export async function fsListDir(
+  path: string,
+  showHidden: boolean,
+): Promise<DirEntry[]> {
+  return invoke("fs_list_dir", { path, showHidden });
 }
 
 /** 请求取消进行中的传输。返回 false 表示该任务已结束或 id 未知。 */

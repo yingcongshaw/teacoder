@@ -238,3 +238,9 @@ html, body, #root {
   line-height: 0 !important;
   border: none !important;
 }
+
+/* 传输日志表的字号比正文小 2px：一屏能多看几行，也把「进度」列让给进度条 */
+.transfer-log-table .ant-table-thead > tr > th,
+.transfer-log-table .ant-table-tbody > tr > td {
+  font-size: 12px !important;
+}

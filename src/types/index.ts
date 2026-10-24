@@ -104,7 +104,9 @@ export interface DirEntry {
   isDir: boolean;
   /** 字节数。目录恒为 0。 */
   size: number;
-  /** Unix 秒。远端拿不到时为 null。 */
+  /** 创建时间（Unix 秒）。文件系统不记录 birthtime 时为 null。 */
+  created: number | null;
+  /** 最后修改时间（Unix 秒）。远端拿不到时为 null。 */
   modified: number | null;
 }
 

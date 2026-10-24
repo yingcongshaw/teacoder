@@ -20,15 +20,18 @@ pub struct DirEntry {
     pub is_dir: bool,
     /// 字节数。目录恒为 0 —— 目录大小没有可移植的口径。
     pub size: u64,
-    /// Unix 秒。远端拿不到时为 None。
+    /// 创建时间（Unix 秒）。文件系统不记录 birthtime 时为 None。
+    pub created: Option<i64>,
+    /// 最后修改时间（Unix 秒）。远端拿不到时为 None。
     pub modified: Option<i64>,
 }
 
 /// 列出本地目录。
 ///
-/// 隐藏文件（以 `.` 开头）也列出来 —— 远端用 `ls -A` 是同样口径，两栏对齐。
+/// `show_hidden` 为 false 时过滤掉以 `.` 开头的条目。远端用 `ls -A` / `find` 是
+/// 同样口径，两栏因此可以对齐。
 /// 条目按名称排序，目录排在文件前面（同名时目录优先）。
-pub fn list_local_dir(path: &str) -> Result<Vec<DirEntry>, String> {
+pub fn list_local_dir(path: &str, show_hidden: bool) -> Result<Vec<DirEntry>, String> {
     let dir = Path::new(path);
     let meta = std::fs::metadata(dir).map_err(|e| format!("无法访问目录 {path}: {e}"))?;
     if !meta.is_dir() {
@@ -40,6 +43,9 @@ pub fn list_local_dir(path: &str) -> Result<Vec<DirEntry>, String> {
     for item in rd {
         let Ok(item) = item else { continue };
         let name = item.file_name().to_string_lossy().into_owned();
+        if !show_hidden && name.starts_with('.') {
+            continue;
+        }
         // 跟随符号链接：指向目录的软链应当能进去。断链读不到元信息，跳过。
         let Ok(meta) = std::fs::metadata(item.path()) else {
             continue;
@@ -48,6 +54,12 @@ pub fn list_local_dir(path: &str) -> Result<Vec<DirEntry>, String> {
             path: item.path().to_string_lossy().into_owned(),
             is_dir: meta.is_dir(),
             size: if meta.is_dir() { 0 } else { meta.len() },
+            // 很多文件系统不记 birthtime，拿不到就是 None，不猜。
+            created: meta
+                .created()
+                .ok()
+                .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+                .map(|d| d.as_secs() as i64),
             modified: meta
                 .modified()
                 .ok()
@@ -85,7 +97,7 @@ mod tests {
         std::fs::write(d.join("b.txt"), b"hello").unwrap();
         std::fs::create_dir_all(d.join("a_dir")).unwrap();
 
-        let mut entries = list_local_dir(&d.to_string_lossy()).unwrap();
+        let mut entries = list_local_dir(&d.to_string_lossy(), true).unwrap();
         entries.sort_by(|a, b| a.name.cmp(&b.name));
 
         assert_eq!(entries.len(), 2);
@@ -104,21 +116,32 @@ mod tests {
         let d = tmpdir("notdir");
         let f = d.join("x.txt");
         std::fs::write(&f, b"x").unwrap();
-        assert!(list_local_dir(&f.to_string_lossy()).is_err());
+        assert!(list_local_dir(&f.to_string_lossy(), true).is_err());
         std::fs::remove_dir_all(&d).ok();
     }
 
     #[test]
     fn missing_directory_is_an_error() {
-        assert!(list_local_dir("/definitely/not/here/at/all").is_err());
+        assert!(list_local_dir("/definitely/not/here/at/all", true).is_err());
     }
 
     #[test]
     fn includes_dotfiles() {
         let d = tmpdir("dot");
         std::fs::write(d.join(".hidden"), b"x").unwrap();
-        let entries = list_local_dir(&d.to_string_lossy()).unwrap();
+        let entries = list_local_dir(&d.to_string_lossy(), true).unwrap();
         assert!(entries.iter().any(|e| e.name == ".hidden"));
+        std::fs::remove_dir_all(&d).ok();
+    }
+
+    #[test]
+    fn hides_dotfiles_when_asked() {
+        let d = tmpdir("nodot");
+        std::fs::write(d.join(".hidden"), b"x").unwrap();
+        std::fs::write(d.join("shown"), b"x").unwrap();
+        let entries = list_local_dir(&d.to_string_lossy(), false).unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].name, "shown");
         std::fs::remove_dir_all(&d).ok();
     }
 }

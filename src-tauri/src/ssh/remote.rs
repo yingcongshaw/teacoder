@@ -124,24 +124,41 @@ pub async fn probe_remote_cwd(ssh: &SshArgs) -> Result<String, RemoteError> {
 /// 优先用 GNU find 的 `-printf` 一次拿到 类型/大小/时间/名字；远端没有
 /// GNU find（busybox、macOS）就退回 POSIX 口径的 `ls -A1` + 逐项判目录。
 /// 两条命令输出同一套制表符分隔的格式，解析只有一份。
-pub async fn list_dir(ssh: &SshArgs, path: &str) -> Result<Vec<DirEntry>, RemoteError> {
+pub async fn list_dir(
+    ssh: &SshArgs,
+    path: &str,
+    show_hidden: bool,
+) -> Result<Vec<DirEntry>, RemoteError> {
     if path.chars().any(|c| c.is_control()) {
         return Err(RemoteError::BadOutput("路径含控制字符".into()));
     }
     let dir = shell_quote(path);
+    // ls 不带 -A 就不列隐藏文件
+    let ls_hidden = if show_hidden { "-A1" } else { "-1" };
 
+    // 类型 / 字节 / 修改时间 / 名字 由 find 一次拿全，创建时间另用 stat 补：
+    // find 的 %W（birth time）并非所有版本都认 —— 实测有的版本直接报
+    // "unrecognized format directive '%W'"。stat 的 %W 拿得到，缺 stat 时
+    // 退化成 0（未知），不影响其余字段。
+    // 隐藏文件过滤：find 用 ! -name '.*'，回退的 ls 不带 -A
+    let filter = if show_hidden { "" } else { "! -name '.*' " };
     let primary = format!(
         "cd -- {dir} 2>/dev/null || exit 3; \
-         find . -mindepth 1 -maxdepth 1 -printf '%y\\t%s\\t%T@\\t%f\\n'"
+         find . -mindepth 1 -maxdepth 1 {filter}-printf '%y\\t%s\\t%T@\\t%f\\n' | \
+         while IFS=\"$(printf '\\t')\" read -r y s t n; do \
+           b=$(stat -c %W \"$n\" 2>/dev/null || echo 0); \
+           printf '%s\\t%s\\t%s\\t%s\\t%s\\n' \"$y\" \"$s\" \"$b\" \"$t\" \"$n\"; \
+         done"
     );
     match run_remote(ssh, &primary, LIST_TIMEOUT).await {
         Ok(out) => Ok(parse_listing(&out, path)),
         Err(first) => {
             let fallback = format!(
+                // POSIX 口径拿不到大小与时间，只有类型和名字
                 "cd -- {dir} 2>/dev/null || exit 3; \
-                 ls -A1 | while IFS= read -r n; do \
-                   if [ -d \"$n\" ]; then printf 'd\\t0\\t0\\t%s\\n' \"$n\"; \
-                   else printf 'f\\t0\\t0\\t%s\\n' \"$n\"; fi; done"
+                 ls {ls_hidden} | while IFS= read -r n; do \
+                   if [ -d \"$n\" ]; then printf 'd\\t0\\t0\\t0\\t%s\\n' \"$n\"; \
+                   else printf 'f\\t0\\t0\\t0\\t%s\\n' \"$n\"; fi; done"
             );
             match run_remote(ssh, &fallback, LIST_TIMEOUT).await {
                 Ok(out) => Ok(parse_listing(&out, path)),
@@ -155,18 +172,19 @@ pub async fn list_dir(ssh: &SshArgs, path: &str) -> Result<Vec<DirEntry>, Remote
     }
 }
 
-/// 解析制表符分隔的目录列表：`类型\t大小\t时间戳\t名字`。
+/// 解析制表符分隔的目录列表：`类型\t大小\t创建时间\t修改时间\t名字`。
 ///
-/// 名字里可能带制表符，所以按前三个制表符切、剩下的整体当名字。
+/// 名字里可能带制表符，所以按前四个制表符切、剩下的整体当名字。
 fn parse_listing(out: &str, base: &str) -> Vec<DirEntry> {
     let mut entries = Vec::new();
     for line in out.lines() {
         if line.is_empty() {
             continue;
         }
-        let mut parts = line.splitn(4, '\t');
+        let mut parts = line.splitn(5, '\t');
         let kind = parts.next().unwrap_or("").trim();
         let size = parts.next().unwrap_or("0").trim();
+        let created = parts.next().unwrap_or("0").trim();
         let mtime = parts.next().unwrap_or("0").trim();
         let name = parts.next().unwrap_or("");
         if name.is_empty() {
@@ -178,10 +196,9 @@ fn parse_listing(out: &str, base: &str) -> Vec<DirEntry> {
             // 符号链接按文件处理 —— 目标是不是目录要再开一次连接才知道，不值当。
             is_dir: kind == "d",
             size: size.parse().unwrap_or(0),
-            modified: mtime
-                .split('.')
-                .next()
-                .and_then(|s| s.trim().parse::<i64>().ok()),
+            // 0 表示未知（文件系统不记 birthtime），不当成 1970 年
+            created: parse_epoch(created),
+            modified: parse_epoch(mtime),
             name: name.to_string(),
         });
     }
@@ -191,6 +208,12 @@ fn parse_listing(out: &str, base: &str) -> Vec<DirEntry> {
             .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
     });
     entries
+}
+
+/// 解析 epoch 秒。0 或非法值都当「未知」。
+fn parse_epoch(raw: &str) -> Option<i64> {
+    let secs = raw.split('.').next()?.trim().parse::<i64>().ok()?;
+    if secs <= 0 { None } else { Some(secs) }
 }
 
 /// 远程路径拼接。`base` 是目录，`name` 是条目名。
@@ -257,8 +280,8 @@ mod tests {
 
     #[test]
     fn parses_a_find_listing() {
-        let out = "f\t640\t1695000000.1234567\tsome file.txt\n\
-                   d\t4096\t1695000001\tfolder\n";
+        let out = "f\t640\t1694000000\t1695000000.1234567\tsome file.txt\n\
+                   d\t4096\t1694000001\t1695000001\tfolder\n";
         let entries = parse_listing(out, "/root");
         assert_eq!(entries.len(), 2);
         assert_eq!(entries[0].name, "folder");
@@ -267,12 +290,13 @@ mod tests {
         assert_eq!(entries[1].name, "some file.txt");
         assert!(!entries[1].is_dir);
         assert_eq!(entries[1].size, 640);
+        assert_eq!(entries[1].created, Some(1694000000));
         assert_eq!(entries[1].modified, Some(1695000000));
     }
 
     #[test]
     fn listing_keeps_tabs_inside_the_name() {
-        let out = "f\t10\t100\tweird\tname.txt\n";
+        let out = "f\t10\t100\t200\tweird\tname.txt\n";
         let entries = parse_listing(out, "/root");
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].name, "weird\tname.txt");
@@ -290,7 +314,7 @@ mod tests {
         // 控制字符会把远端命令拆成多行 —— 直接拒绝，不进 shell
         let ssh = args("h", 22, "root", "pw", "");
         let rt = tokio::runtime::Runtime::new().unwrap();
-        let err = rt.block_on(list_dir(&ssh, "/root/a\nrm -rf /")).unwrap_err();
+        let err = rt.block_on(list_dir(&ssh, "/root/a\nrm -rf /", true)).unwrap_err();
         assert!(matches!(err, RemoteError::BadOutput(_)));
     }
 }

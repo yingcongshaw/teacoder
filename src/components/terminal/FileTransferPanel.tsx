@@ -8,9 +8,13 @@ import {
   CloseOutlined,
   CloudDownloadOutlined,
   CloudUploadOutlined,
+  EyeInvisibleOutlined,
+  EyeOutlined,
   FileOutlined,
   FolderOutlined,
   FolderOpenOutlined,
+  FullscreenExitOutlined,
+  FullscreenOutlined,
   SnippetsOutlined,
   StopOutlined,
 } from "@ant-design/icons";
@@ -110,6 +114,17 @@ const COMPACT_TABLE = {
   },
 };
 
+/** 头部几个图标按钮的统一样式。去掉 outline：点过之后 WebKit 会留下一个
+ *  聚焦框，看着像按钮自带边框。 */
+const ICON_BTN_STYLE = {
+  background: "transparent",
+  border: "none",
+  cursor: "pointer",
+  color: "var(--ant-color-text-secondary)",
+  padding: 2,
+  outline: "none",
+} as const;
+
 const PANEL_STYLE = {
   width: 760,
   // 跟随终端区域高度：写死数值会在矮终端里被裁掉顶部
@@ -140,6 +155,14 @@ function formatDate(unixSec: number | null): string {
   return `${d.getFullYear()}/${p(d.getMonth() + 1)}/${p(d.getDate())}`;
 }
 
+/** `YYYY-MM-DD HH:mm:ss`。到秒 —— 文件时间要精确到秒才有排查价值。 */
+function formatDateTime(unixSec: number | null): string {
+  if (unixSec === null || unixSec <= 0) return "未知";
+  const d = new Date(unixSec * 1000);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+}
+
 /** `HH:MM:SS`。 */
 function formatClock(ms: number): string {
   const d = new Date(ms);
@@ -157,6 +180,10 @@ export default function FileTransferPanel({
   const isSsh = toolType === "ssh";
 
   const [open, setOpen] = useState(false);
+  /** 放大后铺满终端区域，再点恢复。照抄 TranscriptPanel 的做法。 */
+  const [maximized, setMaximized] = useState(false);
+  /** 是否列出隐藏文件。眼睛图标切换，远程与本地两栏一起生效。 */
+  const [showHidden, setShowHidden] = useState(true);
   const [connModalOpen, setConnModalOpen] = useState(false);
 
   /** Terminal 会话没有远程信息，只能手填一次；填完存到 state，不落库。 */
@@ -191,6 +218,14 @@ export default function FileTransferPanel({
 
   const buttonRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
+  const panesRef = useRef<HTMLDivElement>(null);
+  /**
+   * 日志表体的高度。
+   *
+   * 放大后文件列表不再无限长高（那会把日志表挤出可视区），多出来的空间给日志表。
+   * 表体高度得按面板实际高度算 —— 终端尺寸是变的，写死会在矮终端里被裁掉。
+   */
+  const [logHeight, setLogHeight] = useState(132);
 
   const targetFor = useCallback((): SshTarget | null => {
     if (isSsh) return { kind: "fromSession", sessionId: tabId };
@@ -299,7 +334,7 @@ export default function FileTransferPanel({
     let cancelled = false;
     const path = remotePathRef.current;
     setRemoteLoading(true);
-    void sshListDir(target, path)
+    void sshListDir(target, path, showHidden)
       .then((entries) => {
         if (cancelled) return;
         setRemoteEntries(entries);
@@ -317,7 +352,7 @@ export default function FileTransferPanel({
     return () => {
       cancelled = true;
     };
-  }, [open, remoteRev, targetKey, targetFor]);
+  }, [open, remoteRev, targetKey, targetFor, showHidden]);
 
   // 列举本地目录
   useEffect(() => {
@@ -325,7 +360,7 @@ export default function FileTransferPanel({
     let cancelled = false;
     const path = localPathRef.current;
     setLocalLoading(true);
-    void fsListDir(path)
+    void fsListDir(path, showHidden)
       .then((entries) => {
         if (cancelled) return;
         setLocalEntries(entries);
@@ -343,12 +378,33 @@ export default function FileTransferPanel({
     return () => {
       cancelled = true;
     };
-  }, [open, localRev]);
+  }, [open, localRev, showHidden]);
 
   // 项目目录后到时补上默认落点
   useEffect(() => {
     if (!localPath && workDir) applyLocal(workDir);
   }, [workDir, localPath, applyLocal]);
+
+  // 放大时按面板实际高度算日志表体的高度
+  useEffect(() => {
+    if (!maximized) {
+      setLogHeight(132);
+      return;
+    }
+    const el = panelRef.current;
+    if (!el) return;
+    const measure = () => {
+      const panesH = panesRef.current?.offsetHeight ?? 0;
+      // 面板里除文件列表与日志表体外的部分：头部 40 + 日志标题 25
+      // + 表头 18 + 表格容器上内边距 8 + 底部留白 5
+      const chrome = 96;
+      setLogHeight(Math.max(72, el.clientHeight - panesH - chrome));
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [maximized, open]);
 
   // 点击按钮或面板之外的任何位置都收起面板。pointerdown 早于 click，
   // 打开面板的那一次点击不会落到这里（此时 open 还是 false）。
@@ -628,32 +684,70 @@ export default function FileTransferPanel({
         createPortal(
           <div
             ref={panelRef}
-            className="absolute bottom-10 right-10 z-20 flex flex-col"
-            style={PANEL_STYLE}
+            className={`absolute z-20 flex flex-col ${
+              // 上、右都留 2.5rem（10），与右边的距离对称
+              maximized ? "top-0 right-0" : "top-10 right-10"
+            }`}
+            style={{
+              ...PANEL_STYLE,
+              width: maximized ? "100%" : PANEL_STYLE.width,
+              // 全屏时高度也铺满，只给宽度不够
+              height: maximized ? "100%" : undefined,
+              maxHeight: maximized ? "100%" : PANEL_STYLE.maxHeight,
+              borderRadius: maximized ? 0 : PANEL_STYLE.borderRadius,
+            }}
           >
             <div
               className="flex items-center gap-2 px-3 py-2"
               style={{ borderBottom: "1px solid var(--ant-color-border-secondary)" }}
             >
               <span className="text-sm font-medium flex-1">文件传输</span>
+              <Tooltip title={showHidden ? "不显示隐藏文件" : "显示隐藏文件"}>
+                <button
+                  onClick={() => setShowHidden((v) => !v)}
+                  aria-label={showHidden ? "不显示隐藏文件" : "显示隐藏文件"}
+                  style={ICON_BTN_STYLE}
+                >
+                  {showHidden ? (
+                    <EyeOutlined style={{ fontSize: 13 }} />
+                  ) : (
+                    <EyeInvisibleOutlined style={{ fontSize: 13 }} />
+                  )}
+                </button>
+              </Tooltip>
+              <Tooltip title={maximized ? "恢复默认大小" : "最大化"}>
+                <button
+                  onClick={() => setMaximized((v) => !v)}
+                  aria-label={maximized ? "恢复默认大小" : "最大化"}
+                  style={ICON_BTN_STYLE}
+                >
+                  {maximized ? (
+                    <FullscreenExitOutlined style={{ fontSize: 13 }} />
+                  ) : (
+                    <FullscreenOutlined style={{ fontSize: 13 }} />
+                  )}
+                </button>
+              </Tooltip>
               <button
                 onClick={() => setOpen(false)}
                 aria-label="关闭"
-                style={{
-                  background: "transparent",
-                  border: "none",
-                  cursor: "pointer",
-                  color: "var(--ant-color-text-secondary)",
-                  padding: 2,
-                }}
+                style={ICON_BTN_STYLE}
               >
                 <CloseOutlined style={{ fontSize: 13 }} />
               </button>
             </div>
 
             <div
+              ref={panesRef}
               className="flex px-3 pt-2"
-              style={{ gap: 6, flex: "1 1 auto", minHeight: 0 }}
+              style={{
+                gap: 6,
+                // 放大时两栏不再长高 —— 长高会把日志表挤出可视区
+                flex: maximized ? "0 0 auto" : "1 1 auto",
+                minHeight: 0,
+                // 列表底边到下方分隔线的留白，两栏统一
+                paddingBottom: 5,
+              }}
             >
               <FilePane
                 title="远程文件目录"
@@ -673,6 +767,7 @@ export default function FileTransferPanel({
                 }
                 onNavigate={(p) => applyRemote(p)}
                 onActivate={(e) => startDownloads([e])}
+                listMaxHeight={300}
                 placeholder="远程目录，如 /var/log"
                 hint={
                   isSsh
@@ -689,7 +784,7 @@ export default function FileTransferPanel({
               />
               <div
                 className="flex flex-col items-center justify-center"
-                style={{ width: 30, gap: 6 }}
+                style={{ width: 30, gap: 50 }}
               >
                 <Tooltip title="上传到远程（本地 → 远程）" placement="left">
                   <button
@@ -762,6 +857,7 @@ export default function FileTransferPanel({
                 }
                 onNavigate={(p) => applyLocal(p)}
                 onActivate={(e) => startUploads([e])}
+                listMaxHeight={300}
                 placeholder="本地目录，如 /home/me/proj"
                 extra={
                   !isSsh ? (
@@ -780,7 +876,11 @@ export default function FileTransferPanel({
 
             <div
               className="px-3 pt-2"
-              style={{ borderTop: "1px solid var(--ant-color-border-secondary)" }}
+              style={{
+                borderTop: "1px solid var(--ant-color-border-secondary)",
+                // 表格底边到面板底边的留白
+                paddingBottom: 5,
+              }}
             >
               <div className="text-xs font-medium mb-1">同步进度和日志</div>
               <Table<LogRow>
@@ -791,7 +891,7 @@ export default function FileTransferPanel({
                 dataSource={rows}
                 rowKey="requestId"
                 pagination={false}
-                scroll={{ y: 132 }}
+                scroll={{ y: logHeight }}
                 locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无传输记录" /> }}
               />
             </div>
@@ -816,6 +916,7 @@ function FilePane({
   onNavigate,
   onActivate,
   placeholder,
+  listMaxHeight,
   hint,
   extra,
 }: {
@@ -832,6 +933,8 @@ function FilePane({
   /** 双击文件条目时触发（文件夹的双击仍是进入目录）。 */
   onActivate?: (entry: DirEntry) => void;
   placeholder: string;
+  /** 列表的最大高度。全屏时放开，上限交给面板。 */
+  listMaxHeight?: number | string;
   /** 没有内容可列时的原因说明，比「空目录」有信息量。 */
   hint?: string;
   extra?: React.ReactNode;
@@ -887,7 +990,7 @@ function FilePane({
         style={{
           flex: "1 1 auto",
           minHeight: 120,
-          maxHeight: 300,
+          maxHeight: listMaxHeight ?? 300,
           overflowY: "auto",
           border: "1px solid var(--ant-color-border-secondary)",
           borderRadius: 6,
@@ -916,30 +1019,41 @@ function FilePane({
         {entries.map((e) => {
           const active = selectedSet.has(e.path);
           return (
-            <div
+            <Tooltip
               key={e.path}
-              className="flex items-center gap-1 px-1 py-0.5 cursor-pointer rounded"
-              style={{
-                background: active
-                  ? "var(--ant-color-primary-bg)"
-                  : "transparent",
-              }}
-              onClick={() => handleClick(e)}
-              title={e.path}
+              placement="left"
+              title={
+                <div className="text-xs" style={{ lineHeight: "1.6" }}>
+                  <div style={{ wordBreak: "break-all" }}>{e.path}</div>
+                  <div>大小：{e.isDir ? "—" : formatBytes(e.size)}</div>
+                  <div>创建：{formatDateTime(e.created)}</div>
+                  <div>修改：{formatDateTime(e.modified)}</div>
+                </div>
+              }
             >
-              {e.isDir ? (
-                <FolderOutlined style={{ color: "var(--ant-color-text-tertiary)" }} />
-              ) : (
-                <FileOutlined style={{ color: "var(--ant-color-text-tertiary)" }} />
-              )}
-              <span className="flex-1 text-xs truncate">{e.name}</span>
-              <span
-                className="text-xs"
-                style={{ color: "var(--ant-color-text-tertiary)" }}
+              <div
+                className="flex items-center gap-1 px-1 py-0.5 cursor-pointer rounded"
+                style={{
+                  background: active
+                    ? "var(--ant-color-primary-bg)"
+                    : "transparent",
+                }}
+                onClick={() => handleClick(e)}
               >
-                {formatDate(e.modified)}
-              </span>
-            </div>
+                {e.isDir ? (
+                  <FolderOutlined style={{ color: "var(--ant-color-text-tertiary)" }} />
+                ) : (
+                  <FileOutlined style={{ color: "var(--ant-color-text-tertiary)" }} />
+                )}
+                <span className="flex-1 text-xs truncate">{e.name}</span>
+                <span
+                  className="text-xs"
+                  style={{ color: "var(--ant-color-text-tertiary)" }}
+                >
+                  {formatDate(e.modified)}
+                </span>
+              </div>
+            </Tooltip>
           );
         })}
       </div>
