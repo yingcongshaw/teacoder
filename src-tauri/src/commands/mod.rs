@@ -1,6 +1,7 @@
 pub mod claude_settings;
 pub mod cli;
 pub mod cost;
+pub mod fs;
 pub mod llm_provider;
 pub mod profile;
 pub mod project;

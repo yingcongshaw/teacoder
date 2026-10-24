@@ -1,26 +1,36 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { listen } from "@tauri-apps/api/event";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
-import { Alert, Button, Input, Progress, Segmented, Spin, Tooltip } from "antd";
+import { Button, Empty, Input, Progress, Table, Tooltip } from "antd";
+import type { ColumnsType } from "antd/es/table";
 import {
-  CloudUploadOutlined,
-  CloudDownloadOutlined,
   CloseOutlined,
+  CloudDownloadOutlined,
+  CloudUploadOutlined,
+  FileOutlined,
+  FolderOutlined,
   FolderOpenOutlined,
   SnippetsOutlined,
+  StopOutlined,
 } from "@ant-design/icons";
 import {
-  openPathInFileManager,
+  fsListDir,
   sshDownload,
+  sshListDir,
   sshProbeRemoteCwd,
   sshTransferCancel,
   sshUpload,
   writeToPty,
 } from "../../utils/ipc";
-import { shellQuote, formatBytes } from "../../utils/shellQuote";
+import { formatBytes, shellQuote } from "../../utils/shellQuote";
 import SshConnectionModal from "./SshConnectionModal";
-import type { SshArgs, SshTarget, TransferProgress, TransferSummary } from "../../types";
+import type {
+  DirEntry,
+  SshArgs,
+  SshTarget,
+  TransferProgress,
+} from "../../types";
 
 interface FileTransferPanelProps {
   tabId: string;
@@ -34,26 +44,62 @@ interface FileTransferPanelProps {
   panelHostRef: React.RefObject<HTMLElement | null>;
 }
 
-type Mode = "upload" | "download";
-type Phase = "idle" | "running" | "done" | "error";
+type Direction = "upload" | "download";
+type RowState = "running" | "done" | "error";
 
-interface ResultState {
-  ok: boolean;
-  text: string;
-  files: string[];
-  usedFallback: boolean;
-  /** 结束态允许「在文件管理器中打开」，只对下载有意义 */
-  openDir?: string;
+/** 同步日志里的一行 —— 对应一次文件传输。 */
+interface LogRow {
+  /** 前端生成的请求标识，进度事件靠它对上这一行。 */
+  requestId: string;
+  direction: Direction;
+  name: string;
+  size: number;
+  startedAt: number;
+  bytes: number;
+  /** 后端给的总量；下载方向为 null，改用列表里看到的文件大小。 */
+  totalBytes: number | null;
+  /** 后端的传输 id，取消时用。首个进度事件带来。 */
+  transferId?: string;
+  state: RowState;
+  error?: string;
 }
 
 const PANEL_STYLE = {
-  width: 460,
+  width: 760,
+  // 跟随终端区域高度：写死数值会在矮终端里被裁掉顶部
+  maxHeight: "calc(100% - 2.5rem)",
   background: "var(--ant-color-bg-elevated)",
   border: "1px solid var(--ant-color-border-secondary)",
   borderRadius: 8,
   boxShadow: "0 6px 24px rgba(0,0,0,0.28)",
   overflow: "hidden",
+  display: "flex",
+  flexDirection: "column",
 } as const;
+
+/** 路径的上一级。`/root/a` → `/root`；`/` 仍是 `/`。 */
+function parentPath(path: string): string {
+  const trimmed = path.replace(/\/+$/, "");
+  if (trimmed === "" || trimmed === "/") return "/";
+  const idx = trimmed.lastIndexOf("/");
+  if (idx <= 0) return "/";
+  return trimmed.slice(0, idx);
+}
+
+/** `YYYY/MM/DD`。 */
+function formatDate(unixSec: number | null): string {
+  if (unixSec === null) return "";
+  const d = new Date(unixSec * 1000);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}/${p(d.getMonth() + 1)}/${p(d.getDate())}`;
+}
+
+/** `HH:MM:SS`。 */
+function formatClock(ms: number): string {
+  const d = new Date(ms);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+}
 
 export default function FileTransferPanel({
   tabId,
@@ -65,44 +111,86 @@ export default function FileTransferPanel({
   const isSsh = toolType === "ssh";
 
   const [open, setOpen] = useState(false);
-  const [mode, setMode] = useState<Mode>("upload");
-  const [phase, setPhase] = useState<Phase>("idle");
   const [connModalOpen, setConnModalOpen] = useState(false);
 
   /** Terminal 会话没有远程信息，只能手填一次；填完存到 state，不落库。 */
   const [manualArgs, setManualArgs] = useState<SshArgs | null>(null);
 
-  const [remoteDir, setRemoteDir] = useState("~/");
-  const [remoteFile, setRemoteFile] = useState("");
-  const [uploadPaths, setUploadPaths] = useState<string[]>([]);
-  const [downloadDir, setDownloadDir] = useState("");
-  const [result, setResult] = useState<ResultState | null>(null);
-  const [progress, setProgress] = useState<TransferProgress | null>(null);
+  // 路径分「输入框里的」与「实际列举的」两份：边打字边列举会连着开一堆
+  // SSH 连接，代价远大于收益。
+  const [remotePath, setRemotePath] = useState("~/");
+  const [remoteListed, setRemoteListed] = useState("~/");
+  const [localPath, setLocalPath] = useState(workDir ?? "");
+  const [localListed, setLocalListed] = useState(workDir ?? "");
 
-  const transferIdRef = useRef<string | null>(null);
-  /**
-   * Terminal 会话点上传/下载时若还没连接参数，会先弹窗再回来执行。
-   * 存的是「拿到参数后要跑的传输」，参数由弹窗现给 —— 不能在点击时就绑定
-   * manualArgs，那时它还是 null。用 ref 而非 state：弹窗关闭回调里要同步接着跑，
-   * 等一次重渲染会把顺序搞乱。
-   */
-  const pendingRef = useRef<((args: SshArgs) => void) | null>(null);
+  const [remoteEntries, setRemoteEntries] = useState<DirEntry[]>([]);
+  const [localEntries, setLocalEntries] = useState<DirEntry[]>([]);
+  const [remoteSel, setRemoteSel] = useState<string[]>([]);
+  const [localSel, setLocalSel] = useState<string[]>([]);
+  const [remoteLoading, setRemoteLoading] = useState(false);
+  const [localLoading, setLocalLoading] = useState(false);
+  const [remoteError, setRemoteError] = useState<string | null>(null);
+  const [localError, setLocalError] = useState<string | null>(null);
+
+  const [rows, setRows] = useState<LogRow[]>([]);
+  const requestSeq = useRef(0);
+
   const buttonRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (downloadDir === "" && workDir) setDownloadDir(workDir);
-  }, [workDir, downloadDir]);
+  const targetFor = useCallback((): SshTarget | null => {
+    if (isSsh) return { kind: "fromSession", sessionId: tabId };
+    if (manualArgs) {
+      return {
+        kind: "manual",
+        hostname: manualArgs.hostname,
+        port: manualArgs.port,
+        username: manualArgs.username || undefined,
+        password: manualArgs.password || undefined,
+        identityFile: manualArgs.identityFile || undefined,
+      };
+    }
+    return null;
+  }, [isSsh, tabId, manualArgs]);
 
+  /**
+   * 目标标识。放进依赖数组用 —— `targetFor()` 每次渲染都返回新对象，
+   * 直接进依赖会让列举 effect 每帧重跑。刻意不含密码。
+   */
+  const targetKey = isSsh
+    ? `s:${tabId}`
+    : manualArgs
+      ? `m:${manualArgs.hostname}:${manualArgs.port}:${manualArgs.username}`
+      : "";
+
+  const applyRemote = useCallback((p: string) => {
+    setRemotePath(p);
+    setRemoteListed(p);
+  }, []);
+  const applyLocal = useCallback((p: string) => {
+    setLocalPath(p);
+    setLocalListed(p);
+  }, []);
+
+  // 进度事件 → 日志行。并发传输靠 requestId 对齐行与行。
   useEffect(() => {
     let disposed = false;
     let dispose: (() => void) | undefined;
     const unlisten = listen<TransferProgress>("ssh_transfer:progress", (event) => {
-      if (event.payload.tabId !== tabId) return;
-      // 进度事件顺带带回 transferId —— 命令本身只在结束时返回它，
-      // 没有这条事件取消就无从下手。
-      transferIdRef.current = event.payload.transferId;
-      setProgress(event.payload);
+      const p = event.payload;
+      if (p.tabId !== tabId) return;
+      setRows((prev) =>
+        prev.map((r) =>
+          r.requestId === p.requestId
+            ? {
+                ...r,
+                bytes: p.bytes,
+                totalBytes: p.totalBytes ?? r.totalBytes,
+                transferId: p.transferId,
+              }
+            : r,
+        ),
+      );
     });
     void unlisten.then(
       (fn) => {
@@ -120,22 +208,85 @@ export default function FileTransferPanel({
     };
   }, [tabId]);
 
-  // 打开面板时探测远程 cwd。探测失败不是错误 —— 回落 ~/，输入框一直可改。
+  // 面板打开时探测远程 cwd。探测失败不是错误 —— 回落 ~/，输入框一直可改。
   useEffect(() => {
     if (!open || !isSsh) return;
     let cancelled = false;
     void (async () => {
       try {
         const cwd = await sshProbeRemoteCwd(tabId);
-        if (!cancelled) setRemoteDir(cwd);
+        if (!cancelled) applyRemote(cwd);
       } catch {
-        if (!cancelled) setRemoteDir("~/");
+        if (!cancelled) applyRemote("~/");
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [open, isSsh, tabId]);
+  }, [open, isSsh, tabId, applyRemote]);
+
+  // 列举远程目录
+  useEffect(() => {
+    if (!open) return;
+    if (!targetKey) {
+      setRemoteEntries([]);
+      setRemoteError(null);
+      setRemoteLoading(false);
+      return;
+    }
+    const target = targetFor();
+    if (!target) return;
+    let cancelled = false;
+    setRemoteLoading(true);
+    void sshListDir(target, remoteListed)
+      .then((entries) => {
+        if (cancelled) return;
+        setRemoteEntries(entries);
+        setRemoteSel([]);
+        setRemoteError(null);
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        setRemoteEntries([]);
+        setRemoteError(typeof e === "string" ? e : "无法列出远程目录");
+      })
+      .finally(() => {
+        if (!cancelled) setRemoteLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, remoteListed, targetKey, targetFor]);
+
+  // 列举本地目录
+  useEffect(() => {
+    if (!open || !localListed) return;
+    let cancelled = false;
+    setLocalLoading(true);
+    void fsListDir(localListed)
+      .then((entries) => {
+        if (cancelled) return;
+        setLocalEntries(entries);
+        setLocalSel([]);
+        setLocalError(null);
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        setLocalEntries([]);
+        setLocalError(typeof e === "string" ? e : "无法列出本地目录");
+      })
+      .finally(() => {
+        if (!cancelled) setLocalLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, localListed]);
+
+  // 项目目录后到时补上默认落点
+  useEffect(() => {
+    if (!localListed && workDir) applyLocal(workDir);
+  }, [workDir, localListed, applyLocal]);
 
   // 点击按钮或面板之外的任何位置都收起面板。pointerdown 早于 click，
   // 打开面板的那一次点击不会落到这里（此时 open 还是 false）。
@@ -153,100 +304,111 @@ export default function FileTransferPanel({
     return () => document.removeEventListener("pointerdown", onPointerDown);
   }, [open]);
 
-  const targetFrom = (args: SshArgs): SshTarget => ({
-    kind: "manual",
-    hostname: args.hostname,
-    port: args.port,
-    username: args.username || undefined,
-    password: args.password || undefined,
-    identityFile: args.identityFile || undefined,
-  });
+  const nextRequestId = () => {
+    requestSeq.current += 1;
+    return `r${Date.now().toString(36)}-${requestSeq.current}`;
+  };
 
-  const run = useCallback(async (fn: () => Promise<TransferSummary>, openDir?: string) => {
-    setPhase("running");
-    setResult(null);
-    setProgress(null);
-    transferIdRef.current = null;
-    try {
-      const summary = await fn();
-      setPhase("done");
-      setProgress(null);
-      transferIdRef.current = null;
-      setResult({
-        ok: true,
-        text:
-          summary.direction === "upload"
-            ? `已上传 ${summary.files.length} 个文件`
-            : `已下载 ${summary.files.length} 个文件`,
-        files: summary.files.map((f) => f.destination),
-        usedFallback: summary.usedFallback,
-        openDir,
-      });
-    } catch (e) {
-      setPhase("error");
-      setProgress(null);
-      transferIdRef.current = null;
-      setResult({
-        ok: false,
-        text: typeof e === "string" ? e : "传输失败",
-        files: [],
-        usedFallback: false,
-      });
+  const pushRow = (row: LogRow) => {
+    setRows((prev) => [...prev, row]);
+  };
+
+  const settleRow = (
+    requestId: string,
+    state: RowState,
+    error?: string,
+    bytes?: number,
+  ) => {
+    setRows((prev) =>
+      prev.map((r) =>
+        r.requestId === requestId
+          ? { ...r, state, error, bytes: bytes ?? r.bytes }
+          : r,
+      ),
+    );
+  };
+
+  /** 上传：本地选中文件 → 远程当前目录。 */
+  const startUploads = () => {
+    if (!targetKey) {
+      setConnModalOpen(true);
+      return;
     }
-  }, []);
+    const target = targetFor();
+    if (!target) return;
+    const files = localEntries.filter(
+      (e) => !e.isDir && localSel.includes(e.path),
+    );
+    if (files.length === 0) return;
 
-  const reject = useCallback((text: string) => {
-    setPhase("error");
-    setResult({ ok: false, text, files: [], usedFallback: false });
-  }, []);
-
-  // 这两个只认「已经解析好的 target」。解析靠不上时（Terminal 会话缺参数），
-  // 弹窗回来后用新参数重新调它们 —— 直接复用点击时的闭包会拿着 manualArgs === null
-  // 的旧值再弹一次窗，死循环。
-  const uploadWith = useCallback(
-    async (target: SshTarget) => {
-      if (uploadPaths.length === 0) return reject("请先选择要上传的文件");
-      const dir = remoteDir.trim();
-      if (!dir) return reject("请填写远程目录");
-      await run(() => sshUpload({ target, tabId, localPaths: uploadPaths, remotePath: dir }));
-    },
-    [uploadPaths, remoteDir, reject, run, tabId],
-  );
-
-  const downloadWith = useCallback(
-    async (target: SshTarget) => {
-      const remote = remoteFile.trim();
-      if (!remote) return reject("请填写远程文件路径");
-      const dir = downloadDir.trim();
-      if (!dir) return reject("请选择下载目录");
-      await run(() => sshDownload({ target, tabId, remotePath: remote, localDir: dir }), dir);
-    },
-    [remoteFile, downloadDir, reject, run, tabId],
-  );
-
-  /** 解析 target；Terminal 会话还没参数时先弹窗，参数回来后由 pendingRef 接上。 */
-  const withTarget = (act: (target: SshTarget) => void) => () => {
-    if (isSsh) return void act({ kind: "fromSession", sessionId: tabId });
-    if (manualArgs) return void act(targetFrom(manualArgs));
-    pendingRef.current = (args) => act(targetFrom(args));
-    setConnModalOpen(true);
+    for (const f of files) {
+      const requestId = nextRequestId();
+      pushRow({
+        requestId,
+        direction: "upload",
+        name: f.name,
+        size: f.size,
+        startedAt: Date.now(),
+        bytes: 0,
+        totalBytes: null,
+        state: "running",
+      });
+      void sshUpload({
+        target,
+        tabId,
+        localPaths: [f.path],
+        remotePath: remoteListed,
+        requestId,
+      })
+        .then((s) => settleRow(requestId, "done", undefined, s.files[0]?.bytes))
+        .catch((e) =>
+          settleRow(requestId, "error", typeof e === "string" ? e : "上传失败"),
+        );
+    }
   };
 
-  const handlePickFiles = async () => {
-    const picked = await openDialog({ multiple: true, directory: false });
-    if (!picked) return;
-    setUploadPaths(Array.isArray(picked) ? picked : [picked]);
+  /** 下载：远程选中文件 → 本地当前目录。 */
+  const startDownloads = () => {
+    if (!targetKey) {
+      setConnModalOpen(true);
+      return;
+    }
+    const target = targetFor();
+    if (!target) return;
+    const files = remoteEntries.filter(
+      (e) => !e.isDir && remoteSel.includes(e.path),
+    );
+    if (files.length === 0) return;
+
+    for (const f of files) {
+      const requestId = nextRequestId();
+      pushRow({
+        requestId,
+        direction: "download",
+        name: f.name,
+        size: f.size,
+        startedAt: Date.now(),
+        bytes: 0,
+        totalBytes: null,
+        state: "running",
+      });
+      void sshDownload({
+        target,
+        tabId,
+        remotePath: f.path,
+        localDir: localListed,
+        requestId,
+      })
+        .then((s) => settleRow(requestId, "done", undefined, s.files[0]?.bytes))
+        .catch((e) =>
+          settleRow(requestId, "error", typeof e === "string" ? e : "下载失败"),
+        );
+    }
   };
 
-  const handlePickDownloadDir = async () => {
-    const picked = await openDialog({ directory: true, multiple: false });
-    if (typeof picked === "string") setDownloadDir(picked);
-  };
-
-  const handleCancel = async () => {
-    const id = transferIdRef.current;
-    if (!id) return;
-    await sshTransferCancel(id).catch(() => {});
+  const cancelRow = async (row: LogRow) => {
+    if (!row.transferId) return;
+    await sshTransferCancel(row.transferId).catch(() => {});
   };
 
   /** Terminal 会话的本地路径插入：裸写 PTY，不带回车。
@@ -261,20 +423,107 @@ export default function FileTransferPanel({
 
   if (!supported) return null;
 
-  const running = phase === "running";
-  const percent =
-    progress && progress.totalBytes && progress.totalBytes > 0
-      ? Math.min(100, Math.round((progress.bytes / progress.totalBytes) * 100))
-      : null;
+  const columns: ColumnsType<LogRow> = [
+    {
+      title: "方式",
+      dataIndex: "direction",
+      width: 84,
+      render: (d: Direction) => (
+        <span style={{ color: d === "upload" ? "var(--ant-color-blue)" : "var(--ant-color-green)" }}>
+          {d === "upload" ? "<<上传" : ">>下载"}
+        </span>
+      ),
+    },
+    {
+      title: "文件名",
+      dataIndex: "name",
+      ellipsis: true,
+    },
+    {
+      title: "大小",
+      dataIndex: "size",
+      width: 92,
+      align: "right",
+      render: (s: number) => formatBytes(s),
+    },
+    {
+      title: "开始时间",
+      dataIndex: "startedAt",
+      width: 88,
+      render: (t: number) => formatClock(t),
+    },
+    {
+      title: "进度",
+      dataIndex: "bytes",
+      width: 168,
+      render: (_, row) => {
+        if (row.state === "error") {
+          return (
+            <span
+              className="text-xs"
+              style={{ color: "var(--ant-color-error)" }}
+              title={row.error}
+            >
+              {row.error ?? "失败"}
+            </span>
+          );
+        }
+        // 下载方向后端给不出总量（要另开连接问），用列表里看到的文件大小兜底
+        const total = row.totalBytes ?? row.size;
+        if (total <= 0) {
+          // 拿不到总量就不编造百分比，只报已传字节
+          return (
+            <span className="text-xs text-[var(--ant-color-text-secondary)]">
+              {row.state === "running"
+                ? `已传 ${formatBytes(row.bytes)}`
+                : `已完成 ${formatBytes(row.bytes)}`}
+            </span>
+          );
+        }
+        const percent = Math.min(100, Math.round((row.bytes / total) * 100));
+        return (
+          <div className="flex items-center gap-1">
+            {row.state === "running" ? (
+              <Progress
+                size="small"
+                percent={percent}
+                status="active"
+                style={{ flex: 1, marginBottom: 0 }}
+              />
+            ) : (
+              <Progress
+                size="small"
+                percent={100}
+                status="success"
+                style={{ flex: 1, marginBottom: 0 }}
+              />
+            )}
+            {row.state === "running" && (
+              <Tooltip title="取消">
+                <Button
+                  size="small"
+                  type="text"
+                  icon={<StopOutlined />}
+                  onClick={() => void cancelRow(row)}
+                />
+              </Tooltip>
+            )}
+          </div>
+        );
+      },
+    },
+  ];
 
   return (
     <>
-      <Tooltip title={isSsh ? "文件传输" : "插入本地路径 / 传文件"} placement="left">
+      <Tooltip
+        title={isSsh ? "文件传输" : "本地文件 / 传文件"}
+        placement="left"
+      >
         <button
           ref={buttonRef}
           onClick={() => {
             setOpen((v) => !v);
-            setResult(null);
           }}
           className="flex items-center justify-center rounded-full transition-all"
           style={{
@@ -289,7 +538,11 @@ export default function FileTransferPanel({
             color: open ? "#fff" : "var(--ant-color-text-secondary)",
           }}
         >
-          {isSsh ? <CloudUploadOutlined style={{ fontSize: 14 }} /> : <SnippetsOutlined style={{ fontSize: 14 }} />}
+          {isSsh ? (
+            <CloudUploadOutlined style={{ fontSize: 14 }} />
+          ) : (
+            <SnippetsOutlined style={{ fontSize: 14 }} />
+          )}
         </button>
       </Tooltip>
 
@@ -298,9 +551,6 @@ export default function FileTransferPanel({
         onClose={() => setConnModalOpen(false)}
         onConfirm={(args) => {
           setManualArgs(args);
-          const pending = pendingRef.current;
-          pendingRef.current = null;
-          pending?.(args);
         }}
       />
 
@@ -332,223 +582,253 @@ export default function FileTransferPanel({
               </button>
             </div>
 
-            {!isSsh && (
-              <div className="px-3 py-2 flex flex-col gap-2">
-                <Button
-                  size="small"
-                  icon={<SnippetsOutlined />}
-                  onClick={() => void handleInsertPath()}
-                >
-                  插入本地路径到终端
-                </Button>
-                <Alert
-                  type="info"
-                  showIcon
-                  title={
-                    manualArgs
-                      ? `将传到 ${manualArgs.username || "当前用户"}@${manualArgs.hostname}`
-                      : "本地终端会话没有远程信息，传文件需先填写连接参数"
-                  }
-                  action={
-                    manualArgs ? (
-                      <Button size="small" onClick={() => setConnModalOpen(true)}>
-                        更换
-                      </Button>
-                    ) : (
-                      <Button size="small" onClick={() => setConnModalOpen(true)}>
-                        填写
-                      </Button>
-                    )
-                  }
-                />
-              </div>
-            )}
-
-            {isSsh && (
-              <div className="px-3 pt-2">
-                <Segmented
-                  size="small"
-                  value={mode}
-                  onChange={(v) => {
-                    setMode(v as Mode);
-                    setResult(null);
-                  }}
-                  options={[
-                    {
-                      value: "upload",
-                      label: (
-                        <span>
-                          <CloudUploadOutlined /> 上传
-                        </span>
-                      ),
-                    },
-                    {
-                      value: "download",
-                      label: (
-                        <span>
-                          <CloudDownloadOutlined /> 下载
-                        </span>
-                      ),
-                    },
-                  ]}
-                />
-              </div>
-            )}
-
-            <div className="flex flex-col gap-2 px-3 py-2">
-              {mode === "upload" ? (
-                <>
-                  <div className="flex flex-col gap-1">
-                    <span className="text-xs text-[var(--ant-color-text-secondary)]">远程目录</span>
-                    <Input
-                      size="small"
-                      aria-label="远程目录"
-                      value={remoteDir}
-                      onChange={(e) => setRemoteDir(e.target.value)}
-                      placeholder="如 ~/ 或 /var/log"
-                    />
-                  </div>
-                  {uploadPaths.length > 0 ? (
-                    <ul className="text-xs text-[var(--ant-color-text-secondary)] max-h-24 overflow-y-auto">
-                      {uploadPaths.map((p) => (
-                        <li key={p} className="truncate">
-                          {p}
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <span className="text-xs text-[var(--ant-color-text-tertiary)]">
-                      尚未选择文件
-                    </span>
-                  )}
-                  <div className="flex gap-2">
-                    <Button
-                      size="small"
-                      icon={<SnippetsOutlined />}
-                      disabled={running}
-                      onClick={() => void handlePickFiles()}
-                    >
-                      选择文件
+            <div
+              className="flex px-3 pt-2"
+              style={{ gap: 6, flex: "1 1 auto", minHeight: 0 }}
+            >
+              <FilePane
+                title="远程文件目录"
+                path={remotePath}
+                onPathChange={setRemotePath}
+                onApply={() => applyRemote(remotePath)}
+                entries={remoteEntries}
+                loading={remoteLoading}
+                error={remoteError}
+                selected={remoteSel}
+                onToggle={(p) =>
+                  setRemoteSel((prev) =>
+                    prev.includes(p)
+                      ? prev.filter((x) => x !== p)
+                      : [...prev, p],
+                  )
+                }
+                onNavigate={(p) => applyRemote(p)}
+                placeholder="远程目录，如 /var/log"
+                hint={
+                  isSsh
+                    ? undefined
+                    : "本地终端会话没有远程信息，需先填写连接参数"
+                }
+                extra={
+                  !isSsh && !targetKey ? (
+                    <Button size="small" onClick={() => setConnModalOpen(true)}>
+                      填写参数
                     </Button>
-                    <Button
-                      size="small"
-                      icon={<CloudUploadOutlined />}
-                      disabled={running || uploadPaths.length === 0}
-                      loading={running}
-                      onClick={withTarget((t) => void uploadWith(t))}
-                    >
-                      上传
-                    </Button>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <Input
-                    size="small"
-                    aria-label="远程文件路径"
-                    value={remoteFile}
-                    onChange={(e) => setRemoteFile(e.target.value)}
-                    placeholder="远程文件完整路径，如 /var/log/syslog"
-                    onPressEnter={withTarget((t) => void downloadWith(t))}
-                  />
-                  <div className="flex gap-2">
-                    <Button
-                      size="small"
-                      icon={<CloudDownloadOutlined />}
-                      disabled={running}
-                      loading={running}
-                      onClick={withTarget((t) => void downloadWith(t))}
-                    >
-                      下载
-                    </Button>
-                    <Button
-                      size="small"
-                      icon={<FolderOpenOutlined />}
-                      disabled={running}
-                      onClick={() => void handlePickDownloadDir()}
-                    >
-                      换目录
-                    </Button>
-                  </div>
-                  <span className="text-xs text-[var(--ant-color-text-tertiary)] truncate">
-                    落到：{downloadDir || "（未选择）"}
-                  </span>
-                </>
-              )}
-            </div>
-
-            {running && (
-              <div className="px-3 pb-2">
-                {percent !== null ? (
-                  <Progress
-                    size="small"
-                    percent={percent}
-                    format={() =>
-                      `${formatBytes(progress?.bytes ?? 0)} / ${formatBytes(
-                        progress?.totalBytes ?? 0,
-                      )}`
-                    }
-                  />
-                ) : (
-                  // 下载拿不到远程文件大小（要另开一条连接才问得到），不编造百分比
-                  <div className="flex items-center gap-2 text-xs text-[var(--ant-color-text-secondary)]">
-                    <Spin size="small" />
-                    传输中 · 已收 {formatBytes(progress?.bytes ?? 0)}
-                  </div>
-                )}
-                <div className="flex items-center justify-end mt-1">
-                  <Button size="small" danger onClick={() => void handleCancel()}>
-                    取消
-                  </Button>
-                </div>
-              </div>
-            )}
-
-            {result && (
-              <div className="px-3 pb-2">
-                <Alert
-                  type={result.ok ? "success" : "error"}
-                  showIcon
-                  title={result.text}
-                  description={
-                    <div className="text-xs">
-                      {result.files.map((f) => (
-                        <div key={f} className="truncate">
-                          {f}
-                        </div>
-                      ))}
-                      {result.usedFallback && (
-                        <div style={{ color: "var(--ant-color-warning)" }}>
-                          远程主机不支持 SFTP 子系统，已回退旧版 SCP。
-                        </div>
-                      )}
-                    </div>
-                  }
-                />
-                {result.openDir && (
+                  ) : null
+                }
+              />
+              <div
+                className="flex flex-col items-center justify-center"
+                style={{ width: 46, gap: 8 }}
+              >
+                <Tooltip title="上传到远程（本地 → 远程）" placement="left">
                   <Button
                     size="small"
-                    icon={<FolderOpenOutlined />}
-                    onClick={() => void openPathInFileManager(result.openDir as string)}
-                    style={{ marginTop: 6 }}
+                    icon={<CloudUploadOutlined />}
+                    onClick={startUploads}
                   >
-                    在文件管理器中打开
+                    &lt;&lt;
                   </Button>
-                )}
+                </Tooltip>
+                <Tooltip title="从远程下载（远程 → 本地）" placement="right">
+                  <Button
+                    size="small"
+                    icon={<CloudDownloadOutlined />}
+                    onClick={startDownloads}
+                  >
+                    &gt;&gt;
+                  </Button>
+                </Tooltip>
               </div>
-            )}
+              <FilePane
+                title="本地文件目录"
+                path={localPath}
+                onPathChange={setLocalPath}
+                onApply={() => applyLocal(localPath)}
+                entries={localEntries}
+                loading={localLoading}
+                error={localError}
+                selected={localSel}
+                onToggle={(p) =>
+                  setLocalSel((prev) =>
+                    prev.includes(p)
+                      ? prev.filter((x) => x !== p)
+                      : [...prev, p],
+                  )
+                }
+                onNavigate={(p) => applyLocal(p)}
+                placeholder="本地目录，如 /home/me/proj"
+                extra={
+                  !isSsh ? (
+                    <Tooltip title="插入本地路径到终端">
+                      <Button
+                        size="small"
+                        type="text"
+                        icon={<SnippetsOutlined />}
+                        onClick={() => void handleInsertPath()}
+                      />
+                    </Tooltip>
+                  ) : null
+                }
+              />
+            </div>
 
             <div
-              className="text-xs px-3 py-1"
+              className="px-3 pt-2"
               style={{ borderTop: "1px solid var(--ant-color-border-secondary)" }}
             >
-              <span className="text-[var(--ant-color-text-tertiary)]">
-                下载重名自动加序号，不覆盖已有文件
-              </span>
+              <div className="text-xs font-medium mb-1">同步进度和日志</div>
+              <Table<LogRow>
+                size="small"
+                columns={columns}
+                dataSource={rows}
+                rowKey="requestId"
+                pagination={false}
+                scroll={{ y: 132 }}
+                locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无传输记录" /> }}
+              />
             </div>
           </div>,
           panelHostRef.current,
         )}
     </>
+  );
+}
+
+/** 一栏文件列表：路径输入框 + 可导航的条目列表。 */
+function FilePane({
+  title,
+  path,
+  onPathChange,
+  onApply,
+  entries,
+  loading,
+  error,
+  selected,
+  onToggle,
+  onNavigate,
+  placeholder,
+  hint,
+  extra,
+}: {
+  title: string;
+  path: string;
+  onPathChange: (p: string) => void;
+  onApply: () => void;
+  entries: DirEntry[];
+  loading: boolean;
+  error: string | null;
+  selected: string[];
+  onToggle: (path: string) => void;
+  onNavigate: (path: string) => void;
+  placeholder: string;
+  /** 没有内容可列时的原因说明，比「空目录」有信息量。 */
+  hint?: string;
+  extra?: React.ReactNode;
+}) {
+  const selectedSet = useMemo(() => new Set(selected), [selected]);
+
+  return (
+    <div
+      className="flex flex-col"
+      style={{ flex: 1, minWidth: 0, gap: 4 }}
+    >
+      <div className="flex items-center gap-1">
+        <span className="text-xs" style={{ whiteSpace: "nowrap" }}>
+          {title}:
+        </span>
+        <Input
+          size="small"
+          value={path}
+          onChange={(e) => onPathChange(e.target.value)}
+          onPressEnter={onApply}
+          onBlur={onApply}
+          placeholder={placeholder}
+          style={{ flex: 1 }}
+        />
+        {extra}
+      </div>
+      <div
+        className="overflow-y-auto"
+        style={{
+          flex: "1 1 auto",
+          minHeight: 120,
+          maxHeight: 300,
+          overflowY: "auto",
+          border: "1px solid var(--ant-color-border-secondary)",
+          borderRadius: 6,
+          padding: 2,
+        }}
+      >
+        {error && (
+          <div
+            className="text-xs px-2 py-1"
+            style={{ color: "var(--ant-color-error)" }}
+          >
+            {error}
+          </div>
+        )}
+        {!error && loading && entries.length === 0 && (
+          <div className="text-xs px-2 py-1 text-[var(--ant-color-text-tertiary)]">
+            读取中…
+          </div>
+        )}
+        {!error && !loading && entries.length === 0 && (
+          <div className="text-xs px-2 py-1 text-[var(--ant-color-text-tertiary)]">
+            {hint ?? (path.trim() ? "空目录" : "请填写目录路径")}
+          </div>
+        )}
+        <ParentEntry path={path} onNavigate={onNavigate} />
+        {entries.map((e) => {
+          const active = selectedSet.has(e.path);
+          return (
+            <div
+              key={e.path}
+              className="flex items-center gap-1 px-1 py-0.5 cursor-pointer rounded"
+              style={{
+                background: active
+                  ? "var(--ant-color-primary-bg)"
+                  : "transparent",
+              }}
+              onClick={() => (e.isDir ? onNavigate(e.path) : onToggle(e.path))}
+              title={e.path}
+            >
+              {e.isDir ? (
+                <FolderOutlined style={{ color: "var(--ant-color-text-tertiary)" }} />
+              ) : (
+                <FileOutlined style={{ color: "var(--ant-color-text-tertiary)" }} />
+              )}
+              <span className="flex-1 text-xs truncate">{e.name}</span>
+              <span
+                className="text-xs"
+                style={{ color: "var(--ant-color-text-tertiary)" }}
+              >
+                {formatDate(e.modified)}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/** 列表顶部的「..」—— 回上一级。 */
+function ParentEntry({
+  path,
+  onNavigate,
+}: {
+  path: string;
+  onNavigate: (path: string) => void;
+}) {
+  return (
+    <div
+      className="flex items-center gap-1 px-1 py-0.5 cursor-pointer rounded"
+      onClick={() => onNavigate(parentPath(path))}
+      title="上一级"
+    >
+      <FolderOpenOutlined style={{ color: "var(--ant-color-text-tertiary)" }} />
+      <span className="flex-1 text-xs truncate">..</span>
+    </div>
   );
 }

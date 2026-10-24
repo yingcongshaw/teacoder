@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
   CliTool,
+  DirEntry,
   Profile,
   SessionCost,
   CostSummary,
@@ -63,19 +64,20 @@ export async function testSshConnection(params: {
   return invoke("test_ssh_connection", { params });
 }
 
-/** 把若干本地文件上传到远程目录。传输期间进度走 `ssh_transfer:progress` 事件。 */
+/**
+ * 把若干本地文件上传到远程目录。传输期间进度走 `ssh_transfer:progress` 事件。
+ *
+ * `requestId` 由前端生成，原样出现在进度事件里 —— 并发传输时靠它把进度
+ * 对上日志表里的行。
+ */
 export async function sshUpload(params: {
   target: SshTarget;
   tabId: string;
   localPaths: string[];
   remotePath: string;
+  requestId: string;
 }): Promise<TransferSummary> {
-  return invoke("ssh_upload", {
-    target: params.target,
-    tabId: params.tabId,
-    localPaths: params.localPaths,
-    remotePath: params.remotePath,
-  });
+  return invoke("ssh_upload", { request: params });
 }
 
 /** 把单个远程文件下载到本地目录。重名时后端自动加序号。 */
@@ -84,13 +86,26 @@ export async function sshDownload(params: {
   tabId: string;
   remotePath: string;
   localDir: string;
+  requestId: string;
 }): Promise<TransferSummary> {
-  return invoke("ssh_download", {
-    target: params.target,
-    tabId: params.tabId,
-    remotePath: params.remotePath,
-    localDir: params.localDir,
-  });
+  return invoke("ssh_download", { request: params });
+}
+
+/**
+ * 列出远程目录。
+ *
+ * 连接参数由后端按 `target` 解析 —— 前端碰不到密码。
+ */
+export async function sshListDir(
+  target: SshTarget,
+  path: string,
+): Promise<DirEntry[]> {
+  return invoke("ssh_list_dir", { target, path });
+}
+
+/** 列出本地目录。前端拿不到文件系统，只能由后端读。 */
+export async function fsListDir(path: string): Promise<DirEntry[]> {
+  return invoke("fs_list_dir", { path });
 }
 
 /** 请求取消进行中的传输。返回 false 表示该任务已结束或 id 未知。 */

@@ -13,10 +13,7 @@ pub async fn ssh_upload(
     app: tauri::AppHandle,
     db: tauri::State<'_, AppDatabase>,
     registry: tauri::State<'_, TransferRegistry>,
-    target: SshTarget,
-    tab_id: String,
-    local_paths: Vec<String>,
-    remote_path: String,
+    request: transfer::UploadRequest,
 ) -> Result<TransferSummary, String> {
     transfer::execute(
         transfer::Deps {
@@ -25,10 +22,11 @@ pub async fn ssh_upload(
             registry: &registry,
         },
         Direction::Upload,
-        target,
-        tab_id,
-        local_paths.into_iter().map(PathBuf::from).collect(),
-        remote_path,
+        request.target,
+        request.tab_id,
+        request.local_paths.into_iter().map(PathBuf::from).collect(),
+        request.remote_path,
+        request.request_id,
     )
     .await
     .map_err(|e| e.to_string())
@@ -40,10 +38,7 @@ pub async fn ssh_download(
     app: tauri::AppHandle,
     db: tauri::State<'_, AppDatabase>,
     registry: tauri::State<'_, TransferRegistry>,
-    target: SshTarget,
-    tab_id: String,
-    remote_path: String,
-    local_dir: String,
+    request: transfer::DownloadRequest,
 ) -> Result<TransferSummary, String> {
     transfer::execute(
         transfer::Deps {
@@ -52,10 +47,11 @@ pub async fn ssh_download(
             registry: &registry,
         },
         Direction::Download,
-        target,
-        tab_id,
-        vec![PathBuf::from(local_dir)],
-        remote_path,
+        request.target,
+        request.tab_id,
+        vec![PathBuf::from(request.local_dir)],
+        request.remote_path,
+        request.request_id,
     )
     .await
     .map_err(|e| e.to_string())
@@ -75,7 +71,7 @@ pub fn ssh_transfer_cancel(
 /// 只对 SSH 工具会话有意义：Terminal 会话的 PTY 是本地 shell，即便用户在里面手动
 /// `ssh` 了，`$PWD` 也是本地路径，返回它会误导。因此 Terminal 会话不调用本命令。
 ///
-/// 探测走一条独立的短连接（见 [`crate::ssh::probe`]），**不碰用户的终端** ——
+/// 探测走一条独立的短连接（见 [`crate::ssh::remote`]），**不碰用户的终端** ——
 /// 往交互式 PTY 里敲哨兵命令会把命令和输出留在终端里，每次打开面板都刷一屏。
 #[tauri::command]
 pub async fn ssh_probe_remote_cwd(
@@ -85,9 +81,25 @@ pub async fn ssh_probe_remote_cwd(
     // SSH 会话的 tabId 就是会话 id —— 上传路径也是这么取连接参数的。
     let ssh = transfer::resolve_ssh_args(&db, &SshTarget::FromSession { session_id: tab_id })
         .map_err(|e| e.to_string())?;
-    crate::ssh::probe::probe_remote_cwd(&ssh).await.map_err(|e| {
+    crate::ssh::remote::probe_remote_cwd(&ssh).await.map_err(|e| {
         // 前端会静默回落到 ~/，不留日志就无从判断是回落了还是探测成功
         eprintln!("[SSH-PROBE] 失败: {e}");
         e.to_string()
     })
+}
+
+/// 列出远程目录。
+///
+/// 与传输一样，连接参数由后端按 [`SshTarget`] 解析 —— 前端碰不到密码。
+/// `Manual` 目标用于 Terminal 会话：用户手填一次连接参数后也能浏览远端。
+#[tauri::command]
+pub async fn ssh_list_dir(
+    db: tauri::State<'_, AppDatabase>,
+    target: SshTarget,
+    path: String,
+) -> Result<Vec<crate::fsdir::DirEntry>, String> {
+    let ssh = transfer::resolve_ssh_args(&db, &target).map_err(|e| e.to_string())?;
+    crate::ssh::remote::list_dir(&ssh, &path)
+        .await
+        .map_err(|e| e.to_string())
 }

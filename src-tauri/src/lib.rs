@@ -2,6 +2,7 @@ mod cli;
 mod commands;
 mod cost;
 mod crypto;
+mod fsdir;
 pub mod llm_provider;
 mod profile;
 mod project;
@@ -141,6 +142,8 @@ pub fn run() {
             commands::ssh::ssh_download,
             commands::ssh::ssh_transfer_cancel,
             commands::ssh::ssh_probe_remote_cwd,
+            commands::ssh::ssh_list_dir,
+            commands::fs::fs_list_dir,
             commands::profile::list_profiles,
             commands::profile::create_profile,
             commands::profile::update_profile,

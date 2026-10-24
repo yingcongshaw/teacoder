@@ -61,6 +61,34 @@ pub struct TransferSummary {
     pub elapsed_ms: u64,
 }
 
+/// 上传请求。前端一次把参数给全，避免 IPC 命令的参数个数膨胀。
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UploadRequest {
+    pub target: SshTarget,
+    pub tab_id: String,
+    /// 本地源文件。可多个 —— 前端按文件逐个发起时这里只有一个。
+    pub local_paths: Vec<String>,
+    /// 远程目标目录。
+    pub remote_path: String,
+    /// 前端自带，用于把进度事件对上日志行。
+    pub request_id: String,
+}
+
+/// 下载请求。
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DownloadRequest {
+    pub target: SshTarget,
+    pub tab_id: String,
+    /// 远程源文件（完整路径）。
+    pub remote_path: String,
+    /// 本地目标目录。
+    pub local_dir: String,
+    /// 前端自带，用于把进度事件对上日志行。
+    pub request_id: String,
+}
+
 /// 传输目标。SSH 工具会话的凭据由后端从数据库解析，前端碰不到密码。
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 // rename_all 只管变体名；变体里的字段名要另写 rename_all_fields 才会跟着变，
@@ -489,6 +517,7 @@ async fn run_scp_once(
         serde_json::json!({
             "tabId": spec.tab_id,
             "transferId": ctx.transfer_id,
+            "requestId": spec.request_id,
             "direction": spec.direction.as_str(),
             "bytes": probe(),
             "totalBytes": total_bytes,
@@ -518,6 +547,7 @@ async fn run_scp_once(
                         serde_json::json!({
                             "tabId": spec.tab_id,
                             "transferId": ctx.transfer_id,
+                            "requestId": spec.request_id,
                             "direction": spec.direction.as_str(),
                             "bytes": probe(),
                             "totalBytes": total_bytes,
@@ -596,6 +626,11 @@ async fn run_with_fallback(
 struct TransferSpec {
     direction: Direction,
     ssh: SshArgs,
+    /// 前端自带的请求标识，原样回显在进度事件里。
+    ///
+    /// 并发传输时前端拿不到后端的 transfer_id（只在结束时才返回），
+    /// 只有靠这个把进度事件对上「哪一行日志」。
+    request_id: String,
     /// 上传 = 本地源文件；下载 = 只有一个元素，本地目标目录。
     local_paths: Vec<PathBuf>,
     remote_path: String,
@@ -622,11 +657,13 @@ pub async fn execute(
     tab_id: String,
     local_paths: Vec<PathBuf>,
     remote_path: String,
+    request_id: String,
 ) -> Result<TransferSummary, TransferError> {
     let ssh = resolve_ssh_args(deps.db, &target)?;
     let spec = TransferSpec {
         direction,
         ssh,
+        request_id,
         local_paths,
         remote_path,
         tab_id,

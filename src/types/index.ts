@@ -91,6 +91,23 @@ export type SshTarget =
       identityFile?: string;
     };
 
+/**
+ * 目录里的一个条目。远程与本地用同一形状。
+ *
+ * 与后端 `crate::fsdir::DirEntry` 一一对应。
+ */
+export interface DirEntry {
+  /** 条目名（不含目录）。 */
+  name: string;
+  /** 完整路径。本地是绝对路径；远程由「远端目录 + 条目名」拼出。 */
+  path: string;
+  isDir: boolean;
+  /** 字节数。目录恒为 0。 */
+  size: number;
+  /** Unix 秒。远端拿不到时为 null。 */
+  modified: number | null;
+}
+
 /** 传输完成后的单个文件落点。 */
 export interface TransferredFile {
   source: string;
@@ -117,6 +134,13 @@ export interface TransferSummary {
 export interface TransferProgress {
   tabId: string;
   transferId: string;
+  /**
+   * 前端发起这次传输时带的标识，原样回显。
+   *
+   * 并发传输时后端的 transferId 要等传输结束才拿得到，只有靠它把进度
+   * 事件对上日志表里的行。
+   */
+  requestId: string;
   direction: "upload" | "download";
   bytes: number;
   totalBytes: number | null;
