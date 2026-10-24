@@ -13,3 +13,11 @@ use crate::fsdir::DirEntry;
 pub fn fs_list_dir(path: String, show_hidden: bool) -> Result<Vec<DirEntry>, String> {
     crate::fsdir::list_local_dir(&path, show_hidden)
 }
+
+/// 删除本地文件或目录（目录递归删）。
+///
+/// **破坏性操作** —— 前端必须先弹确认框。
+#[tauri::command]
+pub fn fs_delete(path: String) -> Result<(), String> {
+    crate::fsdir::delete_local(&path)
+}

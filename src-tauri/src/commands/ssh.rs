@@ -88,6 +88,19 @@ pub async fn ssh_probe_remote_cwd(
     })
 }
 
+/// 删除远程文件或目录（目录递归删）。
+///
+/// **破坏性操作** —— 前端必须先弹确认框。
+#[tauri::command]
+pub async fn ssh_delete(
+    db: tauri::State<'_, AppDatabase>,
+    target: SshTarget,
+    path: String,
+) -> Result<(), String> {
+    let ssh = transfer::resolve_ssh_args(&db, &target).map_err(|e| e.to_string())?;
+    crate::ssh::remote::delete_remote(&ssh, &path).await
+}
+
 /// 列出远程目录。
 ///
 /// 与传输一样，连接参数由后端按 [`SshTarget`] 解析 —— 前端碰不到密码。

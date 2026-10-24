@@ -77,6 +77,24 @@ pub fn list_local_dir(path: &str, show_hidden: bool) -> Result<Vec<DirEntry>, St
     Ok(entries)
 }
 
+/// 删除本地文件或目录（目录递归删）。
+///
+/// **破坏性操作** —— 调用方必须先弹确认框。
+/// 根目录与空路径一律拒绝：路径是从界面来的，不能让它变成「删掉一切」。
+pub fn delete_local(path: &str) -> Result<(), String> {
+    let trimmed = path.trim();
+    if trimmed.is_empty() || trimmed == "/" {
+        return Err("拒绝删除根目录".to_string());
+    }
+    let p = Path::new(trimmed);
+    let meta = std::fs::metadata(p).map_err(|e| format!("无法访问 {trimmed}: {e}"))?;
+    if meta.is_dir() {
+        std::fs::remove_dir_all(p).map_err(|e| format!("删除目录 {trimmed} 失败: {e}"))
+    } else {
+        std::fs::remove_file(p).map_err(|e| format!("删除文件 {trimmed} 失败: {e}"))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -132,6 +150,28 @@ mod tests {
         let entries = list_local_dir(&d.to_string_lossy(), true).unwrap();
         assert!(entries.iter().any(|e| e.name == ".hidden"));
         std::fs::remove_dir_all(&d).ok();
+    }
+
+    #[test]
+    fn deletes_a_file_and_a_directory() {
+        let d = tmpdir("del");
+        let f = d.join("x.txt");
+        std::fs::write(&f, b"x").unwrap();
+        let sub = d.join("sub");
+        std::fs::create_dir_all(&sub).unwrap();
+        std::fs::write(sub.join("y.txt"), b"y").unwrap();
+
+        delete_local(&f.to_string_lossy()).unwrap();
+        assert!(!f.exists());
+        delete_local(&sub.to_string_lossy()).unwrap();
+        assert!(!sub.exists());
+        std::fs::remove_dir_all(&d).ok();
+    }
+
+    #[test]
+    fn refuses_to_delete_the_root() {
+        assert!(delete_local("/").is_err());
+        assert!(delete_local("  ").is_err());
     }
 
     #[test]

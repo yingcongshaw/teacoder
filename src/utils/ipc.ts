@@ -112,6 +112,27 @@ export async function fsListDir(
   return invoke("fs_list_dir", { path, showHidden });
 }
 
+/**
+ * 删除本地文件或目录（目录递归删）。
+ *
+ * **破坏性操作** —— 调用方必须先弹确认框。
+ */
+export async function fsDelete(path: string): Promise<void> {
+  return invoke("fs_delete", { path });
+}
+
+/**
+ * 删除远程文件或目录（目录递归删）。
+ *
+ * **破坏性操作** —— 调用方必须先弹确认框。
+ */
+export async function sshDelete(
+  target: SshTarget,
+  path: string,
+): Promise<void> {
+  return invoke("ssh_delete", { target, path });
+}
+
 /** 请求取消进行中的传输。返回 false 表示该任务已结束或 id 未知。 */
 export async function sshTransferCancel(transferId: string): Promise<boolean> {
   return invoke("ssh_transfer_cancel", { transferId });

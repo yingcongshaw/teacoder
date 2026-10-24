@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { listen } from "@tauri-apps/api/event";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
-import { Button, Empty, Input, Progress, Table, Tooltip } from "antd";
+import { Button, Empty, Input, Modal, Progress, Table, Tooltip } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import {
   CloseOutlined,
@@ -19,7 +19,9 @@ import {
   StopOutlined,
 } from "@ant-design/icons";
 import {
+  fsDelete,
   fsListDir,
+  sshDelete,
   sshDownload,
   sshListDir,
   sshProbeRemoteCwd,
@@ -138,6 +140,13 @@ const PANEL_STYLE = {
   flexDirection: "column",
 } as const;
 
+/**
+ * 左右拖动删除的触发阈值（像素）。
+ *
+ * 小于此位移视为普通点击 —— 用户想选中文件，不该一碰就弹删除框。
+ */
+const DELETE_DRAG_THRESHOLD = 40;
+
 /** 路径的上一级。`/root/a` → `/root`；`/` 仍是 `/`。 */
 function parentPath(path: string): string {
   const trimmed = path.replace(/\/+$/, "");
@@ -214,6 +223,15 @@ export default function FileTransferPanel({
   const [localError, setLocalError] = useState<string | null>(null);
 
   const [rows, setRows] = useState<LogRow[]>([]);
+  /**
+   * 待删除的对象。用受控 Modal 而不是命令式的 Modal.confirm ——
+   * 确认框弹出期间要屏蔽面板的「点外面关闭」，得知道它开着。
+   */
+  const [deleteTarget, setDeleteTarget] = useState<{
+    entry: DirEntry;
+    side: "remote" | "local";
+  } | null>(null);
+
   const requestSeq = useRef(0);
 
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -383,6 +401,9 @@ export default function FileTransferPanel({
   useEffect(() => {
     if (!open) return;
     const onPointerDown = (e: PointerEvent) => {
+      // 删除确认框开着的时候，点任何地方都不能把面板关掉 ——
+      // 否则确认框的遮罩一按，连文件传输窗口一起没了
+      if (deleteTarget) return;
       const target = e.target as Node | null;
       if (!target) return;
       if (buttonRef.current?.contains(target)) return;
@@ -391,7 +412,7 @@ export default function FileTransferPanel({
     };
     document.addEventListener("pointerdown", onPointerDown);
     return () => document.removeEventListener("pointerdown", onPointerDown);
-  }, [open]);
+  }, [open, deleteTarget]);
 
   const nextRequestId = () => {
     requestSeq.current += 1;
@@ -497,6 +518,29 @@ export default function FileTransferPanel({
   const cancelRow = async (row: LogRow) => {
     if (!row.transferId) return;
     await sshTransferCancel(row.transferId).catch(() => {});
+  };
+
+  /** 确认删除：删完刷新**源列表**（远程删的刷远端，本地删的刷本地）。 */
+  const confirmDelete = async () => {
+    const pending = deleteTarget;
+    setDeleteTarget(null);
+    if (!pending) return;
+    try {
+      if (pending.side === "remote") {
+        const target = targetFor();
+        if (!target) return;
+        await sshDelete(target, pending.entry.path);
+        refreshRemote();
+      } else {
+        await fsDelete(pending.entry.path);
+        refreshLocal();
+      }
+    } catch (e) {
+      Modal.error({
+        title: "删除失败",
+        content: typeof e === "string" ? e : "删除失败",
+      });
+    }
   };
 
   /** Terminal 会话的本地路径插入：裸写 PTY，不带回车。
@@ -642,6 +686,24 @@ export default function FileTransferPanel({
         </button>
       </Tooltip>
 
+      <Modal
+        open={deleteTarget !== null}
+        title={`删除 ${deleteTarget?.entry.name ?? ""}？`}
+        okText="删除"
+        okButtonProps={{ danger: true }}
+        cancelText="取消"
+        // 点遮罩不关：免得误触把确认框和面板一起弄没了
+        maskClosable={false}
+        onOk={() => void confirmDelete()}
+        onCancel={() => setDeleteTarget(null)}
+      >
+        <p className="text-sm">
+          {deleteTarget?.entry.isDir
+            ? "该文件夹及其全部内容都会被永久删除，此操作不可撤销。"
+            : "该文件会被永久删除，此操作不可撤销。"}
+        </p>
+      </Modal>
+
       <SshConnectionModal
         open={connModalOpen}
         onClose={() => setConnModalOpen(false)}
@@ -738,6 +800,7 @@ export default function FileTransferPanel({
                 }
                 onNavigate={(p) => applyRemote(p)}
                 onActivate={(e) => startDownloads([e])}
+                onDelete={(e) => setDeleteTarget({ entry: e, side: "remote" })}
                 listMaxHeight={maximized ? "none" : 300}
                 placeholder="远程目录，如 /var/log"
                 hint={
@@ -828,6 +891,7 @@ export default function FileTransferPanel({
                 }
                 onNavigate={(p) => applyLocal(p)}
                 onActivate={(e) => startUploads([e])}
+                onDelete={(e) => setDeleteTarget({ entry: e, side: "local" })}
                 listMaxHeight={maximized ? "none" : 300}
                 placeholder="本地目录，如 /home/me/proj"
                 extra={
@@ -886,6 +950,7 @@ function FilePane({
   onToggle,
   onNavigate,
   onActivate,
+  onDelete,
   placeholder,
   listMaxHeight,
   hint,
@@ -903,6 +968,8 @@ function FilePane({
   onNavigate: (path: string) => void;
   /** 双击文件条目时触发（文件夹的双击仍是进入目录）。 */
   onActivate?: (entry: DirEntry) => void;
+  /** 左右拖动条目时触发删除（由父组件弹确认框）。 */
+  onDelete?: (entry: DirEntry) => void;
   placeholder: string;
   /** 列表的最大高度。全屏时放开，上限交给面板。 */
   listMaxHeight?: number | string;
@@ -911,6 +978,76 @@ function FilePane({
   extra?: React.ReactNode;
 }) {
   const selectedSet = useMemo(() => new Set(selected), [selected]);
+
+  /**
+   * 左右拖动删除的手势状态。
+   *
+   * 自己判定而不是用浏览器的 drag 事件：HTML 的 drag 只对可拖对象生效，
+   * 而这里要的是「按住条目左右挪」。
+   */
+  const dragRef = useRef<{
+    path: string;
+    startX: number;
+    startY: number;
+    dx: number;
+    /** 已经越过阈值，进入拖动删除态 */
+    active: boolean;
+    /** 判定为上下拖动，整段手势作废 */
+    abandoned: boolean;
+  } | null>(null);
+  /** 当前正在拖动的条目与位移，让条目跟着鼠标走 */
+  const [dragOffset, setDragOffset] = useState<{ path: string; dx: number } | null>(null);
+  /**
+   * 拖动删除触发后抑制随之而来的 click，免得又去切换选中。
+   *
+   * 用时间窗而不是布尔标志：拖动结束时未必真的派发 click（指针可能在条目外
+   * 松手），布尔标志会一直挂着，把下一次正常点击也吞掉。
+   */
+  const suppressClickUntilRef = useRef(0);
+
+  const onEntryPointerDown = (e: React.PointerEvent, entry: DirEntry) => {
+    if (e.button !== 0) return;
+    dragRef.current = {
+      path: entry.path,
+      startX: e.clientX,
+      startY: e.clientY,
+      dx: 0,
+      active: false,
+      abandoned: false,
+    };
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  };
+
+  const onEntryPointerMove = (e: React.PointerEvent, entry: DirEntry) => {
+    const st = dragRef.current;
+    if (!st || st.path !== entry.path || st.abandoned) return;
+    const dx = e.clientX - st.startX;
+    const dy = e.clientY - st.startY;
+    if (!st.active) {
+      // 还没攒够位移，先不动 —— 否则单击选中会被误判成拖动
+      if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return;
+      if (Math.abs(dx) <= Math.abs(dy)) {
+        // 上下为主：不是删除手势，整段作废
+        st.abandoned = true;
+        dragRef.current = null;
+        return;
+      }
+      st.active = true;
+    }
+    st.dx = dx;
+    setDragOffset({ path: entry.path, dx });
+  };
+
+  const onEntryPointerUp = (_e: React.PointerEvent, entry: DirEntry) => {
+    const st = dragRef.current;
+    dragRef.current = null;
+    setDragOffset(null);
+    if (!st || st.path !== entry.path || !st.active || st.abandoned) return;
+    if (Math.abs(st.dx) < DELETE_DRAG_THRESHOLD) return;
+    suppressClickUntilRef.current = Date.now() + 300;
+    onDelete?.(entry);
+  };
+
 
   /**
    * 双击判定自己做，不靠 onDoubleClick。
@@ -1008,19 +1145,33 @@ function FilePane({
                   background: active
                     ? "var(--ant-color-primary-bg)"
                     : "transparent",
+                  fontSize: 10,
+                  // 拖动删除时条目跟着鼠标走，并给出「松手即删」的提示色
+                  transform:
+                    dragOffset?.path === e.path
+                      ? `translateX(${dragOffset.dx}px)`
+                      : undefined,
+                  color:
+                    dragOffset?.path === e.path &&
+                    Math.abs(dragOffset.dx) >= DELETE_DRAG_THRESHOLD
+                      ? "var(--ant-color-error)"
+                      : undefined,
                 }}
-                onClick={() => handleClick(e)}
+                onPointerDown={(ev) => onEntryPointerDown(ev, e)}
+                onPointerMove={(ev) => onEntryPointerMove(ev, e)}
+                onPointerUp={(ev) => onEntryPointerUp(ev, e)}
+                onClick={() => {
+                  if (Date.now() < suppressClickUntilRef.current) return;
+                  handleClick(e);
+                }}
               >
                 {e.isDir ? (
                   <FolderOutlined style={{ color: "var(--ant-color-text-tertiary)" }} />
                 ) : (
                   <FileOutlined style={{ color: "var(--ant-color-text-tertiary)" }} />
                 )}
-                <span className="flex-1 text-xs truncate">{e.name}</span>
-                <span
-                  className="text-xs"
-                  style={{ color: "var(--ant-color-text-tertiary)" }}
-                >
+                <span className="flex-1 truncate">{e.name}</span>
+                <span style={{ color: "var(--ant-color-text-tertiary)" }}>
                   {formatDate(e.modified)}
                 </span>
               </div>

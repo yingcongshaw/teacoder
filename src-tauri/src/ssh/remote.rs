@@ -225,6 +225,28 @@ fn join_remote(base: &str, name: &str) -> String {
     }
 }
 
+/// 删除远程文件或目录（目录递归删）。
+///
+/// **破坏性操作** —— 调用方必须先弹确认框。
+/// 路径经 [`shell_quote`] 转义后交给远端 shell；根目录与空路径拒绝。
+pub async fn delete_remote(ssh: &SshArgs, path: &str) -> Result<(), String> {
+    let trimmed = path.trim();
+    if trimmed.is_empty() || trimmed == "/" {
+        return Err("拒绝删除根目录".to_string());
+    }
+    if path.chars().any(|c| c.is_control()) {
+        return Err("路径含控制字符".to_string());
+    }
+    run_remote(
+        ssh,
+        &format!("rm -rf -- {}", shell_quote(trimmed)),
+        Duration::from_secs(30),
+    )
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
