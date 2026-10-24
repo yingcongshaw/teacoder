@@ -973,7 +973,9 @@ export default function FileTransferPanel({
                     className="ml-2 text-[var(--ant-color-text-tertiary)]"
                     style={{ fontSize: 10 }}
                   >
-                    （文件列表左右拖动文件名可以删除文件）
+                    （上方的文件列表窗口中，左右拖动文件名即可
+                    <span style={{ color: "var(--ant-color-error)" }}>删除</span>
+                    文件）
                   </span>
                 </span>
                 <Tooltip title="切到全部会话的记录" placement="left">
