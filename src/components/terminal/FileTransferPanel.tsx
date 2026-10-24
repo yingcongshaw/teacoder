@@ -344,7 +344,7 @@ export default function FileTransferPanel({
                 <Alert
                   type="info"
                   showIcon
-                  message={
+                  title={
                     manualArgs
                       ? `将传到 ${manualArgs.username || "当前用户"}@${manualArgs.hostname}`
                       : "本地终端会话没有远程信息，传文件需先填写连接参数"
@@ -509,7 +509,7 @@ export default function FileTransferPanel({
                 <Alert
                   type={result.ok ? "success" : "error"}
                   showIcon
-                  message={result.text}
+                  title={result.text}
                   description={
                     <div className="text-xs">
                       {result.files.map((f) => (
