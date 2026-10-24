@@ -13,21 +13,6 @@ use super::ToolType;
 use crate::ssh::askpass::AskpassGuard;
 use crate::ssh::{parse_ssh_args, redact_secrets, SshAuth};
 
-/// 远程 cwd 探测的哨兵前缀与后缀。中间的 uuid 区分并发的探测请求，
-/// 前端/其他标签页的同名字符串不会误命中。
-const PROBE_PREFIX: &str = "__TEACODE_PWD__";
-const PROBE_SUFFIX: &str = ":__END__";
-
-/// 一次在途的远程 cwd 探测。
-struct ProbeRequest {
-    /// 本次探测的 uuid。
-    id: String,
-    reply: tokio::sync::oneshot::Sender<String>,
-}
-
-/// 探测槽。reader 线程与调用方共享同一个 `Arc`。
-type ProbeSlot = Arc<Mutex<Option<ProbeRequest>>>;
-
 struct PtyEntry {
     master: Box<dyn MasterPty + Send>,
     writer: Mutex<Box<dyn std::io::Write + Send>>,
@@ -38,33 +23,6 @@ struct PtyEntry {
     /// 字段从不被读取 —— 它存在的全部意义就是让 guard 活到 session 结束。
     #[allow(dead_code)]
     ssh_askpass: Option<AskpassGuard>,
-    probe_slot: ProbeSlot,
-}
-
-/// 从一段输出里取出哨兵包裹的远程路径。
-///
-/// 输入是已 `strip_ansi` 且跨 PTY 读块拼接过的滚动窗口，因此：
-/// 哨兵本身被切断、前面有命令回显、路径含 ANSI 残留，都不应影响命中。
-///
-/// 必须扫**所有**出现位置而不是第一个：shell 会把命令本身回显出来，
-/// 而回显里也是同一枚哨兵（`$PWD` 未展开）。窗口只在校准时才清空，
-/// 回显会一直留在里面 —— 只取首个匹配的话，回显会永久挡在真实输出前面，
-/// 探测永远命中不了。绝对路径校验把回显那份挡掉，逐个往后找即可。
-fn extract_probe_path(window: &str, probe_id: &str) -> Option<String> {
-    let needle = format!("{PROBE_PREFIX}{probe_id}__:");
-    let mut from = 0;
-    while let Some(rel) = window[from..].find(&needle) {
-        let start = from + rel + needle.len();
-        if let Some(end) = window[start..].find(PROBE_SUFFIX) {
-            let path = window[start..start + end].trim();
-            // 远端 pwd 恒为绝对路径，这条校验顺带挡掉未展开的 `$PWD`
-            if path.starts_with('/') {
-                return Some(path.to_string());
-            }
-        }
-        from = start;
-    }
-    None
 }
 
 /// 剥除 ANSI / VT 转义序列(CSI / SGR / 光标移动),Claude Code Ink TUI 反复重绘同一行
@@ -366,8 +324,6 @@ impl PtyManager {
         let app_arc = Arc::new(app);
         let tab_id_clone = tab_id.clone();
         let tab_id_for_emit = tab_id.clone();
-        let probe_slot: ProbeSlot = Arc::new(Mutex::new(None));
-        let probe_slot_reader = Arc::clone(&probe_slot);
 
         let reader_handle = std::thread::spawn(move || {
             let mut reader = reader;
@@ -378,13 +334,6 @@ impl PtyManager {
             // sensitive_tail 保留最近 ~256 字节去 ANSI 后的输出,跨 PTY 读块拼接也能命中跨边界提示。
             let mut sensitive_tail = String::new();
             let mut last_sensitive_emit: Option<Instant> = None;
-
-            // 远程 cwd 探测的滚动窗口。比 sensitive_tail 宽,因为哨兵命令的回显
-            // 本身就占几十字节,窗口太窄会把哨兵挤出去。
-            let mut probe_tail = String::new();
-            // 已应答过的探测 id。同一个 id 不再看,但换新 id 后必须重新开始匹配 ——
-            // 用户可以在同一个 tab 上反复探测远程目录。
-            let mut probe_handled: Option<String> = None;
 
             loop {
                 let mut buf = [0u8; 4096];
@@ -433,39 +382,6 @@ impl PtyManager {
                             }
                         }
 
-                        // 远程 cwd 探测：命中就把路径回给等待方并清空槽位，
-                        // 之后无需再看这个 id。
-                        if !stripped.is_empty() {
-                            let maybe_id = probe_slot_reader
-                                .lock()
-                                .ok()
-                                .and_then(|g| g.as_ref().map(|r| r.id.clone()));
-                            if let Some(id) = maybe_id {
-                                if probe_handled.as_deref() != Some(id.as_str()) {
-                                    probe_tail.push_str(&stripped);
-                                    if probe_tail.len() > 2048 {
-                                        let cut = probe_tail.len() - 2048;
-                                        let mut at = cut;
-                                        while at < probe_tail.len()
-                                            && (probe_tail.as_bytes()[at] & 0xc0) == 0x80
-                                        {
-                                            at += 1;
-                                        }
-                                        probe_tail.replace_range(..at, "");
-                                    }
-                                    if let Some(path) = extract_probe_path(&probe_tail, &id) {
-                                        if let Ok(mut guard) = probe_slot_reader.lock() {
-                                            if let Some(req) = guard.take() {
-                                                let _ = req.reply.send(path);
-                                                probe_handled = Some(id);
-                                                probe_tail.clear();
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
                         let _ = app_arc.emit("pty:output", serde_json::json!({
                             "tabId": tab_id,
                             "data": data,
@@ -506,7 +422,6 @@ impl PtyManager {
                 reader_handle: Some(reader_handle),
                 child,
                 ssh_askpass,
-                probe_slot: Arc::clone(&probe_slot),
             },
         );
 
@@ -527,66 +442,6 @@ impl PtyManager {
             .map_err(|e| format!("Failed to write to PTY: {}", e))?;
 
         Ok(())
-    }
-
-    /// 探测该会话 shell 的当前工作目录。
-    ///
-    /// 往 PTY 敲一条带哨兵的 `echo`，由 reader 线程匹配回显并回传路径。选在 Rust
-    /// 侧匹配而非前端，是因为 reader 线程已经在跨读块拼接，而前端拿到的
-    /// `pty:output` 只是任意 4096 字节切片、无行边界保证。
-    ///
-    /// 超时或未命中时返回 `Err`，调用方据此回落到 `~/`。
-    pub async fn probe_remote_cwd(
-        &self,
-        app: tauri::AppHandle,
-        tab_id: String,
-    ) -> Result<String, String> {
-        const PROBE_TIMEOUT: Duration = Duration::from_secs(3);
-
-        let probe_id = uuid::Uuid::new_v4().to_string();
-        let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
-
-        {
-            let sessions = self.sessions.lock().map_err(|e| e.to_string())?;
-            let entry = sessions
-                .get(&tab_id)
-                .ok_or_else(|| format!("Session {} not found", tab_id))?;
-            let mut slot = entry.probe_slot.lock().map_err(|e| e.to_string())?;
-            *slot = Some(ProbeRequest {
-                id: probe_id.clone(),
-                reply: reply_tx,
-            });
-        }
-
-        // 双引号让 $PWD 在远端展开；uuid 是十六进制与连字符，不会破坏 format/quote。
-        let command = format!("echo \"{PROBE_PREFIX}{probe_id}__:$PWD{PROBE_SUFFIX}\"\r");
-        if let Err(e) = self.write_to_pty(&tab_id, &command) {
-            self.clear_probe(&tab_id);
-            return Err(e);
-        }
-
-        let result = tokio::time::timeout(PROBE_TIMEOUT, reply_rx).await;
-        // 无论命中与否都要清槽，否则下一次探测的哨兵 id 与残留请求不一致。
-        self.clear_probe(&tab_id);
-
-        match result {
-            Ok(Ok(path)) => {
-                let _ = app.emit("pty:cwd", serde_json::json!({ "tabId": tab_id, "path": path }));
-                Ok(path)
-            }
-            Ok(Err(_)) => Err("远程目录探测被中断".to_string()),
-            Err(_) => Err("远程目录探测超时".to_string()),
-        }
-    }
-
-    fn clear_probe(&self, tab_id: &str) {
-        if let Ok(sessions) = self.sessions.lock() {
-            if let Some(entry) = sessions.get(tab_id) {
-                if let Ok(mut slot) = entry.probe_slot.lock() {
-                    *slot = None;
-                }
-            }
-        }
     }
 
     pub fn resize_pty(
@@ -835,55 +690,6 @@ mod tests {
     #[test]
     fn strip_ansi_keeps_plain_text() {
         assert_eq!(strip_ansi("hello world"), "hello world");
-    }
-
-    /// 读线程是滚动窗口累积后再匹配的，且命令回显里也有一份未展开的哨兵。
-    /// 三条性质必须同时成立：回显不误命中、收全之前不命中、收全之后能穿过回显命中。
-    #[test]
-    fn probe_path_skips_the_command_echo_and_survives_a_split_output() {
-        let mut window = strip_ansi("$ echo \"__TEACODE_PWD__abc__:$PWD:__END__\"\r\n");
-        assert!(
-            extract_probe_path(&window, "abc").is_none(),
-            "回显里的 $PWD 不是路径，不该命中"
-        );
-
-        window.push_str("__TEACODE_PWD__abc__:");
-        assert!(extract_probe_path(&window, "abc").is_none(), "哨兵还没收全");
-
-        window.push_str("/root/work:__END__\r\n");
-        assert_eq!(
-            extract_probe_path(&window, "abc").as_deref(),
-            Some("/root/work"),
-            "回显在前时应继续往后找，而不是被它挡死"
-        );
-    }
-
-    #[test]
-    fn probe_path_ignores_a_different_probe_id() {
-        let window = "__TEACODE_PWD__other__:/root:__END__";
-        assert!(extract_probe_path(window, "abc").is_none());
-    }
-
-    #[test]
-    fn probe_path_rejects_relative_result() {
-        let window = "__TEACODE_PWD__abc__:relative/path:__END__";
-        assert!(extract_probe_path(window, "abc").is_none());
-    }
-
-    #[test]
-    fn probe_path_absent_returns_none() {
-        assert!(extract_probe_path("just some ordinary terminal output", "abc").is_none());
-        assert!(extract_probe_path("", "abc").is_none());
-    }
-
-    /// 读线程拿到的是 strip_ansi 之后的文本，这里按真实链路组合一次：
-    /// 命令回显带颜色转义时也必须命中。
-    #[test]
-    fn probe_path_found_after_stripping_real_echo_with_color() {
-        let raw = "\u{1b}[32m$\u{1b}[0m echo \"__TEACODE_PWD__abc__:$PWD:__END__\"\r\n\
-                   __TEACODE_PWD__abc__:/var/log:__END__\r\n";
-        let window = strip_ansi(raw);
-        assert_eq!(extract_probe_path(&window, "abc").as_deref(), Some("/var/log"));
     }
 
     #[test]

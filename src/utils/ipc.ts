@@ -101,7 +101,10 @@ export async function sshTransferCancel(transferId: string): Promise<boolean> {
 /**
  * 探测 SSH 会话远程的当前目录。仅 SSH 工具会话有意义 ——
  * Terminal 会话的 PTY 是本地 shell，返回的会是本地路径，故不在其上调用。
- * 失败或超时时抛错，调用方应回落 `~/`。
+ *
+ * 后端走一条独立的短连接执行 `pwd`，不碰用户的终端（往交互式 PTY 里敲探测
+ * 命令会把命令和输出留在终端里）。拿到的是远端账号的登录目录，不是交互会话
+ * 里 `cd` 之后的目录。失败或超时时抛错，调用方应回落 `~/`。
  */
 export async function sshProbeRemoteCwd(tabId: string): Promise<string> {
   return invoke("ssh_probe_remote_cwd", { tabId });

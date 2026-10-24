@@ -75,12 +75,19 @@ pub fn ssh_transfer_cancel(
 /// 只对 SSH 工具会话有意义：Terminal 会话的 PTY 是本地 shell，即便用户在里面手动
 /// `ssh` 了，`$PWD` 也是本地路径，返回它会误导。因此 Terminal 会话不调用本命令。
 ///
-/// 哨兵命令会可见地出现在终端里 —— PTY 内联无法隐藏，这与既有的 `/rename` 先例一致。
+/// 探测走一条独立的短连接（见 [`crate::ssh::probe`]），**不碰用户的终端** ——
+/// 往交互式 PTY 里敲哨兵命令会把命令和输出留在终端里，每次打开面板都刷一屏。
 #[tauri::command]
 pub async fn ssh_probe_remote_cwd(
-    app: tauri::AppHandle,
-    pty_manager: tauri::State<'_, crate::pty::manager::PtyManager>,
+    db: tauri::State<'_, AppDatabase>,
     tab_id: String,
 ) -> Result<String, String> {
-    pty_manager.probe_remote_cwd(app, tab_id).await
+    // SSH 会话的 tabId 就是会话 id —— 上传路径也是这么取连接参数的。
+    let ssh = transfer::resolve_ssh_args(&db, &SshTarget::FromSession { session_id: tab_id })
+        .map_err(|e| e.to_string())?;
+    crate::ssh::probe::probe_remote_cwd(&ssh).await.map_err(|e| {
+        // 前端会静默回落到 ~/，不留日志就无从判断是回落了还是探测成功
+        eprintln!("[SSH-PROBE] 失败: {e}");
+        e.to_string()
+    })
 }

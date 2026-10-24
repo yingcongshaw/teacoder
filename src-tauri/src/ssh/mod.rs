@@ -10,6 +10,7 @@
 //!   `-P`，由各调用方按自己的语法追加。
 
 pub mod askpass;
+pub mod probe;
 pub mod registry;
 pub mod transfer;
 
