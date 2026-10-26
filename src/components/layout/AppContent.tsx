@@ -192,9 +192,12 @@ export default function AppContent() {
         <div className="flex-1 overflow-y-auto px-8 pb-8">
           {sessions.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full gap-6">
-              <div className="w-24 h-24 rounded-2xl bg-gradient-to-br from-[var(--ant-color-primary)] to-[#722ed1] flex items-center justify-center text-white text-3xl font-bold shadow-lg">
-                茶
-              </div>
+              <img
+                src="/logo.png"
+                alt="TeaCoder"
+                className="w-24 h-24 shadow-lg"
+                draggable={false}
+              />
               <div className="text-center">
                 <p className="text-[var(--ant-color-text-secondary)] text-sm mb-4">
                   暂无会话，先创建一个项目

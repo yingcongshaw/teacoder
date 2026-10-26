@@ -22,7 +22,7 @@ export default function AboutPage({ searchText = "" }: AboutPageProps) {
       {/* App identity */}
       <div style={{ textAlign: "center", padding: "32px 0 24px" }}>
         <img
-          src="/logo-bg-w.png"
+          src="/logo.png"
           alt="TeaCoder"
           width={72}
           height={72}
