@@ -130,7 +130,7 @@ npm install -g opencode-ai
 
 ### 环境准备
 
-- **Node.js** 20+
+- **Node.js** 22.12+（Vite 7 要求 20.19+ 或 22.12+；仓库内 `.nvmrc` 已固化）
 - **pnpm** 9+（项目强制使用 pnpm）
 - **Rust** stable toolchain
 - **Tauri CLI**：`cargo install tauri-cli --version "^2.0"`
