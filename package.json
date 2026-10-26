@@ -13,7 +13,8 @@
     "dev:test": "VITE_TEST_MODE=1 vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "build:appimage": "bash scripts/build-appimage.sh"
   },
   "dependencies": {
     "@ant-design/icons": "^6.3.2",
