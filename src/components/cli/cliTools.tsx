@@ -19,12 +19,12 @@ export const CLI_TOOLS: CliToolMeta[] = [
   { id: "gemini", name: "Gemini CLI", icon: "/gemini.png", color: "#1677ff", desc: "Google Gemini CLI", inSettingsGroup: true },
   { id: "antigravity", name: "Antigravity", color: "#52c41a", desc: "Antigravity CLI", alwaysAvailable: true, inSettingsGroup: true },
   { id: "opencode", name: "OpenCode", icon: "/opencode.png", color: "#fa8c16", desc: "开源编码助手", inSettingsGroup: true },
-  { id: "terminal", name: "终端", iconComponent: <DesktopOutlined />, color: "#52c41a", desc: "本机系统 Shell", alwaysAvailable: true },
-  { id: "ssh", name: "SSH", iconComponent: <CloudOutlined />, color: "#1677ff", desc: "SSH 远程连接", alwaysAvailable: true },
+  { id: "terminal", name: "终端", iconComponent: <DesktopOutlined />, color: "#52c41a", desc: "本机系统 Shell", alwaysAvailable: true, inSettingsGroup: true },
+  { id: "ssh", name: "SSH", iconComponent: <CloudOutlined />, color: "#1677ff", desc: "SSH 远程连接", alwaysAvailable: true, inSettingsGroup: true },
 ];
 
 export const CLI_TOOLS_IN_SETTINGS_GROUP: CliToolMeta[] =
-  CLI_TOOLS.filter((t) => t.inSettingsGroup !== false);
+  CLI_TOOLS.filter((t) => t.inSettingsGroup === true);
 
 export function getCliToolMeta(id: ToolType): CliToolMeta | undefined {
   return CLI_TOOLS.find((t) => t.id === id);

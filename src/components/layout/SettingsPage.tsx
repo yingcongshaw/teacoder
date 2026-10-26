@@ -15,10 +15,12 @@ import {
   InfoCircleOutlined,
   CloudOutlined,
 } from "@ant-design/icons";
-import { CLI_TOOLS, CLI_TOOLS_IN_SETTINGS_GROUP, getCliToolIcon } from "../cli/cliTools";
+import { CLI_TOOLS_IN_SETTINGS_GROUP, getCliToolIcon } from "../cli/cliTools";
 import { useAppStore } from "../../stores/appStore";
+import type { ToolType } from "../../types";
 import GeneralSettingsPage from "../settings/GeneralSettingsPage";
 import TerminalSettingsPage from "../settings/TerminalSettingsPage";
+import CliShellSettingsPage from "../settings/CliShellSettingsPage";
 import ClaudeSettingsPage from "../settings/ClaudeSettingsPage";
 import CodexSettingsPage from "../settings/CodexSettingsPage";
 import GeminiSettingsPage from "../settings/GeminiSettingsPage";
@@ -42,6 +44,16 @@ function CliToolIcon({ toolKey }: { toolKey: string }) {
   return getCliToolIcon(toolKey as Parameters<typeof getCliToolIcon>[0]);
 }
 
+// shell 类工具在「CLI 工具」分组下另有页面，与一级菜单的「终端设置」需用不同 key
+const CLI_TOOL_MENU_KEYS: Partial<Record<ToolType, string>> = {
+  terminal: "cli-terminal",
+  ssh: "cli-ssh",
+};
+
+function cliToolMenuKey(id: ToolType): string {
+  return CLI_TOOL_MENU_KEYS[id] ?? id;
+}
+
 const menuItems = [
   { key: "general", label: "通用设置", icon: <SettingOutlined /> },
   { key: "terminal", label: "终端设置", icon: <CodeOutlined /> },
@@ -51,7 +63,7 @@ const menuItems = [
     label: "CLI 工具",
     icon: <RobotOutlined />,
     children: CLI_TOOLS_IN_SETTINGS_GROUP.map((t) => ({
-      key: t.id,
+      key: cliToolMenuKey(t.id),
       label: t.name,
       icon: <CliToolIcon toolKey={t.id} />,
     })),
@@ -68,7 +80,7 @@ const menuItems = [
 ];
 
 const CLI_TOOL_TITLES: Record<string, string> = Object.fromEntries(
-  CLI_TOOLS.map((t) => [t.id, t.name]),
+  CLI_TOOLS_IN_SETTINGS_GROUP.map((t) => [cliToolMenuKey(t.id), t.name]),
 );
 
 const PAGE_TITLES: Record<string, string> = {
@@ -107,6 +119,10 @@ export default function SettingsPage() {
         return <GeneralSettingsPage {...props} />;
       case "terminal":
         return <TerminalSettingsPage {...props} />;
+      case "cli-terminal":
+        return <CliShellSettingsPage toolType="terminal" {...props} />;
+      case "cli-ssh":
+        return <CliShellSettingsPage toolType="ssh" {...props} />;
       case "claude":
         return <ClaudeSettingsPage {...props} />;
       case "codex":

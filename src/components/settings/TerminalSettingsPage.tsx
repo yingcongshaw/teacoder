@@ -6,7 +6,6 @@ import { useAppStore } from "../../stores/appStore";
 import { TERMINAL_COLOR_THEMES } from "../../types";
 import type { TerminalSettings } from "../../types";
 import { listSystemFonts } from "../../utils/ipc";
-import QuickCommandsEditor from "../quick-commands/QuickCommandsEditor";
 
 const SHELL_OPTIONS = [
   { value: "default", label: "默认 Shell" },
@@ -338,21 +337,6 @@ export default function TerminalSettingsPage({ searchText = "" }: TerminalSettin
         </SettingRow>
       )}
 
-      {/* 环境变量 */}
-      <SectionHeader title="环境变量" />
-      {matchesSearch("自定义环境变量") && (
-        <SettingRow label="自定义环境变量" description="每行一个，格式：KEY=VALUE">
-          <Input.TextArea
-            value={settings.envVars}
-            onChange={(e) => handleUpdate("envVars", e.target.value)}
-            rows={4}
-            placeholder={`NODE_OPTIONS=--max-old-space-size=4096\nPYTHONPATH=/usr/local/lib/python3.9`}
-            style={{ width: 320, fontFamily: "monospace", fontSize: 12 }}
-          />
-        </SettingRow>
-      )}
-
-      {matchesSearch("快捷命令") && <QuickCommandsEditor toolType="terminal" />}
     </div>
   );
 }
