@@ -1245,7 +1245,9 @@ function FilePane({
                 ) : (
                   <FileOutlined style={{ color: "var(--ant-color-text-tertiary)" }} />
                 )}
-                <span className="flex-1 truncate">{e.name}</span>
+                <span className="flex-1 truncate" style={{ fontSize: 12 }}>
+                  {e.name}
+                </span>
                 <span style={{ color: "var(--ant-color-text-tertiary)" }}>
                   {formatDate(e.modified)}
                 </span>

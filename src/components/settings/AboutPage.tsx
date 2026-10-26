@@ -95,7 +95,7 @@ export default function AboutPage({ searchText = "" }: AboutPageProps) {
       <div style={{ padding: "12px 0" }}>
         <Space>
           <a
-            href="https://github.com/teacoder/teacoder"
+            href="https://github.com/yingcongshaw/teacoder"
             target="_blank"
             rel="noopener noreferrer"
             style={{ display: "flex", alignItems: "center", gap: 4, color: "var(--ant-color-primary)" }}
@@ -111,7 +111,7 @@ export default function AboutPage({ searchText = "" }: AboutPageProps) {
       <div style={{ textAlign: "center", color: "var(--ant-color-text-tertiary)", fontSize: 12, padding: "8px 0" }}>
         <p style={{ margin: 0 }}>
           <HeartOutlined style={{ marginRight: 4 }} />
-          Made with love by the TeaCoder Team
+          Made with love by the CodingTea
         </p>
         <p style={{ margin: 0 }}>MIT License</p>
       </div>
