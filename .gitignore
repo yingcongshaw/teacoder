@@ -33,3 +33,6 @@ docs
 
 # FUSE 隐藏文件：文件被删除但句柄未释放时残留
 .fuse_hidden*
+/docs/
+/.superpowers/
+/.playwright-mcp/
