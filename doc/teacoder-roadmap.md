@@ -1,6 +1,6 @@
 # TeaCoder — 功能与技术路线文档
 
-> 本文档记录 TeaCoder 的产品定位、版本规划与技术方案。已实现的版本（v0.1.0）按代码现状描述，未实现的版本（v0.2 / v0.3 / v1.0+）保留方向性规划。
+> 本文档记录 TeaCoder 的产品定位、版本规划与技术方案。已实现的版本（v0.1.0）按代码现状描述，未实现的版本（v1.0.0）保留方向性规划。
 >
 > 项目代号：统一为 **TeaCoder**；Tauri `productName`: `teacoder`；包标识符：`com.codingtea.teacoder`。
 
@@ -41,33 +41,13 @@ v0.1.0 已实现完整覆盖以下领域，每个领域在 `requirements.md` 中
 
 具体实现明细参见 `requirements.md`。
 
-### v0.2 — 规划中（增强体验）
+### v1.0.0（规划）
 
-| 功能领域 | 优先级 |
-| --- | --- |
-| **CostProvider 完整覆盖**（Codex / Gemini / OpenCode / Antigravity 解析） | 高 |
-| **MCP Server 可视化管理**（图形化添加/启用/禁用 MCP Server，stdio / HTTP / SSE） | 中 |
-| **代码片段库**（常用 Prompt 存为片段，模板变量，Ctrl+K 一键插入） | 中 |
-| **全局搜索与命令面板**（Ctrl+K 整合内置指令/项目命令/代码片段） | 中 |
-| **思考强度热切换**（状态栏 Tag 切换 effort，运行中瞬时生效） | 中 |
-| **国内厂商端点支持**（智谱 AI / 通义千问 / Kimi Code / 硅基流动 / DeepSeek 等预设） | 中 |
-| **远端 SSH 工作区配置化**（v0.1.0 已支持 SSH 会话，v0.2 提供配置面板与密钥管理） | 中 |
-
-### v0.3 — 远期规划
-
-| 功能领域 |
-| --- |
-| **云端语音输入**（F2/Alt+X 按住说话，ASR 即时识别，术语词典 + 灵动岛 UI） |
-| **AI 记忆管理**（分类持久化项目长期记忆） |
-| **桌面宠物**（趣味功能） |
-
-### v1.0+ — 远期规划
-
-| 功能领域 |
-| --- |
-| **工作区编辑器**（内置文件树、语法高亮编辑器、代码大纲、Git 面板） |
-| **本地 LLM 后端**（Ollama / vLLM / LM Studio 预设，探活拉取本地模型列表） |
-| **Responses ↔ Chat 转换代理**（为 Codex 内置协议转换代理） |
+- **Token 中转代理**
+- **SaaS 认证和授权**
+- **代理开发数字人**
+- **代理测试**
+- **托管智能运维**
 
 ---
 
@@ -85,7 +65,7 @@ v0.1.0 已实现完整覆盖以下领域，每个领域在 `requirements.md` 中
 - Rust 后端 + WebView 前端
 - 包体较小（~200MB 含 WebView 运行时）
 - 跨平台：Windows `.exe` (NSIS)、macOS `.dmg`、Ubuntu `.deb`、其他 Linux `.AppImage`
-- 已在 `src-tauri/Cargo.toml` 声明 `axum = "0.8"` 依赖（v1.0+ 网关服务预留，v0.1.0 暂未启用监听）
+- 已在 `src-tauri/Cargo.toml` 声明 `axum = "0.8"` 依赖（v1.0.0 网关服务预留，v0.1.0 暂未启用监听）
 
 ### 2. 前端：React 19 + TypeScript + Ant Design 6 + TailwindCSS 4
 
@@ -109,11 +89,6 @@ v0.1.0 已实现完整覆盖以下领域，每个领域在 `requirements.md` 中
 - 标准路径结构：`/guide/`、`/features/`、`/mobile/`
 - Ctrl+K 搜索、暗色主题、sidebar 导航
 
-### 5. 语音识别：阿里云 DashScope ASR（v0.3）
-
-- 使用 `qwen3-asr-flash` 模型
-- 支持提示词术语词典、PTT 去重、灵动岛 Overlay UI
-
 ---
 
 ## 四、Token 费用追踪方案
@@ -131,7 +106,7 @@ v0.1.0 已实现完整覆盖以下领域，每个领域在 `requirements.md` 中
 | CLI 工具 | 数据来源 | 解析实现 |
 | --- | --- | --- |
 | Claude Code | `~/.claude/projects/*/conversation_*.jsonl` 或 Profile 独立目录下同结构 | ✅ 完整（`cost/claude.rs`，walkdir 遍历，逐行解析 JSONL 累计 `message.usage`） |
-| Codex CLI | 本地会话日志（具体路径待适配） | ⏸ 框架（`cost/codex.rs`，`#[allow(dead_code)]`，解析逻辑留待 v0.2） |
+| Codex CLI | 本地会话日志（具体路径待适配） | ⏸ 框架（`cost/codex.rs`，`#[allow(dead_code)]`，解析逻辑待实现） |
 | Gemini CLI | 本地会话日志 | ⏸ 框架 |
 | OpenCode | 本地会话日志 | ⏸ 框架 |
 | Antigravity | 本地会话日志 | ⏸ 框架 |

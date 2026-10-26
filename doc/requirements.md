@@ -846,8 +846,8 @@ on("cost:updated", (payload: { sessionId: string; cost: SessionCost }) => void)
 
 - [x] `cost/provider.rs`：CostProvider trait
 - [x] `cost/claude.rs`：完整实现
-- [ ] `cost/codex.rs` / `gemini.rs` / `opencode.rs`：v0.1.0 框架（`#[allow(dead_code)]`），v0.2 补全
-- [ ] Antigravity Provider：v0.2 新增
+- [ ] `cost/codex.rs` / `gemini.rs` / `opencode.rs`：v0.1.0 框架（`#[allow(dead_code)]`），待补全
+- [ ] Antigravity Provider：待新增
 - [x] 轮询 / 扫描 IPC + `cost:updated` 事件
 - [x] 前端：`CostDashboard` / `PricingConfigPanel`
 
@@ -881,7 +881,7 @@ on("cost:updated", (payload: { sessionId: string; cost: SessionCost }) => void)
 - [x] 能新建标签页启动任一 CLI 工具，终端正常交互
 - [x] 能创建多个 Profile，Profile 凭据加密存储于系统 Keychain
 - [x] 能创建多个 LLM Provider 并切换使用
-- [x] Claude Code 会话结束后，能正确统计 Token 数量与费用（其他工具 v0.2）
+- [x] Claude Code 会话结束后，能正确统计 Token 数量与费用（其他工具待实现）
 - [x] 运行中的会话，状态栏 Token 数通过 `cost:updated` 事件更新
 - [x] 应用重启后，标签页 / 分屏布局能恢复
 - [x] 同会话可在两个 pane 双开，共享 PTY，输入不被双触发
@@ -902,26 +902,13 @@ on("cost:updated", (payload: { sessionId: string; cost: SessionCost }) => void)
 
 以下功能在 v0.1.0 中**不实现**或仅提供骨架入口：
 
-### v0.2 待实现
+### v1.0.0（规划）
 
-- Codex / Gemini / OpenCode / Antigravity 的 CostProvider 完整解析
-- MCP Server 可视化管理（仅提供 `McpAccessPage` 入口）
-- 代码片段库（仅提供 Ctrl+K 入口）
-- 思考强度热切换（字段已建，运行中瞬时生效未做）
-- 国内厂商端点预设（DeepSeek/智谱/通义/Kimi/硅基流动 已在 LlmProvider 预设中部分覆盖）
-
-### v0.3 远期
-
-- SSH 配置化（v0.1.0 已支持 SSH 会话，v0.2 提供密钥管理面板）
-- 云端语音输入
-- AI 记忆管理
-- 桌面宠物
-
-### v1.0+ 远期
-
-- 工作区编辑器
-- 本地 LLM 后端
-- Responses ↔ Chat 转换代理
+- Token 中转代理
+- SaaS 认证和授权
+- 代理开发数字人
+- 代理测试
+- 托管智能运维
 
 ---
 
@@ -929,7 +916,7 @@ on("cost:updated", (payload: { sessionId: string; cost: SessionCost }) => void)
 
 1. **PTY 直通**：不拦截 CLI API 请求；Token 统计通过读取本地 JSONL/数据库，非解析 PTY 输出。
 
-2. **CostProvider 可扩展性**：trait 设计要预留扩展性，新增 CLI 工具只需实现 trait；v0.2 补全 codex/gemini/opencode。
+2. **CostProvider 可扩展性**：trait 设计要预留扩展性，新增 CLI 工具只需实现 trait；待补全 codex/gemini/opencode。
 
 3. **凭据分层**：
    

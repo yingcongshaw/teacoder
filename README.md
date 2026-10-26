@@ -196,7 +196,7 @@ TeaCoder/
 
 ## 文档
 
-- 📍 [路线图](./doc/teacoder-roadmap.md) — v0.1.0 已发布 + v0.2 / v0.3 / v1.0+ 远期规划
+- 📍 [路线图](./doc/teacoder-roadmap.md) — v0.1.0 已发布 v1.0.0+ 远期规划
 - 📋 [需求规格](./doc/requirements.md) — 完整功能需求、数据模型、IPC 命令清单
 
 ---
@@ -207,17 +207,8 @@ TeaCoder/
 
 多工具终端管理 · 多分屏共享 PTY · LLM 供应商系统 · Profile 隔离 · Token 费用追踪（Claude）· 托盘 + 开机自启 · Onboarding · 18 个设置项
 
-### v0.2（规划）
-
-CostProvider 覆盖所有工具 · MCP Server 可视化管理 · 代码片段库 · 全局命令面板 · 思考强度热切换 · 国内厂商端点预设 · SSH 配置化
-
-### v0.3（远期）
-
-云端语音输入 · AI 记忆管理 · 桌面宠物
-
-### v1.0+（远期）
-
-工作区编辑器 · 本地 LLM 后端 · Responses ↔ Chat 转换代理
+### v1.0.0（规划）
+Token中转代理 ·Saas认证和授权 ·代理开发数字人 ·代理测试 ·托管智能运维
 
 ---
 
