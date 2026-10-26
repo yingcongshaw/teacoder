@@ -203,6 +203,95 @@ html, body, #root {
   box-shadow: inset 2px 0 0 var(--ant-color-primary);
 }
 
+/* 帮助窗口渲染的是 README 文档，不是聊天记录 —— 段距行距比会话正文松一档。
+   截图要限宽，README 里的原图宽度远超弹窗。 */
+.help-body h1 { font-size: 1.5em; margin: 0 0 10px; }
+.help-body h2 { font-size: 1.3em; margin: 20px 0 8px; }
+.help-body h3 { font-size: 1.15em; margin: 14px 0 6px; }
+.help-body h4, .help-body h5, .help-body h6 { font-size: 1em; margin: 10px 0 4px; }
+.help-body p { margin: 0 0 8px; }
+.help-body ul, .help-body ol { margin: 0 0 8px; }
+.help-body li { margin: 2px 0; }
+.help-body img {
+  /* 减去左右 margin,否则图片满宽时会多出 6px,把弹窗撑出横向滚动条 */
+  max-width: calc(100% - 6px);
+  height: auto;
+  margin: 2px 3px;
+  border-radius: 4px;
+  vertical-align: middle;
+}
+/* 截图类图片独占一行居中显示。
+   徽章是链接里的行内小图,不能跟着居中,否则会一行一个。 */
+.help-body img:not(a img) {
+  display: block;
+  margin: 6px auto;
+}
+
+/* README 顶部的 logo 块用的是已废弃的 align 属性,浏览器不再据此居中 */
+.help-body div[align="center"] { text-align: center; }
+
+/* 帮助窗口的正文与目录。目录默认收起,由右上角的浮动按钮展开,
+   展开后占右侧一列,正文列自己滚动。 */
+.help-layout {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  height: 70vh;
+  overflow: hidden;
+}
+.help-main {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  /* 左右留白固定 24px。目录展开与否都不变,
+     浮动按钮压在正文右上角,不靠留白给它腾位置。 */
+  padding: 20px 24px;
+}
+.help-toc {
+  flex: 0 0 200px;
+  box-sizing: border-box;
+  overflow-y: auto;
+  padding: 14px 12px 16px 16px;
+  border-left: 1px solid var(--ant-color-border-secondary);
+  background: var(--ant-color-fill-quaternary);
+}
+.help-toc-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ant-color-text-secondary);
+  margin-bottom: 6px;
+  /* 浮动按钮就压在目录的右上角,标题给它让出位置 */
+  padding-right: 36px;
+}
+.help-toc-group { margin-bottom: 2px; }
+.help-toc-item {
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.help-toc-sub {
+  padding-left: 14px;
+  color: var(--ant-color-text-secondary);
+}
+.help-toc-item a {
+  color: var(--ant-color-text);
+  text-decoration: none;
+  cursor: pointer;
+}
+.help-toc-item a:hover {
+  color: var(--ant-color-primary);
+  text-decoration: underline;
+}
+.help-toc-toggle {
+  position: absolute;
+  top: 10px;
+  right: 20px;
+  z-index: 3;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.16);
+}
+
 /* 传输日志表：行高压到 18px，一屏能看更多条记录。
    AntD 的 small 尺寸行高约 30px，传输日志动辄几十条，太占地方。
 

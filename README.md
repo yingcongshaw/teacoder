@@ -8,11 +8,13 @@
 [![TypeScript 5](https://img.shields.io/badge/TypeScript-5-3178c6.svg)](https://www.typescriptlang.org/)
 [![Rust](https://img.shields.io/badge/Rust-stable-orange.svg)](https://www.rust-lang.org/)
 
-<p align="center">
+<div align="center">
   <img src="./public/logo.png" width="96" alt="TeaCoder Logo" />
-</p>
 
----
+  **动动你发财的小手，给点一颗星星吧！**
+</div>
+
+
 
 ## 项目简介
 
@@ -20,25 +22,48 @@ TeaCoder是一款为 **AI 编程 CLI 工具** 量身打造的桌面管理客户�
 
 **核心原则：零额外 Token 开销。** TeaCoder 通过 PTY 直通运行 CLI 工具，**不拦截、不代理任何 API 请求**。Token 统计直接读取各 CLI 工具本地的 JSONL / 数据库，不解析 PTY 输出——CLI 工具的协议怎么变都不会影响 TeaCoder 的统计准确性。
 
----
+
 
 ## 核心特性
 
 | 特性 | 说明 |
 | --- | --- |
-| **多工具终端管理** | 同时支持 Claude Code / Codex CLI / Gemini CLI / OpenCode / Antigravity / 裸终端 / SSH |
-| **PTY 直通** | 真实 PTY 伪终端运行，无 API 拦截，零额外 Token 消耗 |
-| **多标签 + 多分屏** | 浏览器式标签 + 最多 2 个 Pane 左右分屏，**共享 PTY 双开**（同一会话两端同步显示） |
+| **多主题** |通用的十多个主题，系统主题与终端主题分离 |
+| **多平台支持** |基于Rust+React 的Tauri框架，支持一键发布Linux、Window、IOS平台，x86、 Arm架构 |
+| **多标签 + 分屏** | 浏览器式标签 + 最多 2 个 Pane 左右分屏，`共享 PTY 双开`（同一会话两端同步显示） |
+| **多工具终端管理** | 同时支持 Claude Code/ Codex CLI/ Gemini CLI/ OpenCode/ Antigravity/ 裸终端/ SSH。自定义不同类似的`快捷输入`/`代码块` |
+| **裸终端 / SSH集成sFTP** | 支持SSH帐号记录和登录，基于sFTP的`图形化`上传、下载文件支持，`操作记录持久化` |
+| **PTY 直通** | 真实 PTY 伪终端运行，无 API 拦截，`零额外 Token 消耗` |
 | **四层会话模型** | Project → SessionCategory → Session + SessionMessage，结构清晰 |
-| **LLM 供应商系统** | 多 Provider（Anthropic / OpenAI / Google / 自定义）、多 Model、统一管理 |
+| **LLM 供应商系统** | 会话独立选择模型，多会话多供应商多模型同时运行 |
+| **会话历史+搜索+定位**  | 支持用户会话、系统会话查看，关键词搜索。一键`定位`PTY会话窗口位置。 |
+| **系统托盘 + 关闭行为** | 可关闭至托盘、可配置开机自启 |
 | **Profile 隔离** | 每个 Profile 独立的 `CLAUDE_CONFIG_DIR`，账号数据完全隔离 |
 | **凭据分层存储** | Profile 凭据走系统 Keychain，LlmProvider 走 SQLite（Base64 编码） |
-| **Token 费用追踪** | 读取 CLI JSONL 数据文件，Claude Code 完整实现；运行中增量轮询 |
-| **系统托盘 + 关闭行为** | 可关闭至托盘、可配置开机自启 |
-| **新手引导** | 首次启动引导流程，快速上手 |
 | **18 个设置项** | 通用 / 终端 / LLM / 每个 CLI 工具独立 / 网络 / 通知 / 数据管理 / 关于 等 |
+| **新手引导** | 首次启动引导流程，快速上手 |
 
----
+> **注：**
+> - Codex CLI/ Gemini CLI/ OpenCode/ Antigravity 相关功能未实现。
+> - Window、IOS平台，Arm架构 未实测。本人环境为Linux amd64。
+> - 18 个设置项 尚未完全实现。
+
+### 特性图示
+
+#### 通用主题：![通用主题](./public/help/11.png "通用主题")
+#### 终端主题：![终端主题](public/help/12.png "终端主题")
+#### 主题示例-蓝色系：![主题示例1](public/help/13.png "主题示例1")
+#### 主题示例-暖色系：![主题示例2](public/help/14.png "主题示例2")
+#### 集成SSH,sFTP工具：![集成SSH,sFTP工具](public/help/21.png "集成SSH,sFTP工具")
+#### 自定义LLM供应商：![自定义LLM供应商](public/help/31.png "自定义LLM供应商")
+#### 会话独立选择模型，多会话多供应商多模型同时运行：
+![会话独立选择模型，多会话多供应商多模型同时运行](public/help/32.png "会话独立选择模型，多会话多供应商多模型同时运行")
+#### 会话历史+搜索+定位：![多标签+分屏](public/help/61.png "会话历史+搜索+定位")
+#### 分类型设置快捷命令或代码块：![分类型设置快捷命令或代码块](public/help/41.png "分类型设置快捷命令或代码块")
+#### 终端快捷命令示例：![终端快捷命令示例](public/help/42.png "终端快捷命令示例")
+#### Claude终端终端快捷命令示例：![Claude终端终端快捷命令示例](public/help/43.png "Claude终端终端快捷命令示例")
+#### 多标签+分屏：![多标签+分屏](public/help/51.png "多标签+分屏")
+
 
 ## 系统要求
 
@@ -65,7 +90,7 @@ npm install -g @google/gemini-cli
 npm install -g opencode-ai
 ```
 
----
+
 
 ## 快速开始
 
@@ -99,7 +124,7 @@ npm install -g opencode-ai
 | `Ctrl + Shift + C` | 复制终端选中内容 |
 | `Ctrl + Shift + V` | 粘贴到终端 |
 
----
+
 
 ## 开发
 
@@ -157,7 +182,6 @@ TeaCoder/
 │   │   ├── cli/            # CLI 工具检测与启动
 │   │   ├── profile/        # Profile 管理
 │   │   ├── llm_provider/   # LLM 供应商系统
-│   │   ├── cost/           # Token 费用追踪(CostProvider)
 │   │   ├── project/        # Project + Session
 │   │   ├── session_category/   # 会话分类
 │   │   ├── session_message.rs  # 会话消息
@@ -176,7 +200,7 @@ TeaCoder/
 └── README.md               # 本文件
 ```
 
----
+
 
 ## 技术栈
 
@@ -192,14 +216,14 @@ TeaCoder/
 | 持久化 | SQLite (rusqlite) + JSONL |
 | 包管理 | pnpm |
 
----
+
 
 ## 文档
 
 - 📍 [路线图](./doc/teacoder-roadmap.md) — v0.1.0 已发布 v1.0.0+ 远期规划
 - 📋 [需求规格](./doc/requirements.md) — 完整功能需求、数据模型、IPC 命令清单
 
----
+
 
 ## 路线图
 
@@ -210,7 +234,7 @@ TeaCoder/
 ### v1.0.0（规划）
 Token中转代理 ·Saas认证和授权 ·代理开发数字人 ·代理测试 ·托管智能运维
 
----
+
 
 ## 贡献
 
@@ -223,7 +247,7 @@ Token中转代理 ·Saas认证和授权 ·代理开发数字人 ·代理测试 �
 
 提交前请阅读 [CLAUDE.md](./CLAUDE.md) 中的编码规范与提交规范。
 
----
+
 
 ## 协议
 
@@ -239,7 +263,7 @@ MIT 协议允许：
 
 唯一要求：在所有副本中保留版权声明与协议声明。
 
----
+
 
 ## 致谢
 
@@ -255,12 +279,8 @@ TeaCoder 的诞生离不开以下开源项目：
 
 ## 联系方式
 
-- 作者：苦鼎茶
+- 作者：苦鼎茶(CodingTea)
 - 邮箱：yingcongshaw@gmail.com
-- 问题反馈：[GitHub Issues](../../issues)
+- 问题反馈：[GitHub Issues](https://github.com/yingcongshaw/teacoder/issues)
 
 ---
-
-<p align="center">
-  Made with ❤️ by the TeaCoder team
-</p>

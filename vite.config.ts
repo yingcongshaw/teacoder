@@ -1,6 +1,7 @@
-import { defineConfig } from "vite";
+import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
+import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -17,8 +18,94 @@ const isTestMode =
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+const HELP_IMAGE_DIMS_ID = "virtual:help-image-dims";
+const RESOLVED_HELP_IMAGE_DIMS_ID = `\0${HELP_IMAGE_DIMS_ID}`;
+
+/** PNG 的宽高在 IHDR 块里：签名 8 字节 + 块头 8 字节，之后是大端的宽高各 4 字节 */
+function pngSize(data: Uint8Array): [number, number] | null {
+  if (data.length < 24) return null;
+  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  if (view.getUint32(0) !== 0x89504e47) return null;
+  return [view.getUint32(16), view.getUint32(20)];
+}
+
+/** JPEG 的宽高在 SOFn 段里，只能逐段跳过 marker 去找 */
+function jpegSize(data: Uint8Array): [number, number] | null {
+  if (data.length < 4 || data[0] !== 0xff || data[1] !== 0xd8) return null;
+  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  let offset = 2;
+  while (offset + 9 < data.length) {
+    if (data[offset] !== 0xff) {
+      offset += 1;
+      continue;
+    }
+    const marker = data[offset + 1];
+    // SOF0~SOF15 段里存着宽高，但要排除 DHT/JPG/DAC 这三个同段的标记
+    if (marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc) {
+      return [view.getUint16(offset + 7), view.getUint16(offset + 5)];
+    }
+    offset += 2 + view.getUint16(offset + 2);
+  }
+  return null;
+}
+
+/**
+ * 构建期量出 README 引用到的本地图片尺寸，交给帮助窗口预留位置。
+ *
+ * 截图不预占位置时，懒加载会把文档一路撑高，Chromium 随之把弹窗滚到中段，
+ * 打开帮助看到的是文档中间而不是开头。
+ */
+function helpImageDims(root: string): Plugin {
+  const readmeFile = path.resolve(root, "README.md");
+  const publicDir = path.resolve(root, "public");
+
+  const collect = (): Record<string, [number, number]> => {
+    const dims: Record<string, [number, number]> = {};
+    let readme: string;
+    try {
+      readme = fs.readFileSync(readmeFile, "utf8");
+    } catch {
+      return dims;
+    }
+    const refs = new Set<string>();
+    for (const m of readme.matchAll(/!\[[^\]]*\]\(\s*([^)\s]+)/g)) refs.add(m[1]);
+    for (const m of readme.matchAll(/<img[^>]*\ssrc="([^"]+)"/g)) refs.add(m[1]);
+    for (const ref of refs) {
+      // public 会被打包到站点根，README 里的 public/xxx 对应应用内的 /xxx
+      const appPath = ref.startsWith("/")
+        ? ref
+        : ref.replace(/^\.\//, "").replace(/^public\//, "/");
+      if (!appPath.startsWith("/")) continue;
+      const file = path.resolve(publicDir, `.${appPath}`);
+      // README 里的路径不能指到 public 之外
+      if (!file.startsWith(publicDir + path.sep)) continue;
+      let size: [number, number] | null = null;
+      try {
+        const data = fs.readFileSync(file);
+        size = pngSize(data) ?? jpegSize(data);
+      } catch {
+        continue;
+      }
+      if (size) dims[appPath] = size;
+    }
+    return dims;
+  };
+
+  return {
+    name: "help-image-dims",
+    resolveId: (id) => (id === HELP_IMAGE_DIMS_ID ? RESOLVED_HELP_IMAGE_DIMS_ID : null),
+    load: (id) =>
+      id === RESOLVED_HELP_IMAGE_DIMS_ID ? `export default ${JSON.stringify(collect())};` : null,
+    handleHotUpdate(ctx) {
+      if (ctx.file !== readmeFile && !ctx.file.startsWith(publicDir + path.sep)) return;
+      const mod = ctx.server.moduleGraph.getModuleById(RESOLVED_HELP_IMAGE_DIMS_ID);
+      if (mod) ctx.server.reloadModule(mod);
+    },
+  };
+}
+
 export default defineConfig(async () => ({
-  plugins: [react(), tailwindcss()],
+  plugins: [react(), tailwindcss(), helpImageDims(__dirname)],
 
   clearScreen: false,
   server: {

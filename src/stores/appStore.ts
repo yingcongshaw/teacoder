@@ -484,6 +484,10 @@ interface AppState {
   manualGuideOpen: boolean;
   setManualGuideOpen: (open: boolean) => void;
 
+  // 帮助窗口（渲染 README.md）
+  helpOpen: boolean;
+  setHelpOpen: (open: boolean) => void;
+
   terminalSettings: TerminalSettings;
   updateTerminalSetting: <K extends keyof TerminalSettings>(key: K, value: TerminalSettings[K]) => void;
 
@@ -1675,6 +1679,9 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   manualGuideOpen: false,
   setManualGuideOpen: (open) => set({ manualGuideOpen: open }),
+
+  helpOpen: false,
+  setHelpOpen: (open) => set({ helpOpen: open }),
 
   terminalSettings: loadTerminalSettings(),
   updateTerminalSetting: (key, value) =>

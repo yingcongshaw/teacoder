@@ -5,6 +5,7 @@ import {
   ToolOutlined,
   SettingOutlined,
   QuestionCircleOutlined,
+  FireOutlined,
 } from "@ant-design/icons";
 import { useAppStore } from "../../stores/appStore";
 import { detectCliTools } from "../../utils/ipc";
@@ -21,6 +22,7 @@ export default function AppHeader() {
   const projects = useAppStore((s) => s.projects);
   const activeTabId = useAppStore((s) => s.activeTabId);
   const setManualGuideOpen = useAppStore((s) => s.setManualGuideOpen);
+  const setHelpOpen = useAppStore((s) => s.setHelpOpen);
 
   const handleRedetect = () => {
     detectCliTools().then(setCliTools).catch(() => {});
@@ -38,7 +40,7 @@ export default function AppHeader() {
         {/* Left: logo + title */}
         <div
           className="flex items-center gap-2 flex-shrink-0"
-          style={{ width: isMac ? 200 : 160, paddingLeft: isMac ? 76 : 12 }}
+          style={{ width: isMac ? 200 : 300, paddingLeft: isMac ? 76 : 12 }}
           data-tauri-drag-region
         >
           <img
@@ -73,13 +75,22 @@ export default function AppHeader() {
         </div>
 
         {/* Right: tool status + actions + window controls */}
-        <div className="flex items-center flex-shrink-0 justify-end" style={{ width: isMac ? 200 : 220, paddingRight: isMac ? 12 : 0 }}>
-          <div className="flex items-center gap-1">
-            <Tooltip title="帮助 / 新手引导">
+        <div className="flex items-center flex-shrink-0 justify-end" style={{ width: isMac ? 200 : 300, paddingRight: isMac ? 12 : 0 }}>
+          <div className="flex items-center gap-1 flex-shrink-0">
+            <Tooltip title="帮助">
               <Button
                 type="text"
                 size="small"
                 icon={<QuestionCircleOutlined style={{ fontSize: 13 }} />}
+                onClick={() => setHelpOpen(true)}
+              />
+            </Tooltip>
+
+            <Tooltip title="新手引导">
+              <Button
+                type="text"
+                size="small"
+                icon={<FireOutlined style={{ fontSize: 13 }} />}
                 onClick={() => setManualGuideOpen(true)}
               />
             </Tooltip>

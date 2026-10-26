@@ -2,8 +2,7 @@ import { memo, useMemo } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeSanitize from "rehype-sanitize";
-import { openUrl } from "@tauri-apps/plugin-opener";
-import { message } from "antd";
+import { openExternal } from "../../utils/openExternal";
 import { rehypeHighlight } from "./markdownHighlight";
 
 /** 插件数组必须是模块级常量:react-markdown 按数组引用判断是否重跑
@@ -15,32 +14,6 @@ const REMARK_PLUGINS = [remarkGfm];
 type RehypePlugins = NonNullable<
   React.ComponentProps<typeof ReactMarkdown>["rehypePlugins"]
 >;
-
-/**
- * 打开链接。
- *
- * 只放行 http/https —— 正文是 AI 生成的文本,不能让它诱导 opener 打开
- * file:// 之类的本地协议或执行任意 scheme。
- */
-async function openExternal(href: string | undefined): Promise<void> {
-  if (!href) return;
-  let url: URL;
-  try {
-    url = new URL(href);
-  } catch {
-    message.warning("链接格式无效，已跳过");
-    return;
-  }
-  if (url.protocol !== "http:" && url.protocol !== "https:") {
-    message.warning("已阻止打开非 http(s) 链接");
-    return;
-  }
-  try {
-    await openUrl(url.toString());
-  } catch {
-    message.warning("无法在系统浏览器中打开该链接");
-  }
-}
 
 /**
  * 面板正文渲染。

@@ -16,6 +16,7 @@ import NewProjectModal from "../project/NewProjectModal";
 import NewCategoryModal from "../project/NewCategoryModal";
 import SearchPanel from "../tabs/SearchPanel";
 import { AgreementModal, OnboardingGuide, useOnboarding } from "../onboarding/OnboardingFlow";
+import HelpModal from "../help/HelpModal";
 
 export default function AppLayout() {
   const appTheme = useAppStore((s) => s.theme);
@@ -41,6 +42,8 @@ export default function AppLayout() {
   const setSettingsActiveKey = useAppStore((s) => s.setSettingsActiveKey);
   const manualGuideOpen = useAppStore((s) => s.manualGuideOpen);
   const setManualGuideOpen = useAppStore((s) => s.setManualGuideOpen);
+  const helpOpen = useAppStore((s) => s.helpOpen);
+  const setHelpOpen = useAppStore((s) => s.setHelpOpen);
   const loadProjects = useAppStore((s) => s.loadProjects);
   const loadSessions = useAppStore((s) => s.loadSessions);
   const loadCategories = useAppStore((s) => s.loadCategories);
@@ -334,6 +337,7 @@ export default function AppLayout() {
           onClose={() => setNewCategoryModalOpen(false)}
         />
         <SearchPanel />
+        <HelpModal open={helpOpen} onClose={() => setHelpOpen(false)} />
         {ready && (
           <>
             <AgreementModal open={showAgreement} onAccept={completeAgreement} />
