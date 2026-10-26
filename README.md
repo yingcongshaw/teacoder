@@ -149,7 +149,8 @@ pnpm tauri dev
 ```bash
 pnpm tauri dev          # 启动开发模式(热重载)
 pnpm tauri build        # 构建发布版本
-pnpm build:appimage     # 打包 AppImage(见下方说明)
+pnpm build:release      # 打包全部 Linux 格式(见下方说明)
+pnpm build:appimage     # 只打包 AppImage
 pnpm exec tsc --noEmit  # TypeScript 类型检查
 cargo clippy            # Rust lint(在 src-tauri/ 下)
 cargo test              # Rust 单元测试(在 src-tauri/ 下)
@@ -157,8 +158,9 @@ cargo test              # Rust 单元测试(在 src-tauri/ 下)
 
 > **AppImage 打包**：`appimagetool` 默认要从 `github.com` 下载 type2-runtime，网络受限时
 > `pnpm tauri build` 会以 `failed to run linuxdeploy` 收场（真实错误埋在子进程输出里）。
-> `pnpm build:appimage` 会优先复用本地缓存的 runtime（`~/.cache/tauri/appimage-runtime/`），
-> 没有就从历史产物中切出，网络可达时再回落到下载，因此离线也能出包。
+> `pnpm build:release` / `pnpm build:appimage` 会优先复用本地缓存的 runtime
+> （`~/.cache/tauri/appimage-runtime/`），没有就从历史产物中切出，网络可达时再回落到
+> 下载，因此离线也能出包。
 
 ### 项目目录
 

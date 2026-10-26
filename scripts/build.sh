@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# 构建 AppImage，并在 GitHub 不可达时改用本地缓存的 AppImage runtime。
+# 打包发布版（Linux），并在 GitHub 不可达时改用本地缓存的 AppImage runtime。
 #
 # appimagetool 默认要从 github.com 下载 type2-runtime；网络受限时打包会
 # 以 "failed to run linuxdeploy" 收场，实际错误埋在子进程输出里。
@@ -11,6 +11,10 @@
 #   1. 缓存目录中已有
 #   2. 从历史产物 AppImage 中切出（AppImage = runtime ELF + squashfs）
 #   3. 从 GitHub 下载（网络可达时）
+#
+# 用法：scripts/build.sh [传给 pnpm tauri build 的参数]
+#   scripts/build.sh                      打包全部格式
+#   scripts/build.sh --bundles appimage   只打包 AppImage
 
 set -euo pipefail
 
@@ -78,4 +82,4 @@ fi
 chmod +x "$RUNTIME_FILE"
 
 export LDAI_RUNTIME_FILE="$RUNTIME_FILE"
-exec pnpm tauri build --bundles appimage "$@"
+exec pnpm tauri build "$@"
