@@ -44,6 +44,7 @@ TeaCoder是一款为 **AI 编程 CLI 工具** 量身打造的桌面管理客户�
 | **新手引导** | 首次启动引导流程，快速上手 |
 
 > **注：**
+> - 因为要实现多会话多供应商，打开`Claude Code`时会`清空其setings.json`文件中的ENV环境变量（可以使用CC Switch还源）。
 > - Codex CLI/ Gemini CLI/ OpenCode/ Antigravity 相关功能未实现。
 > - Window、IOS平台，Arm架构 未实测。本人环境为Linux amd64。
 > - 18 个设置项 尚未完全实现。
