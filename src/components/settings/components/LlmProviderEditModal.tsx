@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
-import { Modal, Form, Input, Select, Button, App } from 'antd';
+import { Modal, Form, Input, Select, Button, App, AutoComplete, ColorPicker } from 'antd';
 import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
 import type { LlmProvider, AuthType } from '../../../types';
 import { useAppStore } from '../../../stores/appStore';
+import { listLlmProviderPresets } from '../../../utils/ipc';
 
 interface Props {
   open: boolean;
@@ -22,6 +23,12 @@ const AUTH_TYPES = [
   { value: 'api_key', label: 'API Key' },
   { value: 'oauth', label: 'OAuth Token' },
 ];
+
+/** 只有标准 6 位 hex 能喂给取色器，脏数据一律当作未设置 */
+const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
+
+/** ColorPicker 回传对象上我们只用到 hex 序列化 */
+type PickedColor = { toHexString: () => string };
 
 /**
  * LlmProvider 编辑模态框：新建或编辑一个 LLM 供应商配置。
@@ -44,6 +51,23 @@ export default function LlmProviderEditModal({ open, provider, onCancel, onSaved
   const [oauthTokenTouched, setOauthTokenTouched] = useState(false);
   const [hasExistingOauthToken, setHasExistingOauthToken] = useState(false);
   const [saving, setSaving] = useState(false);
+  // 图标名候选项取自内置模板：模板里的图标名是应用已知的全部取值
+  const [iconOptions, setIconOptions] = useState<{ value: string; label: string }[]>([]);
+
+  useEffect(() => {
+    if (!open) return;
+    listLlmProviderPresets()
+      .then((presets) => {
+        const byIcon = new Map<string, string>();
+        for (const p of presets) {
+          if (p.icon && !byIcon.has(p.icon)) byIcon.set(p.icon, p.name);
+        }
+        setIconOptions(
+          [...byIcon.entries()].map(([value, name]) => ({ value, label: `${name}（${value}）` })),
+        );
+      })
+      .catch(() => setIconOptions([]));
+  }, [open]);
 
   useEffect(() => {
     if (open) {
@@ -54,7 +78,10 @@ export default function LlmProviderEditModal({ open, provider, onCancel, onSaved
           authType: provider.authType,
           baseUrl: provider.baseUrl ?? '',
           icon: provider.icon ?? '',
-          color: provider.color ?? '',
+          color:
+            provider.color && HEX_COLOR_RE.test(provider.color)
+              ? provider.color
+              : undefined,
         });
         setModels(provider.models.map((m) => m.modelName));
         const def = provider.models.find((m) => m.isDefault);
@@ -229,10 +256,22 @@ export default function LlmProviderEditModal({ open, provider, onCancel, onSaved
 
         <div className="grid grid-cols-2 gap-3">
           <Form.Item name="icon" label="图标名">
-            <Input placeholder="anthropic" />
+            <AutoComplete
+              options={iconOptions}
+              placeholder="anthropic"
+              filterOption={(input, option) =>
+                String(option?.value ?? '')
+                  .toLowerCase()
+                  .includes(input.toLowerCase())
+              }
+            />
           </Form.Item>
-          <Form.Item name="color" label="颜色（hex）">
-            <Input placeholder="#D97757" />
+          <Form.Item
+            name="color"
+            label="颜色"
+            getValueFromEvent={(color: PickedColor) => color.toHexString()}
+          >
+            <ColorPicker showText format="hex" />
           </Form.Item>
         </div>
       </Form>

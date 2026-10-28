@@ -1606,7 +1606,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   // 必须把停用的供应商也拉回来：设置页的「显示已停用」开关是在这份列表上做过滤的，
   // 后端若只返回启用的，开关打开也不会多出任何条目。停用项由各消费点按 isActive 过滤。
   loadLlmProviders: async () => {
-    const providers = await listLlmProviders(false);
+    const providers = await listLlmProviders(true);
     set({ llmProviders: providers });
   },
   createLlmProvider: async (input) => {
