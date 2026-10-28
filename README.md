@@ -99,10 +99,14 @@ npm install -g opencode-ai
 
 前往 [Releases](../../releases) 页面，下载对应平台的安装包：
 
-- Windows：`TeaCoder_0.1.1_x64-setup.exe`（NSIS 安装程序）
-- macOS：`TeaCoder_0.1.1_universal.dmg`
+- Windows：`TeaCoder_0.1.1_x64-setup.exe`（NSIS 安装程序，界面为简体中文）/ `TeaCoder_0.1.1_x64_zh-CN.msi`（MSI）
+- macOS：`TeaCoder_0.1.1_universal.dmg`（Intel + Apple Silicon 通用）
 - Ubuntu：`TeaCoder_0.1.1_amd64.deb`
 - 其他 Linux：`TeaCoder_0.1.1_amd64.AppImage`
+- RPM 系（CentOS / Fedora / openEuler 等）：`TeaCoder-0.1.1-1.x86_64.rpm`
+
+> rpm 的命名规则和其他格式不一样：Tauri 的 rpm bundler 用 `产品名-版本-release号.架构.rpm`，
+> 所以是 `TeaCoder-0.1.1-1.x86_64.rpm`（短横线 + 多一段 release 号），不是下划线。
 
 ### 首次启动
 
