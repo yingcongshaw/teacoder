@@ -3,6 +3,7 @@
 > AI 编程 CLI 工具的桌面管理客户端 — Claude Code / Codex CLI / Gemini CLI / OpenCode / Antigravity 的统一管家
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
+[![Latest Release](https://img.shields.io/github/v/release/yingcongshaw/teacoder.svg)](https://github.com/yingcongshaw/teacoder/releases/latest)
 [![Tauri 2.x](https://img.shields.io/badge/Tauri-2.x-blueviolet.svg)](https://tauri.app/)
 [![React 19](https://img.shields.io/badge/React-19-149eca.svg)](https://react.dev/)
 [![TypeScript 5](https://img.shields.io/badge/TypeScript-5-3178c6.svg)](https://www.typescriptlang.org/)
@@ -97,7 +98,11 @@ npm install -g opencode-ai
 
 ### 下载安装
 
-前往 [Releases](../../releases) 页面，下载对应平台的安装包：
+前往 [Releases 页面](https://github.com/yingcongshaw/teacoder/releases) 下载对应平台的安装包，
+历史版本都在这个列表里；只想要最新版可点
+[Latest release](https://github.com/yingcongshaw/teacoder/releases/latest)。
+
+以 v0.1.1 为例：
 
 - Windows：`TeaCoder_0.1.1_x64-setup.exe`（NSIS 安装程序，界面为简体中文）/ `TeaCoder_0.1.1_x64_zh-CN.msi`（MSI）
 - macOS：`TeaCoder_0.1.1_universal.dmg`（Intel + Apple Silicon 通用）
