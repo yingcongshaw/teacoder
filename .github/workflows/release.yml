@@ -10,6 +10,7 @@ on:
 
 permissions:
   contents: write
+  issues: write
 
 concurrency:
   group: release-${{ github.ref }}
@@ -214,9 +215,33 @@ jobs:
             build-error.txt
           if-no-files-found: ignore
 
+  # 构建诊断：失败原因写进公开 Issue。
+  # CI 步骤日志要登录才能看，而 Issue 永远公开，也不依赖发布流程是否成功。
+  diagnostics:
+    name: 发布构建诊断
+    needs: [linux, macos, windows]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 下载构建日志
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          pattern: 'build-logs-*'
+          path: logs
+
+      - name: 发布诊断
+        env:
+          REPO: ${{ github.repository }}
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          LOG_DIR: logs
+        run: bash scripts/ci/publish-diagnostics.sh
+
   release:
     name: 发布到 GitHub Release
-    needs: [linux, macos, windows]
+    needs: [linux, macos, windows, diagnostics]
     # 某个平台失败时仍发布其余平台的产物：一次平台故障不该卡住整个发布
     if: always() && startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
@@ -243,7 +268,7 @@ jobs:
 
       - name: 发布
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_REPO: ${{ github.repository }}
+          REPO: ${{ github.repository }}
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ github.ref_name }}
         run: bash scripts/ci/release.sh

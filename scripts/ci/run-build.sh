@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
 #
-# CI 打包包装：把构建输出写进日志文件；失败时留下错误摘要文件，
-# 并用 ::error:: 标注打出来。
+# CI 打包包装：把构建输出写进日志文件；失败时留下错误摘要文件。
 #
-# 为什么不用步骤日志：Actions 的步骤日志页需要登录才能查看，公开仓库
-# 也一样。::error:: 标注会进到该次运行的 annotations，匿名可读，
-# 出问题时不用点进网页就能看到失败原因。
+# 为什么要留摘要文件：Actions 的步骤日志页需要登录才能查看，公开仓库
+# 也一样。摘要文件随构建日志一起上传，再由 scripts/ci/publish-diagnostics.sh
+# 发到公开 Issue，失败原因不用登录也能看到。
 #
 # 用法：scripts/ci/run-build.sh <要执行的构建命令...>
 #   scripts/ci/run-build.sh pnpm tauri build --bundles dmg
@@ -48,12 +47,6 @@ if [ "$status" -ne 0 ]; then
     cat "$ERROR_FILE"
     echo '```'
   } >>"$SUMMARY" 2>/dev/null || true
-
-  # 标注正文必须短：过长时 GitHub 会整条丢弃，只剩「Process completed ...」
-  one_line=$(head -c 900 "$ERROR_FILE" | tr '\n' ' ' | sed -e 's/%/%25/g')
-  # 前面补一个换行：构建输出末尾常不带换行，不补的话标注会粘在最后一行
-  # 输出的尾巴上，runner 只认行首的 ::，整条标注就被当成普通日志丢掉
-  printf '\n::error::build failed (exit %s): %s\n' "$status" "$one_line"
 fi
 
 exit "$status"
