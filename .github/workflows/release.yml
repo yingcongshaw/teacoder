@@ -78,7 +78,7 @@ jobs:
           VERSION: ${{ needs.prepare.outputs.version }}
           # AppImage 运行时挂载需要 FUSE，CI 上改用解包方式运行更稳
           APPIMAGE_EXTRACT_AND_RUN: 1
-        run: bash scripts/build.sh --bundles appimage,deb,rpm --config "{\"version\":\"$VERSION\"}"
+        run: bash scripts/ci/run-build.sh bash scripts/build.sh --bundles appimage,deb,rpm --config "{\"version\":\"$VERSION\"}"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -114,10 +114,15 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      # bundle_dmg.sh 内部靠 head/grep/sed 等系统命令定位挂载点，
+      # PATH 里若有第三方同名命令会劫持解析，强制系统目录排在最前
+      - name: 固定系统命令路径
+        run: echo "/usr/bin:/bin:/usr/sbin:/sbin" >> "$GITHUB_PATH"
+
       - name: 打包
         env:
           VERSION: ${{ needs.prepare.outputs.version }}
-        run: pnpm tauri build --target universal-apple-darwin --bundles dmg --config "{\"version\":\"$VERSION\"}"
+        run: bash scripts/ci/run-build.sh pnpm tauri build --target universal-apple-darwin --bundles dmg --config "{\"version\":\"$VERSION\"}"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -156,7 +161,7 @@ jobs:
       - name: 打包
         env:
           VERSION: ${{ needs.prepare.outputs.version }}
-        run: pnpm tauri build --target x86_64-pc-windows-msvc --bundles msi,nsis --config "{\"version\":\"$VERSION\"}"
+        run: bash scripts/ci/run-build.sh pnpm tauri build --target x86_64-pc-windows-msvc --bundles msi,nsis --config "{\"version\":\"$VERSION\"}"
 
       - uses: actions/upload-artifact@v4
         with:
