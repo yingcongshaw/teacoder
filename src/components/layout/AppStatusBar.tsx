@@ -133,7 +133,7 @@ export default function AppStatusBar() {
         </>
       ) : (
         <Typography.Text type="secondary" className="text-xs">
-          TeaCoder v0.1
+          TeaCoder v0.1.1
         </Typography.Text>
       )}
     </div>

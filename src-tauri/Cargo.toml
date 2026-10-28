@@ -1,6 +1,6 @@
 [package]
 name = "teacoder"
-version = "0.1.0"
+version = "0.1.1"
 description = "TeaCoder — AI 编程 CLI 工具桌面管理客户端"
 authors = ["苦鼎茶 <yingcongshaw@gmail.com>"]
 edition = "2021"

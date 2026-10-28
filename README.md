@@ -99,10 +99,10 @@ npm install -g opencode-ai
 
 前往 [Releases](../../releases) 页面，下载对应平台的安装包：
 
-- Windows：`TeaCoder_0.1.0_x64-setup.exe`（NSIS 安装程序）
-- macOS：`TeaCoder_0.1.0_universal.dmg`
-- Ubuntu：`TeaCoder_0.1.0_amd64.deb`
-- 其他 Linux：`TeaCoder_0.1.0_amd64.AppImage`
+- Windows：`TeaCoder_0.1.1_x64-setup.exe`（NSIS 安装程序）
+- macOS：`TeaCoder_0.1.1_universal.dmg`
+- Ubuntu：`TeaCoder_0.1.1_amd64.deb`
+- 其他 Linux：`TeaCoder_0.1.1_amd64.AppImage`
 
 ### 首次启动
 
@@ -305,14 +305,18 @@ TeaCoder/
 
 ## 文档
 
-- 📍 [路线图](./doc/teacoder-roadmap.md) — v0.1.0 已发布 v1.0.0+ 远期规划
+- 📍 [路线图](./doc/teacoder-roadmap.md) — v0.1.1 已发布 v1.0.0+ 远期规划
 - 📋 [需求规格](./doc/requirements.md) — 完整功能需求、数据模型、IPC 命令清单
 
 
 
 ## 路线图
 
-### v0.1.0（当前版本）✅
+### v0.1.1（当前版本）✅
+
+新建 Claude Code 会话不再因安全确认框直接退出 · LLM 供应商「显示已停用」开关生效 · 供应商图标名可选、颜色改用取色器 · Windows 交叉编译打包与 GitHub Actions 发布流程
+
+### v0.1.0（首版 MVP）✅
 
 多工具终端管理 · 多分屏共享 PTY · LLM 供应商系统 · Profile 隔离 · Token 费用追踪（Claude）· 托盘 + 开机自启 · Onboarding · 18 个设置项
 

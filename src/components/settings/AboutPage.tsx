@@ -35,7 +35,7 @@ export default function AboutPage({ searchText = "" }: AboutPageProps) {
           AI 编程 CLI 工具桌面管理客户端
         </div>
         <div style={{ marginTop: 8 }}>
-          <Tag color="blue">v0.1.0</Tag>
+          <Tag color="blue">v0.1.1</Tag>
           <Tag color="green">MVP</Tag>
         </div>
       </div>
@@ -48,7 +48,7 @@ export default function AboutPage({ searchText = "" }: AboutPageProps) {
         <SettingRow label="应用名称">TeaCoder</SettingRow>
       )}
       {matchesSearch("版本") && (
-        <SettingRow label="版本">v0.1.0</SettingRow>
+        <SettingRow label="版本">v0.1.1</SettingRow>
       )}
       {matchesSearch("更新通道") && (
         <SettingRow label="更新通道" description="选择接收更新的通道">

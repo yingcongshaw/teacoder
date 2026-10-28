@@ -1,8 +1,8 @@
-# TeaCoder — 需求说明书 v0.1.0
+# TeaCoder — 需求说明书 v0.1.1
 
-> 本文档面向 Claude Code 开发实现，描述 v0.1.0 已发布版本的完整需求与功能明细。
+> 本文档面向 Claude Code 开发实现，描述 v0.1.1 已发布版本的完整需求与功能明细。
 > 
-> **版本统一**：原 v0.1 (MVP) 规划已实现落地，代码当前版本为 **v0.1.0**（`tauri.conf.json` `version: "0.1.0"`、`identifier: com.codingtea.teacoder`）。
+> **版本统一**：原 v0.1 (MVP) 规划已实现落地，代码当前版本为 **v0.1.1**（`tauri.conf.json` `version: "0.1.1"`、`identifier: com.codingtea.teacoder`）。
 
 ## 1. 项目概述
 
@@ -16,7 +16,7 @@
 
 ### 1.2 版本
 
-v0.1.0（已发布）
+v0.1.1（已发布）
 
 ### 1.3 项目目标
 
@@ -453,7 +453,7 @@ pub trait CostProvider: Send + Sync {
 
 ### 4.1 SQLite Schema 版本
 
-v0.1.0 当前已发布 12 个 schema 版本（迁移脚本位于 `src-tauri/migrations/`）：
+v0.1.1 当前已发布 16 个 schema 版本（迁移脚本位于 `src-tauri/migrations/`）：
 
 | 版本  | 内容                                                                                                |
 | --- | ------------------------------------------------------------------------------------------------- |
@@ -552,7 +552,7 @@ CREATE TABLE llm_providers (
 
 ---
 
-## 5. Tauri IPC 命令（v0.1.0 完整清单）
+## 5. Tauri IPC 命令（v0.1.1 完整清单）
 
 ### 5.1 CLI 工具管理
 
@@ -800,7 +800,7 @@ on("cost:updated", (payload: { sessionId: string; cost: SessionCost }) => void)
 
 ---
 
-## 8. 开发任务拆解（v0.1.0 状态）
+## 8. 开发任务拆解（v0.1.1 状态）
 
 ### 阶段 1：项目脚手架 ✅
 
@@ -873,7 +873,7 @@ on("cost:updated", (payload: { sessionId: string; cost: SessionCost }) => void)
 
 ---
 
-## 9. 验收标准（v0.1.0 状态）
+## 9. 验收标准（v0.1.1 状态）
 
 ### 9.1 功能验收
 
