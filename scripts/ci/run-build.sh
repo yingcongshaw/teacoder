@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
-# CI 打包包装：把构建输出同时写进日志文件；失败时把日志末尾写进
-# 步骤摘要，并用 ::error:: 标注打出来。
+# CI 打包包装：把构建输出写进日志文件；失败时留下错误摘要文件，
+# 并用 ::error:: 标注打出来。
 #
 # 为什么不用步骤日志：Actions 的步骤日志页需要登录才能查看，公开仓库
 # 也一样。::error:: 标注会进到该次运行的 annotations，匿名可读，
@@ -11,12 +11,14 @@
 #   scripts/ci/run-build.sh pnpm tauri build --bundles dmg
 #
 # 环境变量：
-#   LOG_FILE        日志文件名，默认 build.log
-#   GITEA/CI 摘要   写到 $GITHUB_STEP_SUMMARY（未设置时丢弃）
+#   LOG_FILE     日志文件名，默认 build.log
+#   ERROR_FILE   失败摘要文件名，默认 build-error.txt
+#   SUMMARY      步骤摘要文件，默认取 $GITHUB_STEP_SUMMARY
 
 set -uo pipefail
 
 LOG_FILE="${LOG_FILE:-build.log}"
+ERROR_FILE="${ERROR_FILE:-build-error.txt}"
 SUMMARY="${GITHUB_STEP_SUMMARY:-/dev/null}"
 
 {
@@ -33,22 +35,23 @@ SUMMARY="${GITHUB_STEP_SUMMARY:-/dev/null}"
 status=${PIPESTATUS[0]}
 
 if [ "$status" -ne 0 ]; then
-  tail_lines() {
-    tail -n "$1" "$LOG_FILE" \
-      | tr -d '\r' \
-      | sed -r 's/\x1b\[[0-9;]*[A-Za-z]//g'
-  }
+  # 去 ANSI 颜色：BSD sed 不认 \x 转义，用 printf 拼出 ESC 再做字符类匹配
+  ESC="$(printf '\033')"
+  tail -n 80 "$LOG_FILE" \
+    | tr -d '\r' \
+    | sed -e "s/${ESC}\\[[0-9;]*[A-Za-z]//g" \
+    > "$ERROR_FILE"
 
   {
     echo "### 构建失败（退出码 $status），日志末尾"
     echo '```'
-    tail_lines 80
+    cat "$ERROR_FILE"
     echo '```'
   } >>"$SUMMARY" 2>/dev/null || true
 
-  # 单条标注携带整段日志：GitHub 只解码 %0A 换行、%25 百分号
-  payload=$(tail_lines 40 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
-  echo "::error::构建失败（退出码 $status），日志末尾：${payload}"
+  # 标注正文必须短：过长时 GitHub 会整条丢弃，只剩「Process completed ...」
+  one_line=$(head -c 900 "$ERROR_FILE" | tr '\n' ' ' | sed -e 's/%/%25/g')
+  echo "::error::build failed (exit $status): $one_line"
 fi
 
 exit "$status"

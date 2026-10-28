@@ -89,6 +89,16 @@ jobs:
             src-tauri/target/release/bundle/deb/*.deb
             src-tauri/target/release/bundle/rpm/*.rpm
 
+      - name: 上传构建日志
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs-linux
+          path: |
+            build.log
+            build-error.txt
+          if-no-files-found: ignore
+
   macos:
     name: macOS (dmg)
     needs: prepare
@@ -119,7 +129,19 @@ jobs:
       - name: 固定系统命令路径
         run: echo "/usr/bin:/bin:/usr/sbin:/sbin" >> "$GITHUB_PATH"
 
-      - name: 打包
+      # 编译与打包拆成两步：步骤结论能直接指出失败发生在哪一段，
+      # 不用登录就能从运行页看到
+      - name: 构建前端
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: pnpm build
+
+      - name: 编译 universal
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: bash scripts/ci/run-build.sh pnpm tauri build --target universal-apple-darwin --no-bundle --config "{\"version\":\"$VERSION\"}"
+
+      - name: 打包 dmg
         env:
           VERSION: ${{ needs.prepare.outputs.version }}
         run: bash scripts/ci/run-build.sh pnpm tauri build --target universal-apple-darwin --bundles dmg --config "{\"version\":\"$VERSION\"}"
@@ -129,6 +151,17 @@ jobs:
           name: TeaCoder-macos-universal
           if-no-files-found: error
           path: src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
+
+      # 构建日志单独成件：既能留档，也方便排查时取用
+      - name: 上传构建日志
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs-macos
+          path: |
+            build.log
+            build-error.txt
+          if-no-files-found: ignore
 
   windows:
     name: Windows (msi + nsis)
@@ -171,16 +204,36 @@ jobs:
             src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi
             src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
 
+      - name: 上传构建日志
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs-windows
+          path: |
+            build.log
+            build-error.txt
+          if-no-files-found: ignore
+
   release:
     name: 发布到 GitHub Release
     needs: [linux, macos, windows]
-    if: startsWith(github.ref, 'refs/tags/v')
+    # 某个平台失败时仍发布其余平台的产物：一次平台故障不该卡住整个发布
+    if: always() && startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
         with:
+          pattern: 'TeaCoder-*'
           path: dist
           merge-multiple: true
+
+      # 构建日志单独取，失败时把错误摘要附到发布说明末尾
+      - name: 下载构建日志
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          pattern: 'build-logs-*'
+          path: logs
 
       - name: 列出产物
         run: ls -l dist
@@ -190,9 +243,4 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
           TAG: ${{ github.ref_name }}
-        run: |
-          if gh release view "$TAG" > /dev/null 2>&1; then
-            gh release upload "$TAG" dist/* --clobber
-          else
-            gh release create "$TAG" dist/* --title "TeaCoder $TAG" --generate-notes
-          fi
+        run: bash scripts/ci/release.sh
