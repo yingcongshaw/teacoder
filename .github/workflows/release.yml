@@ -221,6 +221,9 @@ jobs:
     if: always() && startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
+      # 发布说明的模板文件在仓库里，发布脚本要从工作目录读它
+      - uses: actions/checkout@v4
+
       - uses: actions/download-artifact@v4
         with:
           pattern: 'TeaCoder-*'
