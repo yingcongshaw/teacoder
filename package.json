@@ -15,7 +15,9 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "build:appimage": "bash scripts/build.sh --bundles appimage",
-    "build:release": "bash scripts/build.sh"
+    "build:release": "bash scripts/build.sh",
+    "build:windows": "bash scripts/build-windows.sh",
+    "build:all": "bash scripts/build-all.sh"
   },
   "dependencies": {
     "@ant-design/icons": "^6.3.2",

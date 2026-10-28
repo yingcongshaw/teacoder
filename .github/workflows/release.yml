@@ -1,0 +1,193 @@
+name: 发布安装包
+
+# 推送 v* tag 时打包三平台安装包并发布到 GitHub Release；
+# 也支持手动触发（仅产出构建产物，不发 Release）。
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # 解析产物版本号：tag 形如 v0.1.1，手动触发时退回 tauri.conf.json 里的版本
+  prepare:
+    name: 解析版本号
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - id: ver
+        run: |
+          case "$GITHUB_REF" in
+            refs/tags/v*) version="${GITHUB_REF_NAME#v}" ;;
+            *) version=$(node -p "require('./src-tauri/tauri.conf.json').version") ;;
+          esac
+          echo "产物版本号: $version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  linux:
+    name: Linux (AppImage + deb + rpm)
+    needs: prepare
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: 安装构建依赖
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libxdo-dev \
+            libssl-dev \
+            patchelf \
+            build-essential \
+            curl wget file \
+            libfuse2
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+          key: linux-amd64
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: 打包
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+          # AppImage 运行时挂载需要 FUSE，CI 上改用解包方式运行更稳
+          APPIMAGE_EXTRACT_AND_RUN: 1
+        run: bash scripts/build.sh --bundles appimage,deb,rpm --config "{\"version\":\"$VERSION\"}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TeaCoder-linux-x64
+          if-no-files-found: error
+          path: |
+            src-tauri/target/release/bundle/appimage/*.AppImage
+            src-tauri/target/release/bundle/deb/*.deb
+            src-tauri/target/release/bundle/rpm/*.rpm
+
+  macos:
+    name: macOS (dmg)
+    needs: prepare
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin, x86_64-apple-darwin
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+          key: macos-universal
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: 打包
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: pnpm tauri build --target universal-apple-darwin --bundles dmg --config "{\"version\":\"$VERSION\"}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TeaCoder-macos-universal
+          if-no-files-found: error
+          path: src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
+
+  windows:
+    name: Windows (msi + nsis)
+    needs: prepare
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+          key: windows-msvc
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: 打包
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: pnpm tauri build --target x86_64-pc-windows-msvc --bundles msi,nsis --config "{\"version\":\"$VERSION\"}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TeaCoder-windows-x64
+          if-no-files-found: error
+          path: |
+            src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi
+            src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
+
+  release:
+    name: 发布到 GitHub Release
+    needs: [linux, macos, windows]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: 列出产物
+        run: ls -l dist
+
+      - name: 发布
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release upload "$TAG" dist/* --clobber
+          else
+            gh release create "$TAG" dist/* --title "TeaCoder $TAG" --generate-notes
+          fi

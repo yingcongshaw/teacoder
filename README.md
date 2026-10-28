@@ -101,7 +101,7 @@ npm install -g opencode-ai
 
 - Windows：`TeaCoder_0.1.0_x64-setup.exe`（NSIS 安装程序）
 - macOS：`TeaCoder_0.1.0_universal.dmg`
-- Ubuntu：`teacoder_0.1.0_amd64.deb`
+- Ubuntu：`TeaCoder_0.1.0_amd64.deb`
 - 其他 Linux：`TeaCoder_0.1.0_amd64.AppImage`
 
 ### 首次启动
@@ -152,6 +152,8 @@ pnpm tauri dev          # 启动开发模式(热重载)
 pnpm tauri build        # 构建发布版本
 pnpm build:release      # 打包全部 Linux 格式(见下方说明)
 pnpm build:appimage     # 只打包 AppImage
+pnpm build:windows      # 在 Linux/macOS 上交叉编译 Windows 安装包(见下方说明)
+pnpm build:all          # 一次打包宿主平台 + Windows 两套安装包(见下方说明)
 pnpm exec tsc --noEmit  # TypeScript 类型检查
 cargo clippy            # Rust lint(在 src-tauri/ 下)
 cargo test              # Rust 单元测试(在 src-tauri/ 下)
@@ -162,6 +164,80 @@ cargo test              # Rust 单元测试(在 src-tauri/ 下)
 > `pnpm build:release` / `pnpm build:appimage` 会优先复用本地缓存的 runtime
 > （`~/.cache/tauri/appimage-runtime/`），没有就从历史产物中切出，网络可达时再回落到
 > 下载，因此离线也能出包。
+
+### 打包 Windows 安装包
+
+`pnpm tauri build` 不带 `--target` 时只产出**当前主机**的安装包 —— 在 Linux 上跑它
+永远出不了 Windows 的 `.exe`。要出 Windows 包必须显式指定目标三元组：
+
+```bash
+# Linux / macOS 上交叉编译 Windows NSIS 安装包
+pnpm build:windows
+
+# 等价于
+pnpm tauri build --runner cargo-xwin --target x86_64-pc-windows-msvc --bundles nsis
+```
+
+产物在 `src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/`。
+
+前置条件：
+
+```bash
+sudo apt install nsis lld llvm clang        # makensis + cargo-xwin 所需的链接器
+rustup target add x86_64-pc-windows-msvc
+cargo install --locked cargo-xwin
+```
+
+- **只出 NSIS，不出 MSI**：MSI 依赖 WiX（Windows 专属的 .NET 工具），无法交叉编译，
+  需要在 Windows 上或用 GitHub Actions 构建（见 `.github/workflows/release.yml`）。
+- **安装界面为简体中文**：`bundle.windows.nsis.languages` 配了 `SimpChinese`，
+  NSIS 走 Unicode 构建，中文以 UTF-16 存进字符串表，在任何区域设置的 Windows 上都能正常显示。
+- **网络受限**：`tauri-bundler` 每次打 NSIS 都要从 `github.com` 拉 `nsis_tauri_utils.dll`，
+  且缓存里缺 `NSIS.exe` 时哈希校验必然失败并重建缓存目录。`scripts/build-windows.sh`
+  会把两个文件预置到 `~/.cache/tauri/NSIS/`（带 SHA1 校验），命中后不再联网。
+
+### 一次打包多个平台
+
+```bash
+pnpm build:all                    # 宿主平台 + Windows 两套安装包
+pnpm build:all -- --config '{"version":"0.1.1"}'   # 指定版本号
+```
+
+| 宿主平台 | 产物 |
+| --- | --- |
+| Linux | `.AppImage` + `.deb` + `.rpm`，外加 Windows `.exe`（NSIS 交叉编译） |
+| macOS | `.dmg`，外加 Windows `.exe`（NSIS 交叉编译） |
+| Windows | `.msi` + `.exe` |
+
+`pnpm tauri build` 本身出不了两个平台：`--target` 只能给一次（clap 限制），
+且 `--runner` 是全局的 —— Windows MSVC 目标在 Linux/macOS 上必须走 `cargo-xwin`，
+和宿主平台的 `cargo` 不是同一个 runner。`scripts/build-all.sh` 的做法是分成多次
+`tauri build` 调用再串联。
+
+macOS 的 `.dmg` 需要 macOS 宿主（bundle 与签名都依赖它），Linux 上做不出来 ——
+所以本机一次最多覆盖两个平台，第三个平台交给 GitHub Actions。
+
+### GitHub Actions 打包
+
+`.github/workflows/release.yml` 在**推送 `v*` tag** 时并行打包三平台安装包，
+并自动发布到 GitHub Release：
+
+| 平台 | 产物 | 构建机器 |
+| --- | --- | --- |
+| Windows x64 | `.msi`（安装语言 zh-CN）+ `.exe`（NSIS 简体中文界面） | `windows-latest` |
+| macOS | `.dmg`（universal，Intel + Apple Silicon） | `macos-latest` |
+| Linux x64 | `.AppImage` + `.deb` + `.rpm` | `ubuntu-latest` |
+
+```bash
+# 版本号取自 tag（v0.1.1 → 0.1.1），产物文件名随之变化
+git tag v0.1.1 && git push origin v0.1.1
+```
+
+也可在 Actions 页面手动触发（`workflow_dispatch`），此时只产出构建产物、不发 Release。
+
+> **MSI 的中文程度**：`bundle.windows.wix.language` 只决定 MSI 的安装语言（zh-CN、代码页 936），
+> 产品级文案（如「启动 TeaCoder」）由 Tauri 内置的英文模板生成 —— 要完全中文化需要额外提供
+> 自定义 `.wxl`（`bundle.windows.wix.language.zh-CN.localePath`）。NSIS 安装器已是完整中文。
 
 ### 项目目录
 
