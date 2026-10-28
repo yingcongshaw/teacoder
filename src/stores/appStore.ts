@@ -16,7 +16,6 @@ import { DEFAULT_TERMINAL_SETTINGS, BUILTIN_SESSION_TEMPLATES, TOOL_DISPLAY_NAME
 import {
   stopSession,
   startSession,
-  writeToPty,
   projectList,
   projectCreate,
   projectUpdate,
@@ -293,15 +292,18 @@ async function launchNewSession(params: LaunchNewSessionParams): Promise<void> {
     claudeModels: serializeClaudeModels(params.claudeModels),
   });
 
-  // Claude Code：等 PTY 稳定后用 /rename 把 TeaCoder 标题同步过去。
-  // 固定 3 秒延迟：用户实测启动 + 写首个 JSONL 平均 < 2s；/rename 是交互式命令，
-  // 必须在 Claude Code 提示符出现后才能正确消费，太早会被吞进 stdin 缓冲。
+  // Claude Code：用 /rename 把 TeaCoder 标题同步过去。
+  // 这里只登记待注入的指令，由终端层在确认框消失、CLI 回到输入态后再发送。
+  // 不能用固定延时盲发：Claude Code 首次在某工作目录下启动会弹安全确认框
+  // （Quick safety check），默认项是「No, exit」，落在框还在的时候发出去的
+  // 回车会直接让 Claude Code 退出进程。
   if (params.toolType === "claude" && params.title) {
-    const tabId = params.session.id;
     const safeTitle = params.title.replace(/[\r\n]+/g, " ").trim();
-    setTimeout(() => {
-      if (safeTitle) writeToPty(tabId, `/rename ${safeTitle}\r`).catch(() => {});
-    }, 3000);
+    if (safeTitle) {
+      useAppStore
+        .getState()
+        .setPendingClaudeRename(params.session.id, `/rename ${safeTitle}\r`);
+    }
   }
 }
 
@@ -448,6 +450,17 @@ interface AppState {
   updateLlmProvider: (id: string, input: UpdateLlmProviderInput) => Promise<LlmProvider>;
   deleteLlmProvider: (id: string) => Promise<void>;
   toggleLlmProviderActive: (id: string, isActive: boolean) => Promise<void>;
+
+  /**
+   * 待注入到 Claude Code 终端的指令，key 为 tabId。
+   * 目前只有 /rename 标题同步：CLI 首次在某目录下启动会弹安全确认框，默认项是
+   * 「No, exit」，指令必须等确认框消失后再发，否则回车会直接让 CLI 退出。
+   */
+  pendingClaudeRenames: Record<string, string>;
+  setPendingClaudeRename: (tabId: string, command: string) => void;
+  hasPendingClaudeRename: (tabId: string) => boolean;
+  /** 取出并移除待注入指令，保证共享 PTY 的多个终端视图只有一个能拿到 */
+  takePendingClaudeRename: (tabId: string) => string | undefined;
 
   sidebarCollapsed: boolean;
   toggleSidebar: () => void;
@@ -1590,6 +1603,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   // LLM Provider
   llmProviders: [],
   setLlmProviders: (providers) => set({ llmProviders: providers }),
+  // 必须把停用的供应商也拉回来：设置页的「显示已停用」开关是在这份列表上做过滤的，
+  // 后端若只返回启用的，开关打开也不会多出任何条目。停用项由各消费点按 isActive 过滤。
   loadLlmProviders: async () => {
     const providers = await listLlmProviders(false);
     set({ llmProviders: providers });
@@ -1611,6 +1626,23 @@ export const useAppStore = create<AppState>((set, get) => ({
   toggleLlmProviderActive: async (id, isActive) => {
     await updateLlmProviderIpc(id, { isActive });
     await get().loadLlmProviders();
+  },
+
+  pendingClaudeRenames: {},
+  setPendingClaudeRename: (tabId, command) =>
+    set((state) => ({
+      pendingClaudeRenames: { ...state.pendingClaudeRenames, [tabId]: command },
+    })),
+  hasPendingClaudeRename: (tabId) => Boolean(get().pendingClaudeRenames[tabId]),
+  takePendingClaudeRename: (tabId) => {
+    const command = get().pendingClaudeRenames[tabId];
+    if (!command) return undefined;
+    set((state) => {
+      const next = { ...state.pendingClaudeRenames };
+      delete next[tabId];
+      return { pendingClaudeRenames: next };
+    });
+    return command;
   },
 
   sidebarCollapsed: false,

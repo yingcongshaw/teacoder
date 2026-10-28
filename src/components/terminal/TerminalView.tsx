@@ -9,6 +9,7 @@ import { useAppStore } from "../../stores/appStore";
 import { TERMINAL_COLOR_THEMES, DEFAULT_ANSI_COLORS } from "../../types";
 import { terminalThemeForAppTheme } from "../../themes";
 import { clipboardImageToProtocol, fileToProtocol } from "../../utils/image";
+import { readVisibleScreen, screenHasTrustPrompt } from "../../utils/claudePrompt";
 import { useUserMessageCapture, type UserMessageCaptureHandle } from "./useUserMessageCapture";
 import TranscriptPanel from "../transcript/TranscriptPanel";
 import FileTransferPanel from "./FileTransferPanel";
@@ -38,6 +39,12 @@ export interface TerminalViewHandle {
   copySelection: () => Promise<boolean>;
   pasteFromClipboard: () => Promise<boolean>;
 }
+
+/**
+ * 判定 CLI「已回到输入态」所需的静默时长。
+ * 渲染中的 TUI 会持续输出，等输出停稳一段时间才说明界面已经画完。
+ */
+const CLI_READY_IDLE_MS = 800;
 
 function getThemeColors(themeName: string) {
   const theme = TERMINAL_COLOR_THEMES.find((t) => t.name === themeName);
@@ -226,6 +233,8 @@ const TerminalView = forwardRef<TerminalViewHandle, TerminalViewProps>(function 
   const xtermRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const trackerRef = useRef<UserMessageCaptureHandle | null>(null);
+  // 就绪检查的触发器由终端主 effect 写入，这里让指令登记晚到时也能触发一次
+  const readyCheckRef = useRef<(() => void) | null>(null);
   // 会话记录面板的 portal 宿主。面板必须挂在终端根容器下 —— 它上层的按钮包装 div
   // 高度只有 32px(max-height 的百分比会解析成 32×78%≈25px,把标题栏整个裁掉)。
   const panelHostRef = useRef<HTMLDivElement>(null);
@@ -326,6 +335,9 @@ const TerminalView = forwardRef<TerminalViewHandle, TerminalViewProps>(function 
     const profId = s.sessions.find((x) => x.id === tabId)?.profileId;
     return profId ? s.profiles.find((p) => p.id === profId)?.appDataRoot ?? null : null;
   });
+  // 待注入的 Claude Code 指令（如 /rename）。订阅它是为了在指令登记晚于
+  // PTY 首波输出时也能触发一次就绪检查——那时已经不会再有输出事件了。
+  const pendingClaudeRename = useAppStore((s) => s.pendingClaudeRenames[tabId]);
   const [systemDark, setSystemDark] = useState(
     () => window.matchMedia("(prefers-color-scheme: dark)").matches
   );
@@ -554,14 +566,53 @@ const TerminalView = forwardRef<TerminalViewHandle, TerminalViewProps>(function 
     };
     term.element?.addEventListener("mousemove", onMouseMoveCaptureSelection);
 
+    // --- Claude Code 自动 /rename 的就绪门控 ---------------------------------
+    // Claude Code 首次在某工作目录下启动会弹安全确认框（Quick safety check），
+    // 默认项是「No, exit」：确认框还在时任何回车都会让 CLI 直接退出进程。
+    // 所以待注入的指令不能盲发，要等「框已消失 + CLI 停止输出（渲染完毕）」。
+    let lastOutputAt = 0;
+    let readyTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const checkClaudeReady = () => {
+      readyTimer = null;
+      if (!useAppStore.getState().hasPendingClaudeRename(tabId)) return;
+      const term = xtermRef.current;
+      if (!term) return;
+      const screen = readVisibleScreen(term);
+      // 屏幕还没内容 = 终端尚未收到任何输出；仍在渲染 = 输出还在流动。两种情况都不能注入。
+      if (!screen.trim() || Date.now() - lastOutputAt < CLI_READY_IDLE_MS) {
+        readyTimer = setTimeout(checkClaudeReady, CLI_READY_IDLE_MS);
+        return;
+      }
+      if (screenHasTrustPrompt(screen)) {
+        readyTimer = setTimeout(checkClaudeReady, CLI_READY_IDLE_MS);
+        return;
+      }
+      const command = useAppStore.getState().takePendingClaudeRename(tabId);
+      if (command) writeToPty(tabId, command).catch(() => {});
+    };
+
+    const scheduleReadyCheck = () => {
+      if (readyTimer) clearTimeout(readyTimer);
+      readyTimer = setTimeout(checkClaudeReady, CLI_READY_IDLE_MS);
+    };
+    readyCheckRef.current = scheduleReadyCheck;
+
     const unlisten_output = listen<{ tabId: string; data: string }>(
       "pty:output",
       (event) => {
         if (event.payload.tabId === tabId) {
-          term.write(event.payload.data);
+          // 回调在写入被解析后才触发，此时屏幕内容才是最新的
+          term.write(event.payload.data, () => {
+            lastOutputAt = Date.now();
+            scheduleReadyCheck();
+          });
         }
       },
     );
+
+    // 终端可能在收到输出前就已挂载（待注入指令先于 PTY 输出登记），这里先起一次轮询
+    scheduleReadyCheck();
 
     const unlisten_exit = listen<string>("pty:exit", (event) => {
       if (event.payload === tabId) {
@@ -576,6 +627,8 @@ const TerminalView = forwardRef<TerminalViewHandle, TerminalViewProps>(function 
     resizeObserver.observe(termRef.current);
 
     return () => {
+      if (readyTimer) clearTimeout(readyTimer);
+      readyCheckRef.current = null;
       unpatchIme?.();
       termRef.current?.removeEventListener("paste", handlePaste);
       term.element?.removeEventListener("mouseup", onMouseUpCaptureSelection);
@@ -591,6 +644,12 @@ const TerminalView = forwardRef<TerminalViewHandle, TerminalViewProps>(function 
       unlisten_exit.then((fn) => fn());
     };
   }, [tabId]);
+
+  // 待注入指令可能晚于 PTY 首波输出才登记（startSession 返回后才写入 store）。
+  // 那种情况下不会再有输出事件，就绪检查必须由指令本身的变化触发一次。
+  useEffect(() => {
+    if (pendingClaudeRename) readyCheckRef.current?.();
+  }, [pendingClaudeRename]);
 
   // 设置变更时动态更新终端
   useEffect(() => {
