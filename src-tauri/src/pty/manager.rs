@@ -85,20 +85,43 @@ pub struct PtyManager {
     sessions: Mutex<HashMap<String, PtyEntry>>,
 }
 
+/// 取 slave 设备路径。
+///
+/// Linux/BSD 提供线程安全的 ptsname_r，macOS 只有非重入的 ptsname，
+/// libc 在 apple 目标下不导出 ptsname_r，只能按平台分开写。
+#[cfg(unix)]
+fn slave_device_path(master_fd: libc::c_int) -> Option<String> {
+    #[cfg(target_vendor = "apple")]
+    {
+        let ptr = unsafe { libc::ptsname(master_fd) };
+        if ptr.is_null() {
+            return None;
+        }
+        // ptsname 指向内部静态缓冲区，取到值后要立刻拷走
+        Some(unsafe { std::ffi::CStr::from_ptr(ptr) }.to_string_lossy().into_owned())
+    }
+
+    #[cfg(not(target_vendor = "apple"))]
+    {
+        let mut buf = [0u8; 256];
+        let ptr = unsafe {
+            libc::ptsname_r(master_fd, buf.as_mut_ptr() as *mut libc::c_char, buf.len())
+        };
+        if ptr == 0 {
+            return None;
+        }
+        let len = buf.iter().position(|&b| b == 0).unwrap_or(buf.len());
+        Some(String::from_utf8_lossy(&buf[..len]).to_string())
+    }
+}
+
 /// 在 PTY slave 侧禁用 ECHO，防止输入字符被内核回显到 master 侧。
 /// Linux 上 master/slave 有独立的 termios，必须对 slave fd 调用 tcsetattr 才能真正禁用回显。
 #[cfg(unix)]
 fn disable_slave_echo(master_fd: libc::c_int) {
-    // 通过 ptsname 获取 slave 设备路径
-    let slave_path = unsafe {
-        let mut buf = [0u8; 256];
-        let ptr = libc::ptsname_r(master_fd, buf.as_mut_ptr() as *mut libc::c_char, buf.len());
-        if ptr != 0 {
-            eprintln!("[PTY] ptsname_r failed, cannot disable slave echo");
-            return;
-        }
-        let len = buf.iter().position(|&b| b == 0).unwrap_or(buf.len());
-        String::from_utf8_lossy(&buf[..len]).to_string()
+    let Some(slave_path) = slave_device_path(master_fd) else {
+        eprintln!("[PTY] 获取 slave 设备路径失败，无法禁用 slave 回显");
+        return;
     };
 
     // 打开 slave 设备并禁用 ECHO
