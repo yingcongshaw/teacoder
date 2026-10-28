@@ -76,7 +76,7 @@ export default function PaneView({ paneId, isActivePane, terminalRefs, onCopy, o
     >
       <TabBar paneId={paneId} />
       <div className="flex-1 relative overflow-hidden min-h-0">
-        {openTabIds.map((tabId, idx) => {
+        {openTabIds.map((tabId) => {
           const session = sessions.find((s) => s.id === tabId);
           if (!session) return null;
           const project = projects.find((p) => p.id === session.projectId);
@@ -127,7 +127,10 @@ export default function PaneView({ paneId, isActivePane, terminalRefs, onCopy, o
 
           return (
             <Dropdown
-              key={`${paneId}:${tabId}#${idx}`}
+              // key 只用 tabId：带上数组下标会让"关闭某个 tab"把右侧所有 tab
+              // 的 key 冲掉，React 判定为换了元素 → 卸载重建 TerminalView，
+              // xterm 实例被 dispose，屏幕内容与 scrollback 一起丢失。
+              key={`${paneId}:${tabId}`}
               menu={{ items: contextMenu }}
               trigger={["contextMenu"]}
             >

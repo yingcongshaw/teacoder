@@ -46,6 +46,26 @@ export interface TerminalViewHandle {
  */
 const CLI_READY_IDLE_MS = 800;
 
+/**
+ * 每个 tabId 已推送给 PTY 的尺寸。
+ *
+ * 尺寸没变时重复调 resize_pty 会让 CLI 收到多余的 SIGWINCH 而整帧重排，
+ * 表现为终端内容抖动。
+ *
+ * 必须按 tabId 记录而不是按组件实例：共享 PTY 语义下同一 tabId 可同时存在于
+ * 两个面板，两边算出的 cols/rows 不同。按实例记录会让另一个面板的尺寸被
+ * 误判成"没变"而跳过，PTY 尺寸就与当前面板对不上。
+ */
+const sentPtySizes = new Map<string, { cols: number; rows: number }>();
+
+/** 尺寸确有变化才推给 PTY，避免重复的 SIGWINCH 触发 TUI 重排。 */
+function pushPtySize(tabId: string, cols: number, rows: number) {
+  const prev = sentPtySizes.get(tabId);
+  if (prev && prev.cols === cols && prev.rows === rows) return;
+  sentPtySizes.set(tabId, { cols, rows });
+  resizePty(tabId, cols, rows).catch(() => {});
+}
+
 function getThemeColors(themeName: string) {
   const theme = TERMINAL_COLOR_THEMES.find((t) => t.name === themeName);
   const base = theme ? theme.colors : TERMINAL_COLOR_THEMES[0].colors;
@@ -246,6 +266,11 @@ const TerminalView = forwardRef<TerminalViewHandle, TerminalViewProps>(function 
   const enableResizeRef = useRef(enableResize);
   enableInputRef.current = enableInput;
   enableResizeRef.current = enableResize;
+  // visible 同理: ResizeObserver 的回调建在初始化 effect 里,若直接闭包捕获
+  // 首帧的 visible,后台挂载的标签即使后来变成活动标签,回调也会永远提前 return,
+  // 容器尺寸变化不再推给 PTY,xterm 与 PTY 的尺寸就此失同步。
+  const visibleRef = useRef(visible);
+  visibleRef.current = visible;
   // 缓存最近一次的有效选中内容。xterm.js 在右键打开自定义菜单后偶发会清空内部选中状态，
   // 这里用 onSelectionChange 持续记录，可作为 getSelection() 失效时的回退值。
   const cachedSelectionRef = useRef<string>("");
@@ -357,12 +382,12 @@ const TerminalView = forwardRef<TerminalViewHandle, TerminalViewProps>(function 
     // 共享 PTY 语义:非 active pane 仍 fit xterm 到容器(显示对齐),
     // 但不调 resizePty —— 避免双开时两路各自推 SIGWINCH 风暴,
     // 触发 Claude Code 反复重排版 / 历史被吐。
-    if (!visible || !fitAddonRef.current || !xtermRef.current) return;
+    if (!visibleRef.current || !fitAddonRef.current || !xtermRef.current) return;
     fitAddonRef.current.fit();
-    if (!enableResize) return;
+    if (!enableResizeRef.current) return;
     const { cols, rows } = xtermRef.current;
-    resizePty(tabId, cols, rows).catch(() => {});
-  }, [tabId, visible, enableResize]);
+    pushPtySize(tabId, cols, rows);
+  }, [tabId]);
 
   // 初始化终端
   useEffect(() => {
@@ -616,6 +641,9 @@ const TerminalView = forwardRef<TerminalViewHandle, TerminalViewProps>(function 
 
     const unlisten_exit = listen<string>("pty:exit", (event) => {
       if (event.payload === tabId) {
+        // PTY 已经没了，记录的尺寸随之失效：下次 resize 必须重新推给新的 PTY，
+        // 否则新进程会停在 24x80，与 xterm 自身的尺寸对不上。
+        sentPtySizes.delete(tabId);
         term.write("\r\n\x1b[33m[进程已退出]\x1b[0m\r\n");
         useAppStore.getState().updateSession(tabId, { isRunning: false });
       }
@@ -710,7 +738,7 @@ const TerminalView = forwardRef<TerminalViewHandle, TerminalViewProps>(function 
       if (!enableResizeRef.current) return;
       if (xtermRef.current) {
         const { cols, rows } = xtermRef.current;
-        resizePty(tabId, cols, rows).catch(() => {});
+        pushPtySize(tabId, cols, rows);
       }
     });
   }, [visible, tabId]);
