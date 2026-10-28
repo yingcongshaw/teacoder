@@ -44,7 +44,7 @@ if [ ${#failed[@]} -gt 0 ]; then
   notes="$notes"$'\n\n'"## 构建诊断（部分平台打包失败）"
   for f in "${failed[@]}"; do
     platform="$(basename "$(dirname "$f")")"
-    notes="$notes"$'\n\n'"### ${platform}"$'\n\n'"${fence}"$'\n'"$(tail -n 40 "$f")"$'\n'"${fence}"
+    notes="$notes"$'\n\n'"### ${platform}"$'\n\n'"${fence}"$'\n'"$(cat "$f")"$'\n'"${fence}"
   done
 fi
 

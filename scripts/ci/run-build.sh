@@ -51,7 +51,9 @@ if [ "$status" -ne 0 ]; then
 
   # 标注正文必须短：过长时 GitHub 会整条丢弃，只剩「Process completed ...」
   one_line=$(head -c 900 "$ERROR_FILE" | tr '\n' ' ' | sed -e 's/%/%25/g')
-  echo "::error::build failed (exit $status): $one_line"
+  # 前面补一个换行：构建输出末尾常不带换行，不补的话标注会粘在最后一行
+  # 输出的尾巴上，runner 只认行首的 ::，整条标注就被当成普通日志丢掉
+  printf '\n::error::build failed (exit %s): %s\n' "$status" "$one_line"
 fi
 
 exit "$status"
