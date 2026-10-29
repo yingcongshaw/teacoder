@@ -237,7 +237,7 @@ jobs:
           REPO: ${{ github.repository }}
           TOKEN: ${{ secrets.GITHUB_TOKEN }}
           LOG_DIR: logs
-        run: bash scripts/ci/publish-diagnostics.sh
+        run: python3 scripts/ci/publish_diagnostics.py
 
   release:
     name: 发布到 GitHub Release
@@ -271,4 +271,4 @@ jobs:
           REPO: ${{ github.repository }}
           TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ github.ref_name }}
-        run: bash scripts/ci/release.sh
+        run: python3 scripts/ci/publish_release.py
