@@ -119,6 +119,55 @@ def patch_release_body(release_id, body):
     api_json("PATCH", f"{API}/releases/{release_id}", {"body": body})
 
 
+def upload_endpoints(release):
+    """产物二进制的上传地址。
+
+    GitHub 的 Release 资产上传走 release 自带的 upload_url（uploads.github.com），
+    api.github.com 上的同名 POST 路由会直接返回 404 —— 只有 GET /assets、
+    DELETE /assets 这类元数据操作才留在 api.github.com。
+    """
+    release_id = release["id"]
+    endpoints = []
+
+    upload_url = release.get("upload_url")
+    if upload_url:
+        # upload_url 带 {?name,label} 模板，占位符整段去掉再拼查询参数
+        endpoints.append(upload_url.split("{")[0])
+    else:
+        # release 对象里没有 upload_url 时按 uploads 域名推导，
+        # 否则会退回 api.github.com —— 那条 POST 路由是 404
+        api = urllib.parse.urlsplit(API_BASE)
+        if api.hostname == "api.github.com":
+            endpoints.append(
+                f"https://uploads.github.com/repos/{REPO}/releases/{release_id}/assets"
+            )
+
+    endpoints.append(f"{API}/releases/{release_id}/assets")
+    return endpoints
+
+
+def upload_asset(release, name, path):
+    """上传单个产物，失败时把尝试过的地址都写进异常信息。"""
+    with open(path, "rb") as f:
+        payload = f.read()
+
+    errors = []
+    for base in upload_endpoints(release):
+        url = f"{base}?name={urllib.parse.quote(name)}"
+        try:
+            request(
+                "POST",
+                url,
+                data=payload,
+                headers={"Content-Type": "application/octet-stream"},
+                raw=True,
+            )
+            return
+        except ApiError as e:
+            errors.append(str(e))
+    raise ApiError("POST", name, 0, "；".join(errors))
+
+
 def main():
     assets = collect_assets()
     if not assets:
@@ -158,16 +207,7 @@ def main():
         for name, path in assets:
             if name in by_name:
                 request("DELETE", f"{API}/releases/assets/{by_name[name]}")
-            with open(path, "rb") as f:
-                payload = f.read()
-            url = f"{API}/releases/{release_id}/assets?name={urllib.parse.quote(name)}"
-            request(
-                "POST",
-                url,
-                data=payload,
-                headers={"Content-Type": "application/octet-stream"},
-                raw=True,
-            )
+            upload_asset(release, name, path)
             print(f"已上传 {name}")
 
         patch_release_body(release_id, notes)
