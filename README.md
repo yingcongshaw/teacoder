@@ -102,16 +102,16 @@ npm install -g opencode-ai
 历史版本都在这个列表里；只想要最新版可点
 [Latest release](https://github.com/yingcongshaw/teacoder/releases/latest)。
 
-以 v0.1.1 为例：
+以 v0.1.2 为例：
 
-- Windows：`TeaCoder_0.1.1_x64-setup.exe`（NSIS 安装程序，界面为简体中文）/ `TeaCoder_0.1.1_x64_zh-CN.msi`（MSI）
-- macOS：`TeaCoder_0.1.1_universal.dmg`（Intel + Apple Silicon 通用）
-- Ubuntu：`TeaCoder_0.1.1_amd64.deb`
-- 其他 Linux：`TeaCoder_0.1.1_amd64.AppImage`
-- RPM 系（CentOS / Fedora / openEuler 等）：`TeaCoder-0.1.1-1.x86_64.rpm`
+- Windows：`TeaCoder_0.1.2_x64-setup.exe`（NSIS 安装程序，界面为简体中文）/ `TeaCoder_0.1.2_x64_zh-CN.msi`（MSI）
+- macOS：`TeaCoder_0.1.2_universal.dmg`（Intel + Apple Silicon 通用）
+- Ubuntu：`TeaCoder_0.1.2_amd64.deb`
+- 其他 Linux：`TeaCoder_0.1.2_amd64.AppImage`
+- RPM 系（CentOS / Fedora / openEuler 等）：`TeaCoder-0.1.2-1.x86_64.rpm`
 
 > rpm 的命名规则和其他格式不一样：Tauri 的 rpm bundler 用 `产品名-版本-release号.架构.rpm`，
-> 所以是 `TeaCoder-0.1.1-1.x86_64.rpm`（短横线 + 多一段 release 号），不是下划线。
+> 所以是 `TeaCoder-0.1.2-1.x86_64.rpm`（短横线 + 多一段 release 号），不是下划线。
 
 ### 首次启动
 
@@ -209,7 +209,7 @@ cargo install --locked cargo-xwin
 
 ```bash
 pnpm build:all                    # 宿主平台 + Windows 两套安装包
-pnpm build:all -- --config '{"version":"0.1.1"}'   # 指定版本号
+pnpm build:all -- --config '{"version":"0.1.2"}'   # 指定版本号
 ```
 
 | 宿主平台 | 产物 |
@@ -238,8 +238,8 @@ macOS 的 `.dmg` 需要 macOS 宿主（bundle 与签名都依赖它），Linux �
 | Linux x64 | `.AppImage` + `.deb` + `.rpm` | `ubuntu-latest` |
 
 ```bash
-# 版本号取自 tag（v0.1.1 → 0.1.1），产物文件名随之变化
-git tag v0.1.1 && git push origin v0.1.1
+# 版本号取自 tag（v0.1.2 → 0.1.2），产物文件名随之变化
+git tag v0.1.2 && git push origin v0.1.2
 ```
 
 也可在 Actions 页面手动触发（`workflow_dispatch`），此时只产出构建产物、不发 Release。
@@ -314,14 +314,18 @@ TeaCoder/
 
 ## 文档
 
-- 📍 [路线图](./doc/teacoder-roadmap.md) — v0.1.1 已发布 v1.0.0+ 远期规划
+- 📍 [路线图](./doc/teacoder-roadmap.md) — v0.1.2 已发布 v1.0.0+ 远期规划
 - 📋 [需求规格](./doc/requirements.md) — 完整功能需求、数据模型、IPC 命令清单
 
 
 
 ## 路线图
 
-### v0.1.1（当前版本）✅
+### v0.1.2（当前版本）✅
+
+全新安装后建项目不再报 `no such table: projects`（迁移脚本改为编进二进制）· 侧边栏可折叠 · Tab 拖拽排序与跨面板拖动
+
+### v0.1.1 ✅
 
 新建 Claude Code 会话不再因安全确认框直接退出 · LLM 供应商「显示已停用」开关生效 · 供应商图标名可选、颜色改用取色器 · Windows 交叉编译打包与 GitHub Actions 发布流程
 
