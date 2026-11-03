@@ -15,6 +15,7 @@ import SettingsPage from "./SettingsPage";
 import QuickCommands from "../quick-commands/QuickCommands";
 import PaneView from "../panes/PaneView";
 import PaneSplitter from "../panes/PaneSplitter";
+import SidebarToggle from "./SidebarToggle";
 import { TOOL_DISPLAY_NAMES } from "../../types";
 import { reportOpenTabError } from "../../utils/openTabError";
 
@@ -183,6 +184,23 @@ export default function AppContent() {
     // 首页：卡片网格（无任何 pane 时显示）
     return (
       <div className="flex-1 flex flex-col min-w-0 bg-[var(--ant-color-bg-layout)]">
+        {/* 顶栏：折叠按钮槽。无 tab 时保持与 Tab 栏一致的按钮位置 */}
+        <div
+          className="flex-shrink-0 flex items-center"
+          style={{
+            height: 32,
+            backgroundColor: "var(--ant-color-bg-container)",
+            borderBottom: "1px solid var(--ant-color-border-secondary)",
+          }}
+        >
+          <div
+            className="flex-shrink-0 flex items-center justify-center h-full"
+            style={{ width: 50 }}
+          >
+            <SidebarToggle />
+          </div>
+        </div>
+
         {/* Section header */}
         <div className="px-8 pt-6 pb-4 flex items-center justify-between">
           <h2 className="text-base font-medium text-[var(--ant-color-text)] m-0">最近会话</h2>

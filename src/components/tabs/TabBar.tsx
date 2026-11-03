@@ -20,6 +20,7 @@ import { useAppStore } from "../../stores/appStore";
 import { TOOL_DISPLAY_NAMES } from "../../types";
 import type { Session } from "../../types";
 import { openPathInFileManager, openTerminal } from "../../utils/ipc";
+import SidebarToggle from "../layout/SidebarToggle";
 
 interface TabBarProps {
   /** 所属分屏面板 id；不传则退回全局视图（兼容旧用法） */
@@ -30,9 +31,23 @@ interface TabBarProps {
 // tab 索引决定插入位置（空面板直接追加到末尾）。
 const DND_MIME_TAB = "application/x-teacoder-tab";
 
+/** 折叠按钮槽宽度，与 SidebarToggle 的按钮宽度一致 */
+const TOGGLE_SLOT_WIDTH = 50;
+
 interface DragPayload {
   tabId: string;
   sourcePaneId: string;
+}
+
+/**
+ * 判断拖拽源是否带 tab payload。
+ *
+ * dragover 期间浏览器处于保护模式：dataTransfer.getData() 只能读到空字符串，
+ * 唯一可读的是 types 列表。若在这里靠 getData 判断，preventDefault 就不会执行，
+ * 浏览器随之不触发 drop，表现为"能拖动但放手后顺序不变"。
+ */
+function hasTabPayload(dt: DataTransfer): boolean {
+  return Array.from(dt.types).includes(DND_MIME_TAB);
 }
 
 function readDragPayload(dt: DataTransfer): DragPayload | null {
@@ -85,6 +100,60 @@ export default function TabBar({ paneId }: TabBarProps = {}) {
   const [movingTab, setMovingTab] = useState<Session | null>(null);
   const [moveTargetProjectId, setMoveTargetProjectId] = useState<string | null>(null);
   const renameInputRef = useRef<InputRef | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const indicatorRef = useRef<HTMLDivElement | null>(null);
+
+  // 折叠按钮槽只出现在第一个 pane，保证分屏时按钮始终位于右侧区物理最左端
+  const isFirstPane = panes.length > 0 && panes[0]?.id === pane?.id;
+
+  const getTabElements = (): HTMLElement[] => {
+    const el = containerRef.current;
+    if (!el) return [];
+    return Array.from(el.querySelectorAll<HTMLElement>("[data-tab-id]"));
+  };
+
+  // 落点 → 插入索引：第一个"中线在落点右侧"的 tab，落点在其左侧则插到它前面
+  const computeInsertIndex = (clientX: number): number => {
+    const tabs = getTabElements();
+    for (let i = 0; i < tabs.length; i++) {
+      const rect = tabs[i].getBoundingClientRect();
+      if (clientX < rect.left + rect.width / 2) return i;
+    }
+    return tabs.length;
+  };
+
+  // 指示线直接改 DOM style：dragover 触发频繁，走 React state 会让整条 tab 栏反复重渲染
+  const showIndicator = (clientX: number) => {
+    const container = containerRef.current;
+    const line = indicatorRef.current;
+    if (!container || !line) return;
+    const tabs = getTabElements();
+    const index = computeInsertIndex(clientX);
+    const containerRect = container.getBoundingClientRect();
+    const left =
+      tabs.length === 0
+        ? isFirstPane ? TOGGLE_SLOT_WIDTH : 0
+        : index >= tabs.length
+          ? tabs[tabs.length - 1].getBoundingClientRect().right - containerRect.left
+          : tabs[index].getBoundingClientRect().left - containerRect.left;
+    line.style.left = `${Math.round(left) - 1}px`;
+    line.style.opacity = "1";
+  };
+
+  const hideIndicator = () => {
+    if (indicatorRef.current) indicatorRef.current.style.opacity = "0";
+  };
+
+  // 拖拽被取消（Esc）或在别处放下时，源 pane 与目标 pane 的指示线都要清掉
+  useEffect(() => {
+    const onDragEnd = () => hideIndicator();
+    window.addEventListener("dragend", onDragEnd);
+    window.addEventListener("drop", onDragEnd);
+    return () => {
+      window.removeEventListener("dragend", onDragEnd);
+      window.removeEventListener("drop", onDragEnd);
+    };
+  }, []);
 
   // 只显示当前面板内已打开的标签
   const openTabs = openTabIds
@@ -100,6 +169,25 @@ export default function TabBar({ paneId }: TabBarProps = {}) {
   const handleClose = (tabId: string) => {
     // 直接关闭:不再弹确认框。共享 PTY 时由 store 内部按 instanceCount 决定是否 stopSession。
     closeTab(tabId, pane?.id);
+  };
+
+  /**
+   * 把拖来的 tab 落到 insertIndex 位置。
+   * insertIndex 是目标 pane 现有 tab 序列中的下标（"移除前"坐标系）。
+   */
+  const applyDrop = (payload: DragPayload, insertIndex: number) => {
+    if (!pane) return;
+    if (payload.sourcePaneId === pane.id) {
+      const fromIdx = pane.openTabIds.indexOf(payload.tabId);
+      if (fromIdx < 0) return;
+      // 换算到"移除后"的坐标系：源 tab 之后的位置要前移一位
+      let toIdx = insertIndex;
+      if (toIdx > fromIdx) toIdx -= 1;
+      if (fromIdx === toIdx) return;
+      reorderTabInPane(pane.id, fromIdx, toIdx);
+    } else {
+      moveTabToPane(payload.tabId, pane.id, insertIndex);
+    }
   };
 
   const handleDelete = (tab: Session) => {
@@ -263,36 +351,51 @@ export default function TabBar({ paneId }: TabBarProps = {}) {
   return (
     <>
       <div
-        className="flex flex-wrap items-center"
+        ref={containerRef}
+        className="flex flex-wrap items-center relative"
         style={{
           minHeight: 32,
           backgroundColor: "var(--ant-color-bg-container)",
           borderBottom: "1px solid var(--ant-color-border-secondary)",
         }}
-        onDragOver={(e) => {
-          if (!pane) return;
-          const payload = readDragPayload(e.dataTransfer);
-          if (!payload) return;
+        onDragEnter={(e) => {
+          if (!pane || !hasTabPayload(e.dataTransfer)) return;
+          // WebKit 只在 dragenter 被取消时才把该元素登记为 drop 目标，
+          // 漏掉这一步 dragover 会照常触发但 drop 永远不来
           e.preventDefault();
-          e.dataTransfer.dropEffect = payload.sourcePaneId === pane.id ? "move" : "move";
+        }}
+        onDragOver={(e) => {
+          if (!pane || !hasTabPayload(e.dataTransfer)) return;
+          e.preventDefault();
+          e.dataTransfer.dropEffect = "move";
+          showIndicator(e.clientX);
         }}
         onDrop={(e) => {
           if (!pane) return;
           const payload = readDragPayload(e.dataTransfer);
           if (!payload) return;
           e.preventDefault();
-          // 在空 tab strip 上 drop：直接追加到末尾
-          if (openTabIds.length === 0) {
-            if (payload.sourcePaneId !== pane.id) {
-              moveTabToPane(payload.tabId, pane.id);
-            } else {
-              reorderTabInPane(pane.id, pane.openTabIds.indexOf(payload.tabId), 0);
-            }
-          }
-          // 非空时由具体 tab 的 onDropHandler 决定插入位置（光标所在 tab 的左侧/右侧）
+          hideIndicator();
+          // 落在 tab 之间的空白处也按落点 x 坐标算插入位置
+          applyDrop(payload, computeInsertIndex(e.clientX));
         }}
       >
-        {openTabs.map((tab, index) => {
+        {/* 拖拽落点指示线 */}
+        <div
+          ref={indicatorRef}
+          data-drop-indicator
+          className="pointer-events-none absolute top-0 bottom-0 w-0.5"
+          style={{ backgroundColor: "var(--ant-color-primary)", opacity: 0 }}
+        />
+        {isFirstPane && (
+          <div
+            className="flex-shrink-0 flex items-center justify-center h-8"
+            style={{ width: TOGGLE_SLOT_WIDTH }}
+          >
+            <SidebarToggle />
+          </div>
+        )}
+        {openTabs.map((tab) => {
           const isActive = tab.id === activeTabId;
           return (
             <Dropdown
@@ -302,6 +405,7 @@ export default function TabBar({ paneId }: TabBarProps = {}) {
             >
               <div
                 draggable
+                data-tab-id={tab.id}
                 onDragStart={(e) => {
                   if (!pane) return;
                   e.dataTransfer.effectAllowed = "move";
@@ -313,12 +417,17 @@ export default function TabBar({ paneId }: TabBarProps = {}) {
                   // 部分浏览器需要 text/plain 才允许 drop
                   e.dataTransfer.setData("text/plain", tab.id);
                 }}
-                onDragOver={(e) => {
-                  if (!pane) return;
-                  const payload = readDragPayload(e.dataTransfer);
-                  if (!payload) return;
+                onDragEnter={(e) => {
+                  if (!pane || !hasTabPayload(e.dataTransfer)) return;
                   e.preventDefault();
                   e.stopPropagation();
+                }}
+                onDragOver={(e) => {
+                  if (!pane || !hasTabPayload(e.dataTransfer)) return;
+                  e.preventDefault();
+                  e.stopPropagation();
+                  e.dataTransfer.dropEffect = "move";
+                  showIndicator(e.clientX);
                 }}
                 onDrop={(e) => {
                   if (!pane) return;
@@ -326,19 +435,8 @@ export default function TabBar({ paneId }: TabBarProps = {}) {
                   if (!payload) return;
                   e.preventDefault();
                   e.stopPropagation();
-                  // 根据光标 X 落在 tab 左半 / 右半决定插入到该 tab 左侧还是右侧
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  const insertAfter = e.clientX > rect.left + rect.width / 2;
-                  let insertIndex = insertAfter ? index + 1 : index;
-                  if (payload.sourcePaneId === pane.id) {
-                    const fromIdx = pane.openTabIds.indexOf(payload.tabId);
-                    if (fromIdx < 0) return;
-                    if (insertIndex > fromIdx) insertIndex -= 1;
-                    if (fromIdx === insertIndex) return;
-                    reorderTabInPane(pane.id, fromIdx, insertIndex);
-                  } else {
-                    moveTabToPane(payload.tabId, pane.id, insertIndex);
-                  }
+                  hideIndicator();
+                  applyDrop(payload, computeInsertIndex(e.clientX));
                 }}
                 onClick={() => {
                   if (pane) setActivePane(pane.id);

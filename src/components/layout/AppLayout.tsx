@@ -24,6 +24,7 @@ export default function AppLayout() {
   const uiFontFamily = useAppStore((s) => s.uiFontFamily);
   const uiZoom = useAppStore((s) => s.uiZoom);
   const compactMode = useAppStore((s) => s.compactMode);
+  const sidebarCollapsed = useAppStore((s) => s.sidebarCollapsed);
   const setCliTools = useAppStore((s) => s.setCliTools);
   const setProfiles = useAppStore((s) => s.setProfiles);
   const newSessionModalOpen = useAppStore((s) => s.newSessionModalOpen);
@@ -291,24 +292,28 @@ export default function AppLayout() {
 
           {/* Main area: sidebar + content side by side */}
           <div className="flex flex-1 min-h-0 overflow-hidden" style={{ flexDirection: "row" }}>
-            {/* Left sidebar - resizable width */}
-            <div
-              ref={sidebarRef}
-              className="flex-shrink-0 flex flex-col overflow-hidden bg-[var(--ant-color-bg-container)]"
-              style={{ width: sidebarWidth }}
-            >
-              <AppSidebar />
-            </div>
+            {/* Left sidebar - resizable width. 折叠时整块移除，右侧区占满整宽 */}
+            {!sidebarCollapsed && (
+              <>
+                <div
+                  ref={sidebarRef}
+                  className="flex-shrink-0 flex flex-col overflow-hidden bg-[var(--ant-color-bg-container)]"
+                  style={{ width: sidebarWidth }}
+                >
+                  <AppSidebar />
+                </div>
 
-            {/* Resizable divider */}
-            <div
-              className={`w-1 flex-shrink-0 cursor-col-resize relative group ${isDragging ? "bg-[var(--ant-color-primary)]" : "bg-[var(--ant-color-border-secondary)] hover:bg-[var(--ant-color-primary)]"}`}
-              style={{ cursor: isDragging ? "col-resize" : "col-resize" }}
-              onMouseDown={handleMouseDown}
-            >
-              {/* 拖动提示线 */}
-              <div className="absolute inset-y-0 left-1/2 w-0.5 -translate-x-1/2 bg-transparent group-hover:bg-[var(--ant-color-primary)] transition-colors" />
-            </div>
+                {/* Resizable divider */}
+                <div
+                  className={`w-1 flex-shrink-0 cursor-col-resize relative group ${isDragging ? "bg-[var(--ant-color-primary)]" : "bg-[var(--ant-color-border-secondary)] hover:bg-[var(--ant-color-primary)]"}`}
+                  style={{ cursor: isDragging ? "col-resize" : "col-resize" }}
+                  onMouseDown={handleMouseDown}
+                >
+                  {/* 拖动提示线 */}
+                  <div className="absolute inset-y-0 left-1/2 w-0.5 -translate-x-1/2 bg-transparent group-hover:bg-[var(--ant-color-primary)] transition-colors" />
+                </div>
+              </>
+            )}
 
             {/* Right content area */}
             <div className="flex-1 flex flex-col min-w-0 overflow-hidden">

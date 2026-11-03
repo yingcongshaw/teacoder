@@ -462,6 +462,7 @@ interface AppState {
   /** 取出并移除待注入指令，保证共享 PTY 的多个终端视图只有一个能拿到 */
   takePendingClaudeRename: (tabId: string) => string | undefined;
 
+  /** 左侧栏整体折叠。折叠后右侧区顶部保留 50px 按钮槽用于再次展开 */
   sidebarCollapsed: boolean;
   toggleSidebar: () => void;
 
@@ -512,6 +513,7 @@ interface AppState {
 const FAVORITE_KEY = "teacoder_favorites";
 const COLLAPSED_KEY = "teacoder_collapsed_projects";
 const COLLAPSED_CATEGORIES_KEY = "teacoder_collapsed_categories";
+const SIDEBAR_COLLAPSED_KEY = "teacoder_sidebar_collapsed";
 
 function loadFavorites(): string[] {
   try {
@@ -559,6 +561,22 @@ function loadCollapsedCategories(): string[] {
 function saveCollapsedCategories(collapsed: string[]) {
   try {
     localStorage.setItem(COLLAPSED_CATEGORIES_KEY, JSON.stringify(collapsed));
+  } catch {
+    // non-critical
+  }
+}
+
+function loadSidebarCollapsed(): boolean {
+  try {
+    return localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
+function saveSidebarCollapsed(collapsed: boolean) {
+  try {
+    localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(collapsed));
   } catch {
     // non-critical
   }
@@ -980,15 +998,16 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
 
       // 跨 pane 移动：把每个 source pane 里的第一个 occurrence 移除
-      // 防御性:同 pane 不重复(由 openTab 保证),但跨 pane 可重复
       const targetPane = state.panes.find((p) => p.id === targetPaneId)!;
-      // 计算 target 插入位置(在"移除前"还是"移除后"长度基准?这里用移除后,
-      // 因为跨 pane 移动通常只关心 target 内的相对位置)
       const targetNextOpen = [...targetPane.openTabIds];
-      const insertAt = insertIndex !== undefined
-        ? Math.max(0, Math.min(insertIndex, targetNextOpen.length))
-        : targetNextOpen.length;
-      targetNextOpen.splice(insertAt, 0, tabId);
+      // 移动语义：目标 pane 已有该 tab（共享 PTY 双开场景）时不再重复插入，
+      // 只把源 pane 的那份移走
+      if (!targetNextOpen.includes(tabId)) {
+        const insertAt = insertIndex !== undefined
+          ? Math.max(0, Math.min(insertIndex, targetNextOpen.length))
+          : targetNextOpen.length;
+        targetNextOpen.splice(insertAt, 0, tabId);
+      }
 
       const nextPanes: Pane[] = [];
       for (const p of state.panes) {
@@ -1645,9 +1664,13 @@ export const useAppStore = create<AppState>((set, get) => ({
     return command;
   },
 
-  sidebarCollapsed: false,
+  sidebarCollapsed: loadSidebarCollapsed(),
   toggleSidebar: () =>
-    set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
+    set((state) => {
+      const collapsed = !state.sidebarCollapsed;
+      saveSidebarCollapsed(collapsed);
+      return { sidebarCollapsed: collapsed };
+    }),
 
   theme: loadAppTheme(),
   setTheme: (theme) => {

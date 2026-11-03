@@ -209,8 +209,8 @@ v0.1.0 引入了四层模型，关系为：Project → SessionCategory → Sessi
   - 新建（Ctrl+T → `NewSessionModal`）
   - 关闭（Ctrl+W 直接关闭，无确认框）
   - 切换（Ctrl+Tab 顺向 / Ctrl+Shift+Tab 逆向）
-  - 拖拽排序（在同 pane 内 reorder）
-  - 跨 pane 拖拽（`moveTabToPane`）
+  - 拖拽排序（在同 pane 内 reorder）：落点以 tab 中线判定，拖拽时显示插入指示线
+  - 跨 pane 拖拽（`moveTabToPane`）：目标 pane 已有该 tab 时按移动语义去重，不重复插入
   - 右键菜单：分屏左右 / 关闭分屏 / 关闭其他 / 关闭所有 / 关闭右侧 / 重新打开
 - 持久化：`teacoder_panes_layout`（version=2，存全量 panes + activePaneId）；`teacoder_open_tabs` 兼容旧版本
 
@@ -691,6 +691,10 @@ on("cost:updated", (payload: { sessionId: string; cost: SessionCost }) => void)
 - 收藏区（`favoriteTabs`，置顶）
 - 新建项目 / 新建分类 / 新建会话按钮
 - 折叠状态：`collapsedCategoryIds` / `collapsedProjectIds` / `sidebarCollapsed`
+- 折叠/展开按钮：位于右侧区顶栏最左侧的 50px 槽位（`SidebarToggle`）
+  - 分屏时按钮只出现在第一个 pane 的 Tab 栏，始终处于右侧区物理最左端
+  - 折叠后保留 50px 槽位，按钮图标翻转为展开态
+  - 首页（未打开任何 tab）时顶部也保留同一条按钮窄条
 
 ### 6.3 终端区域
 
@@ -701,6 +705,14 @@ on("cost:updated", (payload: { sessionId: string; cost: SessionCost }) => void)
   - 复制粘贴（Cmd+Shift+C / Cmd+Shift+V；macOS / Win-Linux 平台差异自动识别）
   - 全局快捷键：Ctrl+Shift+C / Ctrl+Shift+V（在 AppContent 层注册）
 - 分屏双开时只有 activePane 接收输入（`enableInput` 透传）
+
+### 6.3.1 Tab 拖拽（HTML5 DnD）
+
+- 拖拽数据通过自定义 MIME `application/x-teacoder-tab` 传递（JSON：`{tabId, sourcePaneId}`）
+- 插入位置按落点 x 与各 tab 中线比较得出，拖拽过程中在 Tab 栏显示插入指示线
+- 跨引擎约束（Chromium / WebKitGTK / WKWebView 均需满足）：
+  - `dragover` 期间 `dataTransfer.getData()` 返回空字符串，只能读 `dataTransfer.types` 判断是否为 tab 拖拽
+  - `dragenter` 与 `dragover` 都必须 `preventDefault()`：WebKit 只有在 `dragenter` 被取消时才把元素登记为 drop 目标，漏掉会导致 `dragover` 照常触发但 `drop` 永不派发
 
 ### 6.4 状态栏
 
