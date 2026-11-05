@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use crate::storage::AppDatabase;
 
 pub mod detector;
+pub mod ports;
 pub mod runtime;
 
 /// 服务类型：java（Spring Boot 模块）、node（Node 脚本）、command（用户手填）。

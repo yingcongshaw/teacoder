@@ -23,6 +23,8 @@ pub struct ServiceRuntimeState {
     pub running: bool,
     pub pid: Option<u32>,
     pub started_at: Option<i64>,
+    /// 服务实际占用的端口。运行态才有，由 services::ports 探测后填入。
+    pub ports: Vec<u16>,
 }
 
 struct ServiceRuntime {
@@ -63,6 +65,7 @@ pub fn service_states() -> Vec<ServiceRuntimeState> {
             running: true,
             pid: Some(r.pid),
             started_at: Some(r.started_at),
+            ports: Vec::new(),
         })
         .collect()
 }

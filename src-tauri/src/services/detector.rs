@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use crate::dev_env::DevEnvironment;
 
 /// 扫描项目目录时跳过的目录。
-const SKIP_DIRS: &[&str] = &[
+pub const SKIP_DIRS: &[&str] = &[
     "target",
     "node_modules",
     ".git",

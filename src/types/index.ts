@@ -108,6 +108,8 @@ export interface ServiceRuntimeState {
   running: boolean;
   pid?: number;
   startedAt?: number;
+  /** 服务实际占用的端口，运行态才有 */
+  ports?: number[];
 }
 
 /** SSH 工具会话的连接参数。跨 IPC 传输时是明文，只有落 SQLite 时才被编码。 */

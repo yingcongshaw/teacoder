@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button, Switch, Tooltip, App, Empty } from "antd";
 import {
   DeleteOutlined,
@@ -18,6 +18,7 @@ import {
   serviceStop,
 } from "../../utils/ipc";
 import type { Service, ServiceRuntimeState } from "../../types";
+import { openExternal } from "../../utils/openExternal";
 import ServiceAddModal from "./ServiceAddModal";
 
 interface ServicesPanelProps {
@@ -60,7 +61,7 @@ export default function ServicesPanel({ visible, onClose, anchorRef }: ServicesP
     }
   };
 
-  const reloadStates = async () => {
+  const reloadStates = useCallback(async () => {
     try {
       const list = await serviceStates();
       const map: Record<string, ServiceRuntimeState> = {};
@@ -69,13 +70,22 @@ export default function ServicesPanel({ visible, onClose, anchorRef }: ServicesP
     } catch {
       // 状态查询失败不影响列表显示
     }
-  };
+  }, []);
 
   useEffect(() => {
     if (!visible) return;
     void reload();
     void reloadStates();
   }, [visible, allProjects, currentProjectId]);
+
+  // 端口要等服务真的把端口绑上才探测得到，面板开着就定期问一次
+  useEffect(() => {
+    if (!visible) return;
+    const timer = window.setInterval(() => {
+      void reloadStates();
+    }, 2000);
+    return () => window.clearInterval(timer);
+  }, [visible, reloadStates]);
 
   // 进程输出与退出事件
   useEffect(() => {
@@ -277,6 +287,29 @@ export default function ServicesPanel({ visible, onClose, anchorRef }: ServicesP
                     >
                       {service.name}
                     </span>
+                    {(states[service.id]?.ports ?? []).map((port) => {
+                      const url = `http://127.0.0.1:${port}`;
+                      return (
+                        <a
+                          key={port}
+                          href={url}
+                          className="text-xs flex-shrink-0"
+                          style={{
+                            color: "var(--ant-color-link)",
+                            textDecoration: "underline",
+                            cursor: "pointer",
+                          }}
+                          title={`在浏览器打开 ${url}`}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            void openExternal(url);
+                          }}
+                        >
+                          :{port}
+                        </a>
+                      );
+                    })}
                     {allProjects && (
                       <span className="text-xs text-[var(--ant-color-text-tertiary)] flex-shrink-0">
                         {projectName(service.projectId)}
