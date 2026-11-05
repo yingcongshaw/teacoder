@@ -209,23 +209,24 @@ export default function ServicesPanel({ visible, onClose, anchorRef }: ServicesP
         style={{ boxShadow: "0 6px 16px 0 rgba(0, 0, 0, 0.16)" }}
       >
         <div className="flex items-center justify-between px-3 py-2 border-b border-[var(--ant-color-border-secondary)]">
-          <Button
+          <Switch
             size="small"
-            icon={<PlusOutlined />}
-            onClick={() => setAddOpen(true)}
-            disabled={!allProjects && !currentProjectId}
-            style={{ fontSize: 12 }}
-          >
-            添加服务
-          </Button>
+            checked={allProjects}
+            onChange={setAllProjects}
+            checkedChildren="所有项目"
+            unCheckedChildren="本项目"
+          />
           <div className="flex items-center gap-2">
-            <Switch
-              size="small"
-              checked={allProjects}
-              onChange={setAllProjects}
-              checkedChildren="所有项目"
-              unCheckedChildren="本项目"
-            />
+            <Tooltip title="添加服务">
+              <Button
+                size="small"
+                icon={<PlusOutlined />}
+                onClick={() => setAddOpen(true)}
+                disabled={!allProjects && !currentProjectId}
+                aria-label="添加服务"
+                style={{ fontSize: 12 }}
+              />
+            </Tooltip>
             <Tooltip
               title={
                 detectDisabled
@@ -241,10 +242,9 @@ export default function ServicesPanel({ visible, onClose, anchorRef }: ServicesP
                 loading={detecting}
                 disabled={detectDisabled}
                 onClick={handleDetect}
+                aria-label="服务识别"
                 style={{ fontSize: 12 }}
-              >
-                服务识别
-              </Button>
+              />
             </Tooltip>
           </div>
         </div>
