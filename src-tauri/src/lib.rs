@@ -170,6 +170,7 @@ pub fn run() {
             commands::service::service_list,
             commands::service::service_create,
             commands::service::service_delete,
+            commands::service::service_rename,
             commands::service::service_detect,
             commands::service::service_start,
             commands::service::service_stop,

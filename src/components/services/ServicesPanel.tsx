@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Button, Switch, Tooltip, App, Empty } from "antd";
+import { Button, Switch, Tooltip, App, Empty, Modal, Input } from "antd";
 import {
   DeleteOutlined,
   PauseCircleOutlined,
@@ -13,6 +13,7 @@ import {
   serviceDelete,
   serviceDetect,
   serviceList,
+  serviceRename,
   serviceStart,
   serviceStates,
   serviceStop,
@@ -44,6 +45,8 @@ export default function ServicesPanel({ visible, onClose, anchorRef }: ServicesP
   const [detecting, setDetecting] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [renameTarget, setRenameTarget] = useState<Service | null>(null);
+  const [renameValue, setRenameValue] = useState("");
 
   const activeSession = sessions.find((s) => s.id === activeTabId);
   const currentProjectId = activeSession?.projectId;
@@ -128,10 +131,10 @@ export default function ServicesPanel({ visible, onClose, anchorRef }: ServicesP
   useEffect(() => {
     if (!visible) return;
 
-    // 「添加服务」弹窗渲染在 body 的 portal 里，不在面板 DOM 内。
-    // 它开着的时候不能让面板的「点外部关闭」把面板一起收掉。
+    // 「添加服务」「改名」弹窗渲染在 body 的 portal 里，不在面板 DOM 内。
+    // 它们开着的时候不能让面板的「点外部关闭」把面板一起收掉。
     const handleClickOutside = (e: MouseEvent) => {
-      if (addOpen) return;
+      if (addOpen || renameTarget) return;
       const anchor = anchorRef.current;
       const panel = panelRef.current;
       if (
@@ -145,7 +148,7 @@ export default function ServicesPanel({ visible, onClose, anchorRef }: ServicesP
     };
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (addOpen) return;
+      if (addOpen || renameTarget) return;
       if (e.key === "Escape") onClose();
     };
 
@@ -155,7 +158,7 @@ export default function ServicesPanel({ visible, onClose, anchorRef }: ServicesP
       document.removeEventListener("mousedown", handleClickOutside);
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [visible, anchorRef, onClose, addOpen]);
+  }, [visible, anchorRef, onClose, addOpen, renameTarget]);
 
   const handleDetect = async () => {
     setDetecting(true);
@@ -205,6 +208,28 @@ export default function ServicesPanel({ visible, onClose, anchorRef }: ServicesP
       message.success("服务已删除");
     } catch (e) {
       message.error(`删除失败：${e}`);
+    }
+  };
+
+  const openRename = (service: Service) => {
+    setRenameTarget(service);
+    setRenameValue(service.name);
+  };
+
+  const handleRename = async () => {
+    if (!renameTarget) return;
+    const name = renameValue.trim();
+    if (!name) {
+      message.warning("服务名称不能为空");
+      return;
+    }
+    try {
+      await serviceRename(renameTarget.id, name);
+      setRenameTarget(null);
+      await reload();
+      message.success("服务已改名");
+    } catch (e) {
+      message.error(`改名失败：${e}`);
     }
   };
 
@@ -281,13 +306,14 @@ export default function ServicesPanel({ visible, onClose, anchorRef }: ServicesP
                       }}
                     />
                     <span
-                      className="text-[10px] leading-[14px] px-1 rounded flex-shrink-0 font-medium"
+                      className="text-[10px] leading-[14px] px-1 rounded flex-shrink-0 font-medium cursor-pointer"
                       style={{
                         backgroundColor:
                           DEV_KIND_COLORS[service.kind] ?? DEV_KIND_COLORS.command,
                         color: "#fff",
                       }}
-                      title={`${devKindShort(service.kind)} 服务`}
+                      title={`${devKindShort(service.kind)} 服务，双击改名`}
+                      onDoubleClick={() => openRename(service)}
                     >
                       {devKindShort(service.kind)}
                     </span>
@@ -368,6 +394,26 @@ export default function ServicesPanel({ visible, onClose, anchorRef }: ServicesP
         defaultProjectId={currentProjectId}
         allowProjectSelect={allProjects}
       />
+
+      <Modal
+        title="修改服务名称"
+        open={!!renameTarget}
+        onOk={handleRename}
+        onCancel={() => setRenameTarget(null)}
+        okText="保存"
+        cancelText="取消"
+        width={360}
+        destroyOnHidden
+        mask={{ closable: false }}
+      >
+        <Input
+          value={renameValue}
+          onChange={(e) => setRenameValue(e.target.value)}
+          onPressEnter={handleRename}
+          placeholder="服务名称"
+          autoFocus
+        />
+      </Modal>
     </>
   );
 }

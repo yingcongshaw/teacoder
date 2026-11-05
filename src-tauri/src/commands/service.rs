@@ -24,6 +24,16 @@ pub fn service_delete(db: tauri::State<AppDatabase>, id: String) -> Result<(), S
     crate::services::delete_service(&db, &id)
 }
 
+/// 改服务名称。
+#[tauri::command]
+pub fn service_rename(
+    db: tauri::State<AppDatabase>,
+    id: String,
+    name: String,
+) -> Result<(), String> {
+    crate::services::rename_service(&db, &id, &name)
+}
+
 /// 识别服务。扫描目录可能很慢，放到阻塞线程池里跑，别卡住 UI。
 ///
 /// project_id 为 None 表示识别全部项目。

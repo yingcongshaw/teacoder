@@ -356,6 +356,11 @@ export async function serviceDelete(id: string): Promise<void> {
   return invoke("service_delete", { id });
 }
 
+/** 改服务名称。 */
+export async function serviceRename(id: string, name: string): Promise<void> {
+  return invoke("service_rename", { id, name });
+}
+
 /** 识别服务。projectId 不传表示识别所有项目。 */
 export async function serviceDetect(projectId?: string): Promise<{
   created: Service[];

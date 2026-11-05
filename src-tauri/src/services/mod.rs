@@ -176,6 +176,30 @@ pub fn create_service(db: &AppDatabase, input: CreateServiceInput) -> Result<Ser
     })
 }
 
+/// 改服务名称。
+///
+/// 只动名字，启动命令之类的都不碰 —— 名字是给人看的，
+/// 识别出来的服务名往往是目录名，跟用户习惯的名字对不上。
+pub fn rename_service(db: &AppDatabase, id: &str, name: &str) -> Result<(), String> {
+    let trimmed = name.trim();
+    if trimmed.is_empty() {
+        return Err("服务名称不能为空".to_string());
+    }
+
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let now = chrono::Utc::now().timestamp_millis();
+    let changed = conn
+        .execute(
+            "UPDATE services SET name = ?2, updated_at = ?3 WHERE id = ?1",
+            rusqlite::params![id, trimmed, now],
+        )
+        .map_err(|e| format!("Failed to rename service: {}", e))?;
+    if changed == 0 {
+        return Err("服务不存在".to_string());
+    }
+    Ok(())
+}
+
 /// 删服务前先停掉正在跑的进程 —— 行没了用户就再也停不掉它。
 pub fn delete_service(db: &AppDatabase, id: &str) -> Result<(), String> {
     let _ = runtime::stop_service(id);
@@ -319,6 +343,35 @@ mod tests {
             rusqlite::params![id, "项目", path, now, now],
         )
         .expect("插入项目");
+    }
+
+    /// 改名只动名字，命令与指纹都不该变 —— 指纹变了会被识别当成新服务。
+    #[test]
+    fn rename_service_only_changes_the_name() {
+        let db = test_db();
+        insert_project(&db, "p1", "/tmp/demo");
+        let svc = create_service(
+            &db,
+            CreateServiceInput {
+                project_id: "p1".to_string(),
+                name: "原名".to_string(),
+                kind: None,
+                command: "python main.py".to_string(),
+                working_dir: None,
+                build_command: None,
+            },
+        )
+        .expect("建服务");
+
+        rename_service(&db, &svc.id, "  新名字  ").expect("改名");
+
+        let after = get_service(&db, &svc.id).expect("回查");
+        assert_eq!(after.name, "新名字");
+        assert_eq!(after.command, svc.command);
+        assert_eq!(after.fingerprint, svc.fingerprint);
+
+        assert!(rename_service(&db, &svc.id, "   ").is_err(), "空名要报错");
+        assert!(rename_service(&db, "不存在的服务", "x").is_err());
     }
 
     #[test]
