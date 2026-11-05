@@ -1,21 +1,51 @@
-import { Typography, Tag, Space, Divider } from "antd";
+import { useEffect } from "react";
+import { Typography, Tag, Space, Divider, Switch, Tooltip } from "antd";
 import {
   GithubOutlined,
   HeartOutlined,
 } from "@ant-design/icons";
 import SettingRow from "./components/SettingRow";
 import SectionHeader from "./components/SectionHeader";
+import { useUpdateStore } from "../../stores/updateStore";
+import { useAppVersion } from "../../hooks/useAppVersion";
+import { compareVersions } from "../../utils/updateCheck";
+import { openExternal } from "../../utils/openExternal";
+
+const RELEASES_URL = "https://github.com/yingcongshaw/teacoder/releases";
 
 interface AboutPageProps {
   searchText?: string;
 }
 
 export default function AboutPage({ searchText = "" }: AboutPageProps) {
+  const appVersion = useAppVersion();
+  const latestRelease = useUpdateStore((s) => s.latestRelease);
+  const checked = useUpdateStore((s) => s.checked);
+  const notifyEnabled = useUpdateStore((s) => s.notifyEnabled);
+  const setNotifyEnabled = useUpdateStore((s) => s.setNotifyEnabled);
+  const checkLatest = useUpdateStore((s) => s.checkLatest);
+
+  // 没缓存过就现查一次
+  useEffect(() => {
+    if (!checked) checkLatest().catch(() => {});
+  }, [checked, checkLatest]);
+
   const matchesSearch = (label: string, desc?: string) => {
     if (!searchText) return true;
     const q = searchText.toLowerCase();
     return label.toLowerCase().includes(q) || (desc && desc.toLowerCase().includes(q));
   };
+
+  const isUpToDate =
+    latestRelease && appVersion
+      ? compareVersions(latestRelease.tagName, appVersion) <= 0
+      : false;
+
+  const latestText = !checked
+    ? "检查中…"
+    : latestRelease
+      ? latestRelease.tagName
+      : "获取失败";
 
   return (
     <div>
@@ -35,7 +65,7 @@ export default function AboutPage({ searchText = "" }: AboutPageProps) {
           AI 编程 CLI 工具桌面管理客户端
         </div>
         <div style={{ marginTop: 8 }}>
-          <Tag color="blue">v0.1.1</Tag>
+          <Tag color="blue">v{appVersion || "…"}</Tag>
           <Tag color="green">MVP</Tag>
         </div>
       </div>
@@ -48,11 +78,25 @@ export default function AboutPage({ searchText = "" }: AboutPageProps) {
         <SettingRow label="应用名称">TeaCoder</SettingRow>
       )}
       {matchesSearch("版本") && (
-        <SettingRow label="版本">v0.1.1</SettingRow>
+        <SettingRow label="版本">v{appVersion || "…"}</SettingRow>
       )}
-      {matchesSearch("更新通道") && (
-        <SettingRow label="更新通道" description="选择接收更新的通道">
-          <Tag>稳定</Tag>
+      {matchesSearch("最新版本") && (
+        <SettingRow label="最新版本" description="检测到新版本时在启动时弹窗提示">
+          <Space size={10} align="center">
+            <span style={{ fontSize: 13 }}>{latestText}</span>
+            {isUpToDate && (
+              <Tag color="green" style={{ marginInlineEnd: 0 }}>
+                已是最新
+              </Tag>
+            )}
+            <Tooltip title="更新通知：每次启动时检查新版本，有新版本就弹窗提示">
+              <Switch
+                size="small"
+                checked={notifyEnabled}
+                onChange={(v) => setNotifyEnabled(v)}
+              />
+            </Tooltip>
+          </Space>
         </SettingRow>
       )}
 
@@ -98,10 +142,26 @@ export default function AboutPage({ searchText = "" }: AboutPageProps) {
             href="https://github.com/yingcongshaw/teacoder"
             target="_blank"
             rel="noopener noreferrer"
-            style={{ display: "flex", alignItems: "center", gap: 4, color: "var(--ant-color-primary)" }}
+            style={{ display: "flex", alignItems: "center", gap: 4, color: "var(--ant-color-primary)", cursor: "pointer" }}
+            onClick={(e) => {
+              e.preventDefault();
+              void openExternal("https://github.com/yingcongshaw/teacoder");
+            }}
           >
             <GithubOutlined />
             GitHub
+          </a>
+          <a
+            href={RELEASES_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ display: "flex", alignItems: "center", gap: 4, color: "var(--ant-color-primary)", cursor: "pointer" }}
+            onClick={(e) => {
+              e.preventDefault();
+              void openExternal(RELEASES_URL);
+            }}
+          >
+            更新日志
           </a>
         </Space>
       </div>

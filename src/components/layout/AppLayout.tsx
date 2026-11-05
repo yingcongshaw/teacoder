@@ -2,10 +2,13 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { ConfigProvider, theme as antdTheme, App as AntdApp } from "antd";
 import zhCN from "antd/locale/zh_CN";
 import { listen } from "@tauri-apps/api/event";
+import { getVersion } from "@tauri-apps/api/app";
 import { useAppStore } from "../../stores/appStore";
+import { useUpdateStore } from "../../stores/updateStore";
 import { detectCliTools, listProfiles, pollCosts, projectList, projectCreate, sessionCreate } from "../../utils/ipc";
 import { resolveTheme, buildTextTokens, buildBgTokens } from "../../themes";
 import { buildUiFontStack } from "../../utils/font";
+import { compareVersions, type GithubRelease } from "../../utils/updateCheck";
 import useKeyboardShortcuts from "../../hooks/useKeyboardShortcuts";
 import AppHeader from "./AppHeader";
 import AppSidebar from "./AppSidebar";
@@ -18,6 +21,7 @@ import NewCategoryModal from "../project/NewCategoryModal";
 import SearchPanel from "../tabs/SearchPanel";
 import { AgreementModal, OnboardingGuide, useOnboarding } from "../onboarding/OnboardingFlow";
 import HelpModal from "../help/HelpModal";
+import UpdateNotificationModal from "../common/UpdateNotificationModal";
 
 export default function AppLayout() {
   const appTheme = useAppStore((s) => s.theme);
@@ -54,7 +58,9 @@ export default function AppLayout() {
   const sessions = useAppStore((s) => s.sessions);
   const setCostTick = useAppStore((s) => s.setCostTick);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const updateCheckedRef = useRef(false);
   const [systemDark, setSystemDark] = useState(() => window.matchMedia("(prefers-color-scheme: dark)").matches);
+  const [updateRelease, setUpdateRelease] = useState<GithubRelease | null>(null);
   const { ready, showAgreement, showGuide, completeAgreement, completeGuide, skipGuide } = useOnboarding();
 
   // 左侧栏目宽度拖拽调整
@@ -222,6 +228,26 @@ export default function AppLayout() {
     };
   }, [setSettingsPage, setSettingsActiveKey]);
 
+  // 启动时检查新版本。等首次引导走完再查，免得两个弹窗叠在一起。
+  useEffect(() => {
+    if (!ready || showAgreement || showGuide) return;
+    if (updateCheckedRef.current) return;
+    updateCheckedRef.current = true;
+
+    const { notifyEnabled, checkLatest } = useUpdateStore.getState();
+    if (!notifyEnabled) return;
+
+    checkLatest()
+      .then(async (release) => {
+        if (!release) return;
+        const current = await getVersion();
+        if (compareVersions(release.tagName, current) > 0) {
+          setUpdateRelease(release);
+        }
+      })
+      .catch(() => {});
+  }, [ready, showAgreement, showGuide]);
+
   // Resolve theme configuration
   const themeConfig = resolveTheme(appTheme, systemDark);
   const algorithm =
@@ -345,6 +371,10 @@ export default function AppLayout() {
         />
         <SearchPanel />
         <HelpModal open={helpOpen} onClose={() => setHelpOpen(false)} />
+        <UpdateNotificationModal
+          release={updateRelease}
+          onClose={() => setUpdateRelease(null)}
+        />
         {ready && (
           <>
             <AgreementModal open={showAgreement} onAccept={completeAgreement} />

@@ -4,6 +4,7 @@ import {
   GithubOutlined,
 } from "@ant-design/icons";
 import { useAppStore } from "../../stores/appStore";
+import { useAppVersion } from "../../hooks/useAppVersion";
 import { getToolSettings, upsertToolSettings } from "../../utils/ipc";
 import { TOOL_DISPLAY_NAMES } from "../../types";
 import type { Profile, ToolSettings } from "../../types";
@@ -21,6 +22,7 @@ const THINKING_INTENSITIES = [
 ];
 
 export default function AppStatusBar() {
+  const appVersion = useAppVersion();
   const sessions = useAppStore((s) => s.sessions);
   const activeTabId = useAppStore((s) => s.activeTabId);
   const profiles = useAppStore((s) => s.profiles);
@@ -133,7 +135,7 @@ export default function AppStatusBar() {
         </>
       ) : (
         <Typography.Text type="secondary" className="text-xs">
-          TeaCoder v0.1.1
+          TeaCoder v{appVersion || "…"}
         </Typography.Text>
       )}
     </div>

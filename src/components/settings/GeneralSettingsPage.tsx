@@ -17,8 +17,6 @@ interface GeneralSettings {
   closeBehavior: string;
   showTrayIcon: boolean;
   autoStart: boolean;
-  autoCheckUpdate: boolean;
-  autoDownloadUpdate: boolean;
   compactMode: boolean;
   showStatusBar: boolean;
 }
@@ -33,8 +31,6 @@ const DEFAULT_SETTINGS: GeneralSettings = {
   closeBehavior: "minimize",
   showTrayIcon: true,
   autoStart: false,
-  autoCheckUpdate: true,
-  autoDownloadUpdate: false,
   compactMode: false,
   showStatusBar: true,
 };
@@ -332,25 +328,6 @@ export default function GeneralSettingsPage({ searchText = "" }: GeneralSettings
           <Switch
             checked={systemAutoStart}
             onChange={(v) => updateSetting("autoStart", v)}
-          />
-        </SettingRow>
-      )}
-
-      {/* 更新 */}
-      <SectionHeader title="更新" />
-      {matchesSearch("自动检查更新") && (
-        <SettingRow label="自动检查更新" description="定期检查新版本">
-          <Switch
-            checked={settings.autoCheckUpdate}
-            onChange={(v) => updateSetting("autoCheckUpdate", v)}
-          />
-        </SettingRow>
-      )}
-      {matchesSearch("自动下载更新") && (
-        <SettingRow label="自动下载更新" description="发现新版本时自动下载">
-          <Switch
-            checked={settings.autoDownloadUpdate}
-            onChange={(v) => updateSetting("autoDownloadUpdate", v)}
           />
         </SettingRow>
       )}
