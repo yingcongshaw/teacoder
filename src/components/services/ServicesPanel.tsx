@@ -280,36 +280,38 @@ export default function ServicesPanel({ visible, onClose, anchorRef }: ServicesP
                       }}
                     />
                     <span
-                      className="text-xs cursor-pointer truncate"
+                      className="text-xs cursor-pointer truncate w-[140px] flex-shrink-0"
                       style={{ color: "var(--ant-color-text)" }}
                       onClick={() => setExpandedId(expanded ? null : service.id)}
                       title={service.command}
                     >
                       {service.name}
                     </span>
-                    {(states[service.id]?.ports ?? []).map((port) => {
-                      const url = `http://127.0.0.1:${port}`;
-                      return (
-                        <a
-                          key={port}
-                          href={url}
-                          className="text-xs flex-shrink-0"
-                          style={{
-                            color: "var(--ant-color-link)",
-                            textDecoration: "underline",
-                            cursor: "pointer",
-                          }}
-                          title={`在浏览器打开 ${url}`}
-                          onClick={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            void openExternal(url);
-                          }}
-                        >
-                          :{port}
-                        </a>
-                      );
-                    })}
+                    <span className="w-[110px] flex-shrink-0 flex items-center gap-2 overflow-hidden whitespace-nowrap">
+                      {(states[service.id]?.ports ?? []).map((port) => {
+                        const url = `http://127.0.0.1:${port}`;
+                        return (
+                          <a
+                            key={port}
+                            href={url}
+                            className="text-xs flex-shrink-0"
+                            style={{
+                              color: "var(--ant-color-link)",
+                              textDecoration: "underline",
+                              cursor: "pointer",
+                            }}
+                            title={`在浏览器打开 ${url}`}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              void openExternal(url);
+                            }}
+                          >
+                            :{port}
+                          </a>
+                        );
+                      })}
+                    </span>
                     {allProjects && (
                       <span className="text-xs text-[var(--ant-color-text-tertiary)] flex-shrink-0">
                         {projectName(service.projectId)}
