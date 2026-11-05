@@ -685,12 +685,12 @@ export default function NewSessionModal({ open: isOpen, projectId, categoryId, o
           <div style={{ marginBottom: 12, borderTop: "1px solid #2a2d38", paddingTop: 8 }}>
             <label style={{ display: "block", fontSize: 12, color: "var(--ant-color-text-secondary)", marginBottom: 4 }}>
               环境变量
-              <span style={{ fontSize: 10, color: "var(--ant-color-text-quaternary)", marginLeft: 4 }}>每行 KEY=VALUE</span>
+              <span style={{ fontSize: 10, color: "var(--ant-color-text-quaternary)", marginLeft: 4 }}>留空则用项目绑定的开发/运行环境</span>
             </label>
             <Input.TextArea
               size="small"
               rows={2}
-              placeholder={`NODE_OPTIONS=--max-old-space-size=4096\nPYTHONPATH=/usr/local/lib`}
+              placeholder={`每行 KEY=VALUE\n（手动填的会覆盖项目环境里的同名变量）`}
               value={envVars}
               onChange={(e) => setEnvVars(e.target.value)}
               style={{ backgroundColor: "var(--ant-color-bg-elevated)", borderColor: "var(--ant-color-border)", color: "var(--ant-color-text)", resize: "vertical" }}
