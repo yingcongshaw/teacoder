@@ -117,7 +117,10 @@ export default function ServicesPanel({ visible, onClose, anchorRef }: ServicesP
   useEffect(() => {
     if (!visible) return;
 
+    // 「添加服务」弹窗渲染在 body 的 portal 里，不在面板 DOM 内。
+    // 它开着的时候不能让面板的「点外部关闭」把面板一起收掉。
     const handleClickOutside = (e: MouseEvent) => {
+      if (addOpen) return;
       const anchor = anchorRef.current;
       const panel = panelRef.current;
       if (
@@ -131,6 +134,7 @@ export default function ServicesPanel({ visible, onClose, anchorRef }: ServicesP
     };
 
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (addOpen) return;
       if (e.key === "Escape") onClose();
     };
 
@@ -140,7 +144,7 @@ export default function ServicesPanel({ visible, onClose, anchorRef }: ServicesP
       document.removeEventListener("mousedown", handleClickOutside);
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [visible, anchorRef, onClose]);
+  }, [visible, anchorRef, onClose, addOpen]);
 
   const handleDetect = async () => {
     setDetecting(true);
@@ -201,7 +205,7 @@ export default function ServicesPanel({ visible, onClose, anchorRef }: ServicesP
     <>
       <div
         ref={panelRef}
-        className="absolute bottom-full mb-1 right-0 z-50 bg-[var(--ant-color-bg-elevated)] border border-[var(--ant-color-border)] rounded-lg shadow-lg w-[440px]"
+        className="absolute bottom-full mb-1 left-0 z-50 bg-[var(--ant-color-bg-elevated)] border border-[var(--ant-color-border)] rounded-lg shadow-lg w-[440px]"
         style={{ boxShadow: "0 6px 16px 0 rgba(0, 0, 0, 0.16)" }}
       >
         <div className="flex items-center justify-between px-3 py-2 border-b border-[var(--ant-color-border-secondary)]">
@@ -210,6 +214,7 @@ export default function ServicesPanel({ visible, onClose, anchorRef }: ServicesP
             icon={<PlusOutlined />}
             onClick={() => setAddOpen(true)}
             disabled={!allProjects && !currentProjectId}
+            style={{ fontSize: 12 }}
           >
             添加服务
           </Button>
@@ -236,6 +241,7 @@ export default function ServicesPanel({ visible, onClose, anchorRef }: ServicesP
                 loading={detecting}
                 disabled={detectDisabled}
                 onClick={handleDetect}
+                style={{ fontSize: 12 }}
               >
                 服务识别
               </Button>

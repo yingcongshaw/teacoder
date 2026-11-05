@@ -394,45 +394,43 @@ export default function AppContent() {
         {/* Bottom quick-commands bar */}
         <div className="flex-shrink-0 relative border-t border-[var(--ant-color-border)] bg-[var(--ant-color-bg-container)]">
           <div
-            className="flex items-center justify-end px-3 py-1.5 transition-colors"
+            className="flex items-center justify-between px-3 py-1.5 transition-colors"
             style={{ backgroundColor: "var(--ant-color-bg-container)" }}
           >
-            <div className="flex items-center gap-2">
-              <span
-                ref={servicesBtnRef}
-                className="flex items-center gap-1 text-xs cursor-pointer px-2 py-1 rounded transition-colors"
-                style={{ color: "var(--ant-color-text-secondary)" }}
-                onClick={() => setServicesVisible((v) => !v)}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.color = "var(--ant-color-text)";
-                  e.currentTarget.style.backgroundColor = "var(--ant-color-bg-elevated)";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.color = "var(--ant-color-text-secondary)";
-                  e.currentTarget.style.backgroundColor = "transparent";
-                }}
-              >
-                <CloudServerOutlined style={{ fontSize: 12 }} />
-                <span>服务</span>
-              </span>
-              <span
-                ref={quickCommandsBtnRef}
-                className="flex items-center gap-1 text-xs cursor-pointer px-2 py-1 rounded transition-colors"
-                style={{ color: "var(--ant-color-text-secondary)" }}
-                onClick={() => setQuickCommandsVisible((v) => !v)}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.color = "var(--ant-color-text)";
-                  e.currentTarget.style.backgroundColor = "var(--ant-color-bg-elevated)";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.color = "var(--ant-color-text-secondary)";
-                  e.currentTarget.style.backgroundColor = "transparent";
-                }}
-              >
-                <ThunderboltOutlined style={{ fontSize: 12 }} />
-                <span>快捷命令</span>
-              </span>
-            </div>
+            <span
+              ref={servicesBtnRef}
+              className="flex items-center gap-1 text-xs cursor-pointer px-2 py-1 rounded transition-colors"
+              style={{ color: "var(--ant-color-text-secondary)" }}
+              onClick={() => setServicesVisible((v) => !v)}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.color = "var(--ant-color-text)";
+                e.currentTarget.style.backgroundColor = "var(--ant-color-bg-elevated)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.color = "var(--ant-color-text-secondary)";
+                e.currentTarget.style.backgroundColor = "transparent";
+              }}
+            >
+              <CloudServerOutlined style={{ fontSize: 12 }} />
+              <span>服务</span>
+            </span>
+            <span
+              ref={quickCommandsBtnRef}
+              className="flex items-center gap-1 text-xs cursor-pointer px-2 py-1 rounded transition-colors"
+              style={{ color: "var(--ant-color-text-secondary)" }}
+              onClick={() => setQuickCommandsVisible((v) => !v)}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.color = "var(--ant-color-text)";
+                e.currentTarget.style.backgroundColor = "var(--ant-color-bg-elevated)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.color = "var(--ant-color-text-secondary)";
+                e.currentTarget.style.backgroundColor = "transparent";
+              }}
+            >
+              <ThunderboltOutlined style={{ fontSize: 12 }} />
+              <span>快捷命令</span>
+            </span>
           </div>
           <ServicesPanel
             visible={servicesVisible}
