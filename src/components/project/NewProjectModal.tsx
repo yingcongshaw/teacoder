@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Modal, Input, App } from "antd";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { useAppStore } from "../../stores/appStore";
@@ -8,6 +8,11 @@ const PROJECT_COLORS = [
   "#3b82f6", "#722ed1", "#1890ff", "#52c41a",
   "#fa8c16", "#eb2f96", "#f5222d", "#888888",
 ];
+
+/** 随机取一个颜色，新建项目时不至于每次都是同一个蓝。 */
+function randomProjectColor(): string {
+  return PROJECT_COLORS[Math.floor(Math.random() * PROJECT_COLORS.length)];
+}
 
 interface NewProjectModalProps {
   open: boolean;
@@ -22,9 +27,14 @@ export default function NewProjectModal({ open, onClose }: NewProjectModalProps)
 
   const [name, setName] = useState("");
   const [path, setPath] = useState("");
-  const [color, setColor] = useState(PROJECT_COLORS[0]);
+  const [color, setColor] = useState(randomProjectColor);
   const [devEnvIds, setDevEnvIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
+
+  // 弹窗每次打开都重新随机一个颜色
+  useEffect(() => {
+    if (open) setColor(randomProjectColor());
+  }, [open]);
 
   const handleBrowse = async () => {
     const selected = await openDialog({ directory: true, multiple: false });
@@ -67,7 +77,7 @@ export default function NewProjectModal({ open, onClose }: NewProjectModalProps)
   const resetAndClose = () => {
     setName("");
     setPath("");
-    setColor(PROJECT_COLORS[0]);
+    setColor(randomProjectColor());
     setDevEnvIds([]);
     onClose();
   };
@@ -111,6 +121,10 @@ export default function NewProjectModal({ open, onClose }: NewProjectModalProps)
             }
           />
         </div>
+        <ProjectEnvSelects
+          devEnvIds={devEnvIds}
+          onChange={(next) => setDevEnvIds(next.devEnvIds)}
+        />
         <div>
           <label className="block text-xs text-[var(--ant-color-text-secondary)] mb-1">颜色标记</label>
           <div className="flex gap-2">
@@ -127,13 +141,6 @@ export default function NewProjectModal({ open, onClose }: NewProjectModalProps)
               />
             ))}
           </div>
-        </div>
-        <div>
-          <label className="block text-xs text-[var(--ant-color-text-secondary)] mb-1">运行环境</label>
-          <ProjectEnvSelects
-            devEnvIds={devEnvIds}
-            onChange={(next) => setDevEnvIds(next.devEnvIds)}
-          />
         </div>
       </div>
     </Modal>

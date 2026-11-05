@@ -81,6 +81,10 @@ export default function EditProjectModal() {
             项目路径不可修改
           </div>
         </div>
+        <ProjectEnvSelects
+          devEnvIds={devEnvIds}
+          onChange={(next) => setDevEnvIds(next.devEnvIds)}
+        />
         <div>
           <label className="block text-xs text-[var(--ant-color-text-secondary)] mb-1">颜色标记</label>
           <div className="flex gap-2">
@@ -97,13 +101,6 @@ export default function EditProjectModal() {
               />
             ))}
           </div>
-        </div>
-        <div>
-          <label className="block text-xs text-[var(--ant-color-text-secondary)] mb-1">运行环境</label>
-          <ProjectEnvSelects
-            devEnvIds={devEnvIds}
-            onChange={(next) => setDevEnvIds(next.devEnvIds)}
-          />
         </div>
       </div>
     </Modal>

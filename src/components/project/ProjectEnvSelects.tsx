@@ -10,7 +10,7 @@ interface ProjectEnvSelectsProps {
 }
 
 /**
- * 项目的「运行环境」选择器。
+ * 项目的「开发/运行环境」选择器。
  *
  * 选项来自「设置 - 开发环境」，按语言分组。一个项目可以同时绑多套环境
  * （比如 Java + Python），全部不绑就走系统默认环境。
@@ -38,7 +38,7 @@ export default function ProjectEnvSelects({
   return (
     <div>
       <label className="block text-xs text-[var(--ant-color-text-secondary)] mb-1">
-        开发环境（可多选）
+        开发/运行环境（可多选）
       </label>
       <Select
         allowClear
