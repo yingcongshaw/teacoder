@@ -31,8 +31,8 @@ interface ServicesPanelProps {
 
 const LOG_MAX_LINES = 200;
 
-/** 服务行的列宽：状态点 | 环境标识 | 名称 | 项目 | 端口 | 弹性留白 | 启停 | 删除。 */
-const GRID_COLUMNS = "8px 40px 120px 90px 80px 1fr 28px 28px";
+/** 服务行的列宽：状态点 | 环境标识 | 名称 | 项目 | 留白 | 端口 | 启停 | 删除。 */
+const GRID_COLUMNS = "8px 40px 120px 90px 67px 76px 28px 28px";
 
 /** 行尾两个图标按钮统一成方块，图标才会上下对齐成一列。 */
 const ICON_BUTTON_STYLE: React.CSSProperties = {
@@ -262,7 +262,7 @@ export default function ServicesPanel({ visible, onClose, anchorRef }: ServicesP
     <>
       <div
         ref={panelRef}
-        className="absolute bottom-full mb-1 left-0 z-50 bg-[var(--ant-color-bg-elevated)] border border-[var(--ant-color-border)] rounded-lg shadow-lg w-[460px]"
+        className="absolute bottom-full mb-1 left-0 z-50 bg-[var(--ant-color-bg-elevated)] border border-[var(--ant-color-border)] rounded-lg shadow-lg w-[511px]"
         style={{ boxShadow: "0 6px 16px 0 rgba(0, 0, 0, 0.16)" }}
       >
         <div className="flex items-center justify-between px-3 py-2 border-b border-[var(--ant-color-border-secondary)]">
@@ -356,7 +356,8 @@ export default function ServicesPanel({ visible, onClose, anchorRef }: ServicesP
                     >
                       {allProjects ? projectName(service.projectId) : ""}
                     </span>
-                    <span className="flex items-center justify-end gap-1.5 overflow-hidden whitespace-nowrap min-w-0">
+                    <span />
+                    <span className="flex items-center gap-1.5 overflow-hidden whitespace-nowrap min-w-0">
                       {(states[service.id]?.ports ?? []).map((port) => {
                         const url = `http://127.0.0.1:${port}`;
                         return (
@@ -381,7 +382,6 @@ export default function ServicesPanel({ visible, onClose, anchorRef }: ServicesP
                         );
                       })}
                     </span>
-                    <span />
                     <Button
                       size="small"
                       type="text"
