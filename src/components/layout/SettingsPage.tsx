@@ -14,6 +14,9 @@ import {
   ApiOutlined,
   InfoCircleOutlined,
   CloudOutlined,
+  BuildOutlined,
+  JavaOutlined,
+  CodeSandboxOutlined,
 } from "@ant-design/icons";
 import { CLI_TOOLS_IN_SETTINGS_GROUP, getCliToolIcon } from "../cli/cliTools";
 import { useAppStore } from "../../stores/appStore";
@@ -37,6 +40,7 @@ import SyncPage from "../settings/SyncPage";
 import McpAccessPage from "../settings/McpAccessPage";
 import AboutPage from "../settings/AboutPage";
 import LlmProvidersPage from "../settings/LlmProvidersPage";
+import DevEnvironmentPage from "../settings/DevEnvironmentPage";
 
 const SIDEBAR_WIDTH = 180;
 
@@ -68,6 +72,15 @@ const menuItems = [
       icon: <CliToolIcon toolKey={t.id} />,
     })),
   },
+  {
+    key: "dev-env-group",
+    label: "开发环境",
+    icon: <BuildOutlined />,
+    children: [
+      { key: "dev-env-java", label: "Java 环境", icon: <JavaOutlined /> },
+      { key: "dev-env-node", label: "Node 环境", icon: <CodeSandboxOutlined /> },
+    ],
+  },
   { key: "ai-assistant", label: "AI 辅助", icon: <RobotOutlined /> },
   { key: "network", label: "网络", icon: <GlobalOutlined /> },
   { key: "remote", label: "远程访问", icon: <CloudServerOutlined /> },
@@ -87,6 +100,9 @@ const PAGE_TITLES: Record<string, string> = {
   general: "通用设置",
   terminal: "终端设置",
   "cli-tools-group": "CLI 工具",
+  "dev-env-group": "开发环境",
+  "dev-env-java": "Java 环境",
+  "dev-env-node": "Node 环境",
   "profile-management": "Profile 管理",
   "ai-assistant": "AI 辅助",
   network: "网络",
@@ -104,12 +120,12 @@ const PAGE_TITLES: Record<string, string> = {
 export default function SettingsPage() {
   const activeKey = useAppStore((s) => s.settingsActiveKey);
   const setActiveKey = useAppStore((s) => s.setSettingsActiveKey);
-  const [openKeys, setOpenKeys] = useState<string[]>(["cli-tools-group"]);
+  const [openKeys, setOpenKeys] = useState<string[]>(["cli-tools-group", "dev-env-group"]);
   const [searchText, setSearchText] = useState("");
 
-  // 当设置面板打开时，自动展开 CLI 工具组
+  // 当设置面板打开时，自动展开 CLI 工具组与开发环境组
   useEffect(() => {
-    setOpenKeys(["cli-tools-group"]);
+    setOpenKeys(["cli-tools-group", "dev-env-group"]);
   }, []);
 
   const renderContent = () => {
@@ -135,6 +151,20 @@ export default function SettingsPage() {
         return <OpenCodeSettingsPage {...props} />;
       case "profile-management":
         return <ProfileManagementPage />;
+      case "dev-env-java":
+        return (
+          <DevEnvironmentPage
+            kind="java"
+            description="配置 JDK 与 Maven 的版本和安装路径，项目可以绑定这里的环境作为运行环境。"
+          />
+        );
+      case "dev-env-node":
+        return (
+          <DevEnvironmentPage
+            kind="node"
+            description="配置 Node 的版本和安装路径，项目可以绑定这里的环境作为运行环境。"
+          />
+        );
       case "ai-assistant":
         return <AIAssistantPage {...props} />;
       case "network":
@@ -180,7 +210,8 @@ export default function SettingsPage() {
             openKeys={openKeys}
             onOpenChange={(keys) => setOpenKeys(keys)}
             onClick={({ key }) => {
-              if (key !== "cli-tools-group") setActiveKey(key);
+              // 分组标题本身不是页面，点了只展开不跳转
+              if (key !== "cli-tools-group" && key !== "dev-env-group") setActiveKey(key);
             }}
             items={menuItems.map((item) => {
               if ("children" in item && item.children) {

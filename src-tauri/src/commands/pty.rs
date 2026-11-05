@@ -17,6 +17,7 @@ pub fn start_session(
     tab_id: String,
     tool_type: ToolType,
     work_dir: String,
+    project_id: Option<String>,
     profile_id: Option<String>,
     user_env_vars: Option<HashMap<String, String>>,
     cli_args: Option<String>,
@@ -200,7 +201,37 @@ pub fn start_session(
         }
     }
 
-    pty_manager.start_session(app.clone(), tab_id.clone(), tool_type.clone(), work_dir.clone(), env_vars, args, cli_args)?;
+    // 项目绑定的开发环境：JDK / Maven / Node 的路径注入会话。
+    // 用户自己设的 env_vars 优先级更高（在 start_session 里后写，覆盖这里）。
+    let project_tools = match project_id.as_deref() {
+        Some(pid) => {
+            let (java_env_id, node_env_id) = {
+                let conn = db.conn.lock().map_err(|e| e.to_string())?;
+                let mut stmt = conn
+                    .prepare("SELECT java_env_id, node_env_id FROM projects WHERE id = ?1")
+                    .map_err(|e| format!("Failed to prepare query: {}", e))?;
+                stmt.query_row([pid], |row| {
+                    Ok((
+                        row.get::<_, Option<String>>(0)?,
+                        row.get::<_, Option<String>>(1)?,
+                    ))
+                })
+                .map_err(|e| format!("Failed to query project env: {}", e))?
+            };
+            let (java_env, node_env) = crate::dev_env::load_project_envs(
+                &db,
+                java_env_id.as_deref(),
+                node_env_id.as_deref(),
+            )?;
+            Some(crate::dev_env::resolve_project_tools(
+                java_env.as_ref(),
+                node_env.as_ref(),
+            ))
+        }
+        None => None,
+    };
+
+    pty_manager.start_session(app.clone(), tab_id.clone(), tool_type.clone(), work_dir.clone(), env_vars, args, cli_args, project_tools)?;
 
     Ok(())
 }

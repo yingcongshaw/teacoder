@@ -61,10 +61,53 @@ export interface Project {
   name: string;
   path: string;
   color?: string;
+  /** 绑定的 Java 环境（JDK + Maven 一组） */
+  javaEnvId?: string;
+  /** 绑定的 Node 环境 */
+  nodeEnvId?: string;
   createdAt: number;
   updatedAt: number;
   /** 侧边栏展示序号，越小越靠前 */
   sortOrder: number;
+}
+
+/** 开发环境条目。kind=java 表示 JDK+Maven 一组，kind=node 表示 Node 一组。 */
+export interface DevEnvironment {
+  id: string;
+  kind: "java" | "node";
+  name: string;
+  jdkVersion?: string;
+  jdkPath?: string;
+  mavenVersion?: string;
+  mavenPath?: string;
+  nodeVersion?: string;
+  nodePath?: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/** 可启动的服务（类似 IDEA 的 Services 面板）。 */
+export interface Service {
+  id: string;
+  projectId: string;
+  name: string;
+  /** java | node | command */
+  kind: string;
+  command: string;
+  workingDir: string;
+  /** detected（自动识别） | manual（手工添加） */
+  source: "detected" | "manual";
+  fingerprint: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/** 服务的运行时状态，由后端进程注册表导出。 */
+export interface ServiceRuntimeState {
+  serviceId: string;
+  running: boolean;
+  pid?: number;
+  startedAt?: number;
 }
 
 /** SSH 工具会话的连接参数。跨 IPC 传输时是明文，只有落 SQLite 时才被编码。 */

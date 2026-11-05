@@ -5,6 +5,7 @@ import type {
   Profile,
   TerminalSettings,
   Project,
+  DevEnvironment,
   Session,
   SessionTemplate,
   SessionCategory,
@@ -21,6 +22,7 @@ import {
   projectUpdate,
   projectDelete,
   projectReorder,
+  devEnvironmentList,
   sessionList,
   sessionCreate,
   sessionUpdate,
@@ -262,6 +264,7 @@ interface LaunchNewSessionParams {
   toolType: string;
   profileId?: string;
   workDir: string;
+  projectId?: string;
   envVars: Record<string, string>;
   cliArgs?: string;
   cliSessionId?: string;
@@ -284,6 +287,7 @@ async function launchNewSession(params: LaunchNewSessionParams): Promise<void> {
     profileId: params.profileId || "",
     workDir: params.workDir,
     tabId: params.session.id,
+    projectId: params.projectId,
     envVars: params.envVars,
     cliArgs: params.cliArgs,
     cliSessionId: params.cliSessionId,
@@ -314,8 +318,28 @@ interface AppState {
   // 项目列表（从后端加载）
   projects: Project[];
   loadProjects: () => Promise<void>;
-  createProject: (name: string, path: string, color?: string) => Promise<Project>;
-  updateProject: (id: string, updates: { name?: string; color?: string }) => Promise<void>;
+  createProject: (
+    name: string,
+    path: string,
+    color?: string,
+    env?: { javaEnvId?: string; nodeEnvId?: string },
+  ) => Promise<Project>;
+  updateProject: (
+    id: string,
+    updates: {
+      name?: string;
+      color?: string;
+      javaEnvId?: string | null;
+      nodeEnvId?: string | null;
+    },
+  ) => Promise<void>;
+  /** 正在编辑的项目（编辑项目弹窗用），null 表示未打开 */
+  editingProjectId: string | null;
+  setEditingProjectId: (id: string | null) => void;
+
+  /** 开发环境条目（设置页与项目「运行环境」选择共用） */
+  devEnvironments: DevEnvironment[];
+  loadDevEnvironments: () => Promise<void>;
   deleteProject: (id: string) => Promise<void>;
   /** 按给定顺序重排项目（从 0 连续编号）。传全量 id，顺序即展示顺序。 */
   reorderProjects: (ids: string[]) => Promise<void>;
@@ -605,8 +629,14 @@ export const useAppStore = create<AppState>((set, get) => ({
     const projects = await projectList();
     set({ projects });
   },
-  createProject: async (name, path, color) => {
-    const project = await projectCreate({ name, path, color });
+  createProject: async (name, path, color, env) => {
+    const project = await projectCreate({
+      name,
+      path,
+      color,
+      javaEnvId: env?.javaEnvId,
+      nodeEnvId: env?.nodeEnvId,
+    });
     set((state) => ({ projects: [...state.projects, project] }));
     return project;
   },
@@ -615,6 +645,15 @@ export const useAppStore = create<AppState>((set, get) => ({
     set((state) => ({
       projects: state.projects.map((p) => (p.id === id ? updated : p)),
     }));
+  },
+  editingProjectId: null,
+  setEditingProjectId: (id) => set({ editingProjectId: id }),
+
+  // 开发环境
+  devEnvironments: [],
+  loadDevEnvironments: async () => {
+    const devEnvironments = await devEnvironmentList();
+    set({ devEnvironments });
   },
   deleteProject: async (id) => {
     await projectDelete(id);
@@ -687,6 +726,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       profileId: input.profileId,
       workDir: project?.path || "~",
       envVars: parseEnvVars(input.envVars || ""),
+      projectId: input.projectId,
       cliArgs: input.cliArgs,
       cliSessionId,
       llmProviderId: input.llmProviderId,
@@ -770,6 +810,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         profileId: after.profileId || "",
         workDir: project?.path || "~",
         tabId: id,
+        projectId: after.projectId,
         envVars,
         cliArgs,
         cliSessionId,
@@ -1246,6 +1287,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       profileId: session.profileId || "",
       workDir: project?.path || "~",
       tabId: id,
+      projectId: session.projectId,
       envVars,
       cliArgs,
       cliSessionId: willResumeSessionId,
@@ -1394,6 +1436,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       profileId: src.profileId,
       workDir: project?.path || "~",
       envVars: parseEnvVars(src.envVars || ""),
+      projectId: src.projectId,
       cliArgs,
       cliSessionId,
       llmProviderId: src.llmProviderId,

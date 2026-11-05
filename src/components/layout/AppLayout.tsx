@@ -13,6 +13,7 @@ import AppContent from "./AppContent";
 import NewSessionModal from "../tabs/NewSessionModal";
 import EditSessionModal from "../tabs/EditSessionModal";
 import NewProjectModal from "../project/NewProjectModal";
+import EditProjectModal from "../project/EditProjectModal";
 import NewCategoryModal from "../project/NewCategoryModal";
 import SearchPanel from "../tabs/SearchPanel";
 import { AgreementModal, OnboardingGuide, useOnboarding } from "../onboarding/OnboardingFlow";
@@ -325,6 +326,7 @@ export default function AppLayout() {
           open={newProjectModalOpen}
           onClose={() => setNewProjectModalOpen(false)}
         />
+        <EditProjectModal />
         <NewSessionModal
           open={newSessionModalOpen}
           projectId={newSessionProjectId}

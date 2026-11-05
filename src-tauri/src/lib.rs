@@ -2,11 +2,13 @@ mod cli;
 mod commands;
 mod cost;
 mod crypto;
+mod dev_env;
 mod fsdir;
 pub mod llm_provider;
 mod profile;
 mod project;
 mod pty;
+mod services;
 mod session;
 mod session_category;
 mod session_message;
@@ -124,7 +126,8 @@ pub fn run() {
                         api.prevent_close();
                     }
                     CloseBehavior::Exit => {
-                        // 允许关闭，程序退出
+                        // 允许关闭，程序退出。退出前先收掉后台服务进程，别留孤儿
+                        services::runtime::stop_all_services();
                     }
                 }
             }
@@ -159,6 +162,19 @@ pub fn run() {
             commands::project::project_update,
             commands::project::project_delete,
             commands::project::project_reorder,
+            commands::dev_env::dev_environment_list,
+            commands::dev_env::dev_environment_create,
+            commands::dev_env::dev_environment_update,
+            commands::dev_env::dev_environment_delete,
+            commands::dev_env::dev_environment_detect,
+            commands::service::service_list,
+            commands::service::service_create,
+            commands::service::service_delete,
+            commands::service::service_detect,
+            commands::service::service_start,
+            commands::service::service_stop,
+            commands::service::service_logs,
+            commands::service::service_states,
             commands::session::session_list,
             commands::session::session_create,
             commands::session::session_update,

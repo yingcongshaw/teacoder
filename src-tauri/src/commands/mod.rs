@@ -1,11 +1,13 @@
 pub mod claude_settings;
 pub mod cli;
 pub mod cost;
+pub mod dev_env;
 pub mod fs;
 pub mod llm_provider;
 pub mod profile;
 pub mod project;
 pub mod pty;
+pub mod service;
 pub mod session;
 pub mod session_category;
 pub mod session_message;

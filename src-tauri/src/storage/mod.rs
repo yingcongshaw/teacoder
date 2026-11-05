@@ -92,6 +92,16 @@ const EMBEDDED_MIGRATIONS: &[(i32, &str, &str)] = &[
         "v16_transfer_log.sql",
         include_str!("../../migrations/v16_transfer_log.sql"),
     ),
+    (
+        17,
+        "v17_dev_environments.sql",
+        include_str!("../../migrations/v17_dev_environments.sql"),
+    ),
+    (
+        18,
+        "v18_services.sql",
+        include_str!("../../migrations/v18_services.sql"),
+    ),
 ];
 
 /// 从 `v13_claude_models.sql` 这样的文件名解析出 13。
@@ -144,7 +154,7 @@ impl AppDatabase {
         Ok(db)
     }
 
-    fn run_migrations(&self) -> Result<(), String> {
+    pub(crate) fn run_migrations(&self) -> Result<(), String> {
         let mut conn = self.conn.lock().map_err(|e| e.to_string())?;
 
         let current_version: i32 = conn
@@ -265,9 +275,11 @@ mod tests {
         for expected_table in [
             "app_settings",
             "cli_tools",
+            "dev_environments",
             "llm_providers",
             "projects",
             "schema_version",
+            "services",
             "session_categories",
             "session_costs",
             "session_messages",

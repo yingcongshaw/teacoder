@@ -28,6 +28,8 @@ pub fn project_delete(
     db: tauri::State<AppDatabase>,
     id: String,
 ) -> Result<(), String> {
+    // 先停服务：行删了之后用户就再也找不到那个进程了
+    crate::services::runtime::stop_project_services(&id);
     project::delete_project(&db, &id)
 }
 

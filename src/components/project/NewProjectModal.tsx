@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Modal, Input, App } from "antd";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { useAppStore } from "../../stores/appStore";
+import ProjectEnvSelects from "./ProjectEnvSelects";
 
 const PROJECT_COLORS = [
   "#3b82f6", "#722ed1", "#1890ff", "#52c41a",
@@ -22,6 +23,8 @@ export default function NewProjectModal({ open, onClose }: NewProjectModalProps)
   const [name, setName] = useState("");
   const [path, setPath] = useState("");
   const [color, setColor] = useState(PROJECT_COLORS[0]);
+  const [javaEnvId, setJavaEnvId] = useState<string | undefined>(undefined);
+  const [nodeEnvId, setNodeEnvId] = useState<string | undefined>(undefined);
   const [loading, setLoading] = useState(false);
 
   const handleBrowse = async () => {
@@ -46,7 +49,10 @@ export default function NewProjectModal({ open, onClose }: NewProjectModalProps)
     }
     setLoading(true);
     try {
-      const project = await createProject(name.trim(), path.trim(), color);
+      const project = await createProject(name.trim(), path.trim(), color, {
+        javaEnvId,
+        nodeEnvId,
+      });
       // 确保新项目展开
       if (collapsedProjectIds.includes(project.id)) {
         toggleProjectCollapsed(project.id);
@@ -64,6 +70,8 @@ export default function NewProjectModal({ open, onClose }: NewProjectModalProps)
     setName("");
     setPath("");
     setColor(PROJECT_COLORS[0]);
+    setJavaEnvId(undefined);
+    setNodeEnvId(undefined);
     onClose();
   };
 
@@ -122,6 +130,17 @@ export default function NewProjectModal({ open, onClose }: NewProjectModalProps)
               />
             ))}
           </div>
+        </div>
+        <div>
+          <label className="block text-xs text-[var(--ant-color-text-secondary)] mb-1">运行环境</label>
+          <ProjectEnvSelects
+            javaEnvId={javaEnvId}
+            nodeEnvId={nodeEnvId}
+            onChange={(next) => {
+              setJavaEnvId(next.javaEnvId);
+              setNodeEnvId(next.nodeEnvId);
+            }}
+          />
         </div>
       </div>
     </Modal>

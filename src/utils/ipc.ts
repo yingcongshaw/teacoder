@@ -8,6 +8,9 @@ import type {
   PricingConfig,
   ToolSettings,
   Project,
+  DevEnvironment,
+  Service,
+  ServiceRuntimeState,
   Session,
   SessionCategory,
   LlmProvider,
@@ -29,6 +32,7 @@ export async function startSession(params: {
   profileId: string;
   workDir: string;
   tabId: string;
+  projectId?: string;
   envVars?: Record<string, string>;
   cliArgs?: string;
   cliSessionId?: string;
@@ -270,13 +274,20 @@ export async function projectCreate(input: {
   name: string;
   path: string;
   color?: string;
+  javaEnvId?: string;
+  nodeEnvId?: string;
 }): Promise<Project> {
   return invoke<Project>("project_create", { input });
 }
 
 export async function projectUpdate(
   id: string,
-  input: { name?: string; color?: string },
+  input: {
+    name?: string;
+    color?: string;
+    javaEnvId?: string | null;
+    nodeEnvId?: string | null;
+  },
 ): Promise<Project> {
   return invoke<Project>("project_update", { id, input });
 }
@@ -288,6 +299,95 @@ export async function projectDelete(id: string): Promise<void> {
 /** 按给定顺序重写项目排序号（从 0 连续编号） */
 export async function projectReorder(ids: string[]): Promise<void> {
   return invoke("project_reorder", { ids });
+}
+
+// 开发环境 IPC
+export async function devEnvironmentList(kind?: string): Promise<DevEnvironment[]> {
+  return invoke<DevEnvironment[]>("dev_environment_list", { kind });
+}
+
+export async function devEnvironmentCreate(input: {
+  kind: string;
+  name: string;
+  jdkVersion?: string;
+  jdkPath?: string;
+  mavenVersion?: string;
+  mavenPath?: string;
+  nodeVersion?: string;
+  nodePath?: string;
+}): Promise<DevEnvironment> {
+  return invoke<DevEnvironment>("dev_environment_create", { input });
+}
+
+export async function devEnvironmentUpdate(
+  id: string,
+  input: {
+    kind: string;
+    name: string;
+    jdkVersion?: string;
+    jdkPath?: string;
+    mavenVersion?: string;
+    mavenPath?: string;
+    nodeVersion?: string;
+    nodePath?: string;
+  },
+): Promise<DevEnvironment> {
+  return invoke<DevEnvironment>("dev_environment_update", { id, input });
+}
+
+export async function devEnvironmentDelete(id: string): Promise<void> {
+  return invoke("dev_environment_delete", { id });
+}
+
+/** 自动识别系统里已装的 JDK / Maven / Node */
+export async function devEnvironmentDetect(kind: string): Promise<{
+  created: DevEnvironment[];
+  skipped: number;
+}> {
+  return invoke("dev_environment_detect", { kind });
+}
+
+// 服务 IPC
+export async function serviceList(projectId?: string): Promise<Service[]> {
+  return invoke<Service[]>("service_list", { projectId });
+}
+
+export async function serviceCreate(input: {
+  projectId: string;
+  name: string;
+  kind?: string;
+  command: string;
+  workingDir?: string;
+}): Promise<Service> {
+  return invoke<Service>("service_create", { input });
+}
+
+export async function serviceDelete(id: string): Promise<void> {
+  return invoke("service_delete", { id });
+}
+
+/** 识别服务。projectId 不传表示识别所有项目。 */
+export async function serviceDetect(projectId?: string): Promise<{
+  created: Service[];
+  skipped: number;
+}> {
+  return invoke("service_detect", { projectId });
+}
+
+export async function serviceStart(id: string): Promise<void> {
+  return invoke("service_start", { id });
+}
+
+export async function serviceStop(id: string): Promise<void> {
+  return invoke("service_stop", { id });
+}
+
+export async function serviceLogs(id: string, limit?: number): Promise<string[]> {
+  return invoke<string[]>("service_logs", { id, limit });
+}
+
+export async function serviceStates(): Promise<ServiceRuntimeState[]> {
+  return invoke<ServiceRuntimeState[]>("service_states");
 }
 
 // Session IPC

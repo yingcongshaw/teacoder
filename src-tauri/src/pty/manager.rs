@@ -173,6 +173,7 @@ impl PtyManager {
         env_vars: HashMap<String, String>,
         args: Vec<String>,
         cli_args_raw: Option<String>,
+        project_tools: Option<crate::dev_env::ProjectTools>,
     ) -> Result<(), String> {
         let pty_system = native_pty_system();
 
@@ -213,6 +214,8 @@ impl PtyManager {
         cmd.env("TERM", "xterm-256color");
 
         // 通过登录 shell 获取完整 PATH，解决 nvm/fnm 等用户级安装的工具找不到的问题
+        #[allow(unused_mut)] // Windows 上没有登录 shell 这段，mut 用不上
+        let mut login_shell_path: Option<String> = None;
         #[cfg(unix)]
         if matches!(
             tool_type,
@@ -225,8 +228,30 @@ impl PtyManager {
                 if output.status.success() {
                     let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
                     if !path.is_empty() {
+                        login_shell_path = Some(path.clone());
                         cmd.env("PATH", path);
                     }
+                }
+            }
+        }
+
+        // 项目绑定的开发环境（JDK / Maven / Node）。SSH 是远端会话，本地环境变量没有意义。
+        if let Some(tools) = project_tools {
+            if !matches!(tool_type, ToolType::Ssh) {
+                if let Some(home) = &tools.java_home {
+                    cmd.env("JAVA_HOME", home);
+                }
+                if let Some(home) = &tools.maven_home {
+                    cmd.env("M2_HOME", home);
+                    cmd.env("MAVEN_HOME", home);
+                }
+                if !tools.path_prefixes.is_empty() {
+                    let base = login_shell_path
+                        .unwrap_or_else(|| std::env::var("PATH").unwrap_or_default());
+                    cmd.env(
+                        "PATH",
+                        crate::dev_env::prepend_path_prefixes(&tools.path_prefixes, &base),
+                    );
                 }
             }
         }

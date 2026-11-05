@@ -13,6 +13,7 @@ import {
   FolderOpenOutlined,
   RightSquareOutlined,
   CopyOutlined,
+  FormOutlined,
 } from "@ant-design/icons";
 import { useAppStore } from "../../stores/appStore";
 import { TOOL_DISPLAY_NAMES } from "../../types";
@@ -132,6 +133,7 @@ export default function ProjectNode({
   const setEditSessionModalOpen = useAppStore((s) => s.setEditSessionModalOpen);
   const updateCategory = useAppStore((s) => s.updateCategory);
   const deleteCategory = useAppStore((s) => s.deleteCategory);
+  const setEditingProjectId = useAppStore((s) => s.setEditingProjectId);
   const { message } = App.useApp();
 
   const [renaming, setRenaming] = useState(false);
@@ -153,6 +155,10 @@ export default function ProjectNode({
   const handleRename = () => {
     setRenameValue(project.name);
     setRenaming(true);
+  };
+
+  const handleEditProject = () => {
+    setEditingProjectId(project.id);
   };
 
   const confirmRename = () => {
@@ -401,6 +407,12 @@ export default function ProjectNode({
       label: "重命名",
       icon: <EditOutlined />,
       onClick: handleRename,
+    },
+    {
+      key: "editProject",
+      label: "编辑项目",
+      icon: <FormOutlined />,
+      onClick: handleEditProject,
     },
     {
       key: "openInFileManager",

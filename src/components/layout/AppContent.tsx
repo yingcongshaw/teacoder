@@ -8,11 +8,13 @@ import {
   ClockCircleOutlined,
   CloseOutlined,
   ThunderboltOutlined,
+  CloudServerOutlined,
 } from "@ant-design/icons";
 import { useAppStore } from "../../stores/appStore";
 import type { TerminalViewHandle } from "../terminal/TerminalView";
 import SettingsPage from "./SettingsPage";
 import QuickCommands from "../quick-commands/QuickCommands";
+import ServicesPanel from "../services/ServicesPanel";
 import PaneView from "../panes/PaneView";
 import PaneSplitter from "../panes/PaneSplitter";
 import SidebarToggle from "./SidebarToggle";
@@ -54,6 +56,8 @@ export default function AppContent() {
   const [hoveredCardId, setHoveredCardId] = useState<string | null>(null);
   const [quickCommandsVisible, setQuickCommandsVisible] = useState(false);
   const quickCommandsBtnRef = useRef<HTMLSpanElement>(null);
+  const [servicesVisible, setServicesVisible] = useState(false);
+  const servicesBtnRef = useRef<HTMLSpanElement>(null);
   const terminalRefs = useRef<Map<string, TerminalViewHandle>>(new Map());
   const panesContainerRef = useRef<HTMLDivElement | null>(null);
 
@@ -395,6 +399,23 @@ export default function AppContent() {
           >
             <div className="flex items-center gap-2">
               <span
+                ref={servicesBtnRef}
+                className="flex items-center gap-1 text-xs cursor-pointer px-2 py-1 rounded transition-colors"
+                style={{ color: "var(--ant-color-text-secondary)" }}
+                onClick={() => setServicesVisible((v) => !v)}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.color = "var(--ant-color-text)";
+                  e.currentTarget.style.backgroundColor = "var(--ant-color-bg-elevated)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.color = "var(--ant-color-text-secondary)";
+                  e.currentTarget.style.backgroundColor = "transparent";
+                }}
+              >
+                <CloudServerOutlined style={{ fontSize: 12 }} />
+                <span>服务</span>
+              </span>
+              <span
                 ref={quickCommandsBtnRef}
                 className="flex items-center gap-1 text-xs cursor-pointer px-2 py-1 rounded transition-colors"
                 style={{ color: "var(--ant-color-text-secondary)" }}
@@ -413,6 +434,11 @@ export default function AppContent() {
               </span>
             </div>
           </div>
+          <ServicesPanel
+            visible={servicesVisible}
+            onClose={() => setServicesVisible(false)}
+            anchorRef={servicesBtnRef}
+          />
           <QuickCommands
             visible={quickCommandsVisible}
             onClose={() => setQuickCommandsVisible(false)}
