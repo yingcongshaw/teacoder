@@ -6,7 +6,7 @@ import { CLAUDE_TIER_ENTRIES } from "../../utils/claudeModels";
 import { BUILTIN_SESSION_TEMPLATES, TOOL_PROVIDER_KIND_MAP } from "../../types";
 import type { ToolType, CliTool, LlmProvider, SshArgs } from "../../types";
 import { EMPTY_SSH_ARGS, serializeSshArgs } from "../../utils/sshArgs";
-import { SESSION_COLORS } from "../../utils/sessionColors";
+import { COLOR_PALETTE } from "../../utils/colorPalette";
 import { CLI_TOOLS, sortCliToolsByAvailability, isCliToolAvailable, type CliToolMeta } from "../cli/cliTools";
 import CliArgsClaude from "../cli/CliArgsClaude";
 import SshArgsFields from "../cli/SshArgsFields";
@@ -62,7 +62,7 @@ export default function NewSessionModal({ open: isOpen, projectId, categoryId, o
   const loadLlmProviders = useAppStore((s) => s.loadLlmProviders);
 
   const [selectedTool, setSelectedTool] = useState<ToolType | null>(null);
-  const [selectedColor, setSelectedColor] = useState<string>(SESSION_COLORS[0]);
+  const [selectedColor, setSelectedColor] = useState<string>(COLOR_PALETTE[0]);
   const [title, setTitle] = useState("");
   const [profileId, setProfileId] = useState<string | undefined>();
   const [thinkingIntensity, setThinkingIntensity] = useState(globalThinkingIntensity);
@@ -153,7 +153,7 @@ export default function NewSessionModal({ open: isOpen, projectId, categoryId, o
   useEffect(() => {
     if (isOpen) {
       setSelectedTool(null);
-      setSelectedColor(project?.color || SESSION_COLORS[0]);
+      setSelectedColor(project?.color || COLOR_PALETTE[0]);
       setTitle("");
       setProfileId(undefined);
       setThinkingIntensity(globalThinkingIntensity);
@@ -580,7 +580,7 @@ export default function NewSessionModal({ open: isOpen, projectId, categoryId, o
             <div style={{ marginBottom: 12 }}>
               <label style={{ display: "block", fontSize: 12, color: "#aaaaaa", marginBottom: 4 }}>颜色标记</label>
               <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                {SESSION_COLORS.map((color) => (
+                {COLOR_PALETTE.map((color) => (
                   <div
                     key={color}
                     style={{

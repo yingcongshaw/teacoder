@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Modal, Input, App } from "antd";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { useAppStore } from "../../stores/appStore";
-import { PROJECT_COLORS, randomProjectColor } from "../../utils/projectColors";
+import { COLOR_PALETTE, randomProjectColor } from "../../utils/colorPalette";
 import ProjectEnvSelects from "./ProjectEnvSelects";
 
 interface NewProjectModalProps {
@@ -119,7 +119,7 @@ export default function NewProjectModal({ open, onClose }: NewProjectModalProps)
         <div>
           <label className="block text-xs text-[var(--ant-color-text-secondary)] mb-1">颜色标记</label>
           <div className="flex gap-2">
-            {PROJECT_COLORS.map((c) => (
+            {COLOR_PALETTE.map((c) => (
               <span
                 key={c}
                 className="inline-block w-5 h-5 rounded-full cursor-pointer border-2 transition-transform"

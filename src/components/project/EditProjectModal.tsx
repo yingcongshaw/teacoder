@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Modal, Input, App } from "antd";
 import { useAppStore } from "../../stores/appStore";
-import { PROJECT_COLORS } from "../../utils/projectColors";
+import { COLOR_PALETTE } from "../../utils/colorPalette";
 import ProjectEnvSelects from "./ProjectEnvSelects";
 
 /**
@@ -17,14 +17,14 @@ export default function EditProjectModal() {
   const updateProject = useAppStore((s) => s.updateProject);
 
   const [name, setName] = useState("");
-  const [color, setColor] = useState(PROJECT_COLORS[0]);
+  const [color, setColor] = useState(COLOR_PALETTE[0]);
   const [devEnvIds, setDevEnvIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (!project) return;
     setName(project.name);
-    setColor(project.color || PROJECT_COLORS[0]);
+    setColor(project.color || COLOR_PALETTE[0]);
     setDevEnvIds(project.devEnvIds ?? []);
   }, [project]);
 
@@ -84,7 +84,7 @@ export default function EditProjectModal() {
         <div>
           <label className="block text-xs text-[var(--ant-color-text-secondary)] mb-1">颜色标记</label>
           <div className="flex gap-2">
-            {PROJECT_COLORS.map((c) => (
+            {COLOR_PALETTE.map((c) => (
               <span
                 key={c}
                 className="inline-block w-5 h-5 rounded-full cursor-pointer border-2 transition-transform"
