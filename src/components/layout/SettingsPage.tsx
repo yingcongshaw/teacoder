@@ -134,13 +134,8 @@ export default function SettingsPage() {
   const setActiveKey = useAppStore((s) => s.setSettingsActiveKey);
   const focusSection = useAppStore((s) => s.settingsFocusSection);
   const setFocusSection = useAppStore((s) => s.setSettingsFocusSection);
-  const [openKeys, setOpenKeys] = useState<string[]>(["cli-tools-group", "dev-env-group"]);
+  const [openKeys, setOpenKeys] = useState<string[]>([]);
   const [searchText, setSearchText] = useState("");
-
-  // 当设置面板打开时，自动展开 CLI 工具组与开发环境组
-  useEffect(() => {
-    setOpenKeys(["cli-tools-group", "dev-env-group"]);
-  }, []);
 
   // 外部（如快捷命令气泡的设置按钮）指定区块时，滚动定位过去
   useEffect(() => {
