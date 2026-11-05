@@ -115,6 +115,10 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|window, event| {
+            if let WindowEvent::Resized(_) = event {
+                // 最大化状态变了，托盘菜单里的「最大化/还原」文字跟着换
+                tray::sync_window_labels(window.app_handle());
+            }
             if let WindowEvent::CloseRequested { api, .. } = event {
                 // 读取关闭行为设置
                 let behavior = CLOSE_BEHAVIOR.lock().unwrap().clone();
