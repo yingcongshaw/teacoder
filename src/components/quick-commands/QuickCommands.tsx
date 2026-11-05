@@ -1,6 +1,9 @@
 import React, { useEffect, useRef } from "react";
+import { Button, Tooltip } from "antd";
+import { SettingOutlined } from "@ant-design/icons";
 import { useAppStore } from "../../stores/appStore";
 import { writeToPty } from "../../utils/ipc";
+import { cliToolMenuKey } from "../cli/cliTools";
 
 const DEFAULT_COMMANDS: Record<string, string> = {
   claude: "继续\n任务完成了吗？没完成的话继续\n使用Playwright来测试和验证\n代码审查\nBug修复",
@@ -24,6 +27,9 @@ export default function QuickCommands({ visible, onClose, anchorRef }: QuickComm
   const activeTabId = useAppStore((s) => s.activeTabId);
   const sessions = useAppStore((s) => s.sessions);
   const quickCommandsByToolType = useAppStore((s) => s.quickCommandsByToolType);
+  const setSettingsPage = useAppStore((s) => s.setSettingsPage);
+  const setSettingsActiveKey = useAppStore((s) => s.setSettingsActiveKey);
+  const setSettingsFocusSection = useAppStore((s) => s.setSettingsFocusSection);
   const panelRef = useRef<HTMLDivElement>(null);
 
   const activeTab = sessions.find((s) => s.id === activeTabId);
@@ -73,12 +79,31 @@ export default function QuickCommands({ visible, onClose, anchorRef }: QuickComm
     onClose();
   };
 
+  /** 跳到设置里当前工具的「快捷命令」区块。 */
+  const handleOpenSettings = () => {
+    onClose();
+    setSettingsActiveKey(cliToolMenuKey(toolType));
+    setSettingsFocusSection("quick-commands");
+    setSettingsPage(true);
+  };
+
   return (
     <div
       ref={panelRef}
       className="absolute bottom-full mb-1 right-0 z-50 bg-[var(--ant-color-bg-elevated)] border border-[var(--ant-color-border)] rounded-lg shadow-lg min-w-[200px] py-1"
       style={{ boxShadow: "0 6px 16px 0 rgba(0, 0, 0, 0.16)" }}
     >
+      <div className="flex items-center justify-end px-2 pt-1 pb-0.5">
+        <Tooltip title="快捷命令设置">
+          <Button
+            size="small"
+            icon={<SettingOutlined />}
+            onClick={handleOpenSettings}
+            aria-label="快捷命令设置"
+            style={{ fontSize: 12 }}
+          />
+        </Tooltip>
+      </div>
       {commands.map((cmd, idx) => {
         if (cmd === "---") {
           return (

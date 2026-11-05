@@ -23,7 +23,7 @@ export default function QuickCommandsEditor({ toolType, description }: QuickComm
   const placeholder = DEFAULT_COMMANDS[toolType] ?? "每行一个快捷命令\n---\n--- 表示分隔线";
 
   return (
-    <div>
+    <div id="settings-section-quick-commands">
       <SectionHeader title="快捷命令" />
       <div style={{ padding: "8px 0", borderBottom: "1px solid var(--ant-color-border-secondary)" }}>
         <div style={{ fontSize: 13, fontWeight: 500, color: "var(--ant-color-text)", marginBottom: 4 }}>

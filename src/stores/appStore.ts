@@ -514,6 +514,10 @@ interface AppState {
   settingsActiveKey: string;
   setSettingsActiveKey: (key: string) => void;
 
+  // 设置面板需要滚动定位到的区块，null 表示不定位
+  settingsFocusSection: string | null;
+  setSettingsFocusSection: (section: string | null) => void;
+
   costTick: number;
   setCostTick: (tick: number) => void;
 
@@ -1769,6 +1773,9 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   settingsActiveKey: "general",
   setSettingsActiveKey: (key) => set({ settingsActiveKey: key }),
+
+  settingsFocusSection: null,
+  setSettingsFocusSection: (section) => set({ settingsFocusSection: section }),
 
   costTick: 0,
   setCostTick: (tick) => set({ costTick: tick }),

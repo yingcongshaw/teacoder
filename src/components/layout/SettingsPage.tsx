@@ -22,9 +22,13 @@ import {
   ThunderboltOutlined,
   BranchesOutlined,
 } from "@ant-design/icons";
-import { CLI_TOOLS_IN_SETTINGS_GROUP, getCliToolIcon } from "../cli/cliTools";
+import {
+  CLI_TOOLS_IN_SETTINGS_GROUP,
+  cliToolMenuKey,
+  getCliToolIcon,
+} from "../cli/cliTools";
 import { useAppStore } from "../../stores/appStore";
-import type { ToolType, DevEnvKind } from "../../types";
+import type { DevEnvKind } from "../../types";
 import GeneralSettingsPage from "../settings/GeneralSettingsPage";
 import TerminalSettingsPage from "../settings/TerminalSettingsPage";
 import CliShellSettingsPage from "../settings/CliShellSettingsPage";
@@ -51,16 +55,6 @@ const SIDEBAR_WIDTH = 180;
 
 function CliToolIcon({ toolKey }: { toolKey: string }) {
   return getCliToolIcon(toolKey as Parameters<typeof getCliToolIcon>[0]);
-}
-
-// shell 类工具在「CLI 工具」分组下另有页面，与一级菜单的「终端设置」需用不同 key
-const CLI_TOOL_MENU_KEYS: Partial<Record<ToolType, string>> = {
-  terminal: "cli-terminal",
-  ssh: "cli-ssh",
-};
-
-function cliToolMenuKey(id: ToolType): string {
-  return CLI_TOOL_MENU_KEYS[id] ?? id;
 }
 
 /** 各语言环境在菜单里的图标。 */
@@ -138,6 +132,8 @@ const PAGE_TITLES: Record<string, string> = {
 export default function SettingsPage() {
   const activeKey = useAppStore((s) => s.settingsActiveKey);
   const setActiveKey = useAppStore((s) => s.setSettingsActiveKey);
+  const focusSection = useAppStore((s) => s.settingsFocusSection);
+  const setFocusSection = useAppStore((s) => s.setSettingsFocusSection);
   const [openKeys, setOpenKeys] = useState<string[]>(["cli-tools-group", "dev-env-group"]);
   const [searchText, setSearchText] = useState("");
 
@@ -145,6 +141,15 @@ export default function SettingsPage() {
   useEffect(() => {
     setOpenKeys(["cli-tools-group", "dev-env-group"]);
   }, []);
+
+  // 外部（如快捷命令气泡的设置按钮）指定区块时，滚动定位过去
+  useEffect(() => {
+    if (!focusSection) return;
+    const el = document.getElementById(`settings-section-${focusSection}`);
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    setFocusSection(null);
+  }, [focusSection, activeKey, setFocusSection]);
 
   const renderContent = () => {
     const props = { searchText };

@@ -26,6 +26,17 @@ export const CLI_TOOLS: CliToolMeta[] = [
 export const CLI_TOOLS_IN_SETTINGS_GROUP: CliToolMeta[] =
   CLI_TOOLS.filter((t) => t.inSettingsGroup === true);
 
+// shell 类工具在「CLI 工具」分组下另有页面，与一级菜单的「终端设置」需用不同 key
+const CLI_TOOL_MENU_KEYS: Partial<Record<ToolType, string>> = {
+  terminal: "cli-terminal",
+  ssh: "cli-ssh",
+};
+
+/** 工具类型对应的设置菜单 key。 */
+export function cliToolMenuKey(id: ToolType): string {
+  return CLI_TOOL_MENU_KEYS[id] ?? id;
+}
+
 export function getCliToolMeta(id: ToolType): CliToolMeta | undefined {
   return CLI_TOOLS.find((t) => t.id === id);
 }
