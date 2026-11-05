@@ -9,6 +9,7 @@ import type {
   ToolSettings,
   Project,
   DevEnvironment,
+  DevTool,
   Service,
   ServiceRuntimeState,
   Session,
@@ -274,8 +275,7 @@ export async function projectCreate(input: {
   name: string;
   path: string;
   color?: string;
-  javaEnvId?: string;
-  nodeEnvId?: string;
+  devEnvIds?: string[];
 }): Promise<Project> {
   return invoke<Project>("project_create", { input });
 }
@@ -285,8 +285,7 @@ export async function projectUpdate(
   input: {
     name?: string;
     color?: string;
-    javaEnvId?: string | null;
-    nodeEnvId?: string | null;
+    devEnvIds?: string[];
   },
 ): Promise<Project> {
   return invoke<Project>("project_update", { id, input });
@@ -309,12 +308,7 @@ export async function devEnvironmentList(kind?: string): Promise<DevEnvironment[
 export async function devEnvironmentCreate(input: {
   kind: string;
   name: string;
-  jdkVersion?: string;
-  jdkPath?: string;
-  mavenVersion?: string;
-  mavenPath?: string;
-  nodeVersion?: string;
-  nodePath?: string;
+  tools: DevTool[];
 }): Promise<DevEnvironment> {
   return invoke<DevEnvironment>("dev_environment_create", { input });
 }
@@ -324,12 +318,7 @@ export async function devEnvironmentUpdate(
   input: {
     kind: string;
     name: string;
-    jdkVersion?: string;
-    jdkPath?: string;
-    mavenVersion?: string;
-    mavenPath?: string;
-    nodeVersion?: string;
-    nodePath?: string;
+    tools: DevTool[];
   },
 ): Promise<DevEnvironment> {
   return invoke<DevEnvironment>("dev_environment_update", { id, input });
@@ -339,7 +328,7 @@ export async function devEnvironmentDelete(id: string): Promise<void> {
   return invoke("dev_environment_delete", { id });
 }
 
-/** 自动识别系统里已装的 JDK / Maven / Node */
+/** 自动识别系统里已装的工具链（JDK / Maven / Node / .NET / Python / Rust / Go / C++） */
 export async function devEnvironmentDetect(kind: string): Promise<{
   created: DevEnvironment[];
   skipped: number;
@@ -358,6 +347,7 @@ export async function serviceCreate(input: {
   kind?: string;
   command: string;
   workingDir?: string;
+  buildCommand?: string;
 }): Promise<Service> {
   return invoke<Service>("service_create", { input });
 }

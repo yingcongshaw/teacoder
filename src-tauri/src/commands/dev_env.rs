@@ -8,7 +8,7 @@ pub fn dev_environment_list(
     db: tauri::State<AppDatabase>,
     kind: Option<String>,
 ) -> Result<Vec<dev_env::DevEnvironment>, String> {
-    dev_env::list_dev_environments(&db, kind)
+    dev_env::list_dev_environments(&db, kind.as_deref())
 }
 
 #[tauri::command]

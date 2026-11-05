@@ -102,6 +102,16 @@ const EMBEDDED_MIGRATIONS: &[(i32, &str, &str)] = &[
         "v18_services.sql",
         include_str!("../../migrations/v18_services.sql"),
     ),
+    (
+        19,
+        "v19_dev_env_tools.sql",
+        include_str!("../../migrations/v19_dev_env_tools.sql"),
+    ),
+    (
+        20,
+        "v20_clear_legacy_env_columns.sql",
+        include_str!("../../migrations/v20_clear_legacy_env_columns.sql"),
+    ),
 ];
 
 /// 从 `v13_claude_models.sql` 这样的文件名解析出 13。
@@ -276,7 +286,9 @@ mod tests {
             "app_settings",
             "cli_tools",
             "dev_environments",
+            "dev_env_tools",
             "llm_providers",
+            "project_dev_envs",
             "projects",
             "schema_version",
             "services",
@@ -292,5 +304,105 @@ mod tests {
                 "缺表 {expected_table}，实际有：{tables:?}"
             );
         }
+    }
+
+    /// 升级路径：v18 库里的开发环境要原样搬进 v19 的新结构，不能丢用户的配置。
+    #[test]
+    fn migration_v19_carries_existing_dev_environments_over() {
+        let conn = Connection::open_in_memory().unwrap();
+
+        for (version, name, sql) in EMBEDDED_MIGRATIONS.iter().filter(|(v, _, _)| *v < 19) {
+            conn.execute_batch(sql)
+                .unwrap_or_else(|e| panic!("迁移 v{version} {name} 执行失败: {e}"));
+        }
+
+        conn.execute(
+            "INSERT INTO dev_environments (id, kind, name, jdk_version, jdk_path, maven_version, maven_path, node_version, node_path, created_at, updated_at) VALUES ('e1', 'java', 'JDK 21 + Maven', '21.0.2', '/usr/lib/jvm/java-21', '3.9.6', '/opt/maven', NULL, NULL, 1, 1)",
+            [],
+        )
+        .expect("插入旧结构的环境");
+        conn.execute(
+            "INSERT INTO dev_environments (id, kind, name, jdk_version, jdk_path, maven_version, maven_path, node_version, node_path, created_at, updated_at) VALUES ('e2', 'node', 'Node 22', NULL, NULL, NULL, NULL, '22.13.1', '/usr/bin/node', 1, 1)",
+            [],
+        )
+        .expect("插入旧结构的环境");
+        conn.execute(
+            "INSERT INTO projects (id, name, path, created_at, updated_at, sort_order) VALUES ('p1', 'demo', '/tmp/demo', 1, 1, 0)",
+            [],
+        )
+        .expect("插入项目");
+        conn.execute(
+            "UPDATE projects SET java_env_id = 'e1', node_env_id = 'e2' WHERE id = 'p1'",
+            [],
+        )
+        .expect("绑定环境");
+
+        let v19 = EMBEDDED_MIGRATIONS
+            .iter()
+            .find(|(v, _, _)| *v == 19)
+            .expect("清单里应有 v19");
+        conn.execute_batch(v19.2)
+            .expect("v19 迁移失败");
+
+        // 环境本体搬过来了
+        let envs: Vec<(String, String)> = conn
+            .prepare("SELECT id, kind FROM dev_environments ORDER BY id")
+            .unwrap()
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+            .unwrap()
+            .map(|r| r.unwrap())
+            .collect();
+        assert_eq!(
+            envs,
+            vec![
+                ("e1".to_string(), "java".to_string()),
+                ("e2".to_string(), "node".to_string())
+            ]
+        );
+
+        // 工具拆成了独立行
+        let tools: Vec<(String, String, String)> = conn
+            .prepare(
+                "SELECT env_id, tool, path FROM dev_env_tools ORDER BY env_id, tool",
+            )
+            .unwrap()
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
+            .unwrap()
+            .map(|r| r.unwrap())
+            .collect();
+        assert_eq!(
+            tools,
+            vec![
+                ("e1".to_string(), "jdk".to_string(), "/usr/lib/jvm/java-21".to_string()),
+                ("e1".to_string(), "maven".to_string(), "/opt/maven".to_string()),
+                ("e2".to_string(), "node".to_string(), "/usr/bin/node".to_string()),
+            ]
+        );
+
+        // 项目绑定也搬过来了
+        let bindings: Vec<(String, String)> = conn
+            .prepare("SELECT project_id, env_id FROM project_dev_envs ORDER BY env_id")
+            .unwrap()
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+            .unwrap()
+            .map(|r| r.unwrap())
+            .collect();
+        assert_eq!(
+            bindings,
+            vec![
+                ("p1".to_string(), "e1".to_string()),
+                ("p1".to_string(), "e2".to_string())
+            ]
+        );
+
+        // 旧列被清空，避免读到过期的绑定
+        let legacy: Vec<(Option<String>, Option<String>)> = conn
+            .prepare("SELECT java_env_id, node_env_id FROM projects WHERE id = 'p1'")
+            .unwrap()
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+            .unwrap()
+            .map(|r| r.unwrap())
+            .collect();
+        assert_eq!(legacy, vec![(None, None)]);
     }
 }

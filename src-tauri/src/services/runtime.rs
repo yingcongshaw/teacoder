@@ -7,6 +7,7 @@ use once_cell::sync::Lazy;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 
+use crate::dev_env::DevEnvironment;
 use crate::storage::AppDatabase;
 
 /// 日志环形缓冲：最多 200 行，且总字节不超过 64KB。
@@ -120,6 +121,45 @@ fn resolve_executable(program: &str, search_path: &std::ffi::OsStr) -> String {
         .unwrap_or_else(|| program.to_string())
 }
 
+/// 命令里的程序名与项目环境里的工具对不上时，按环境里的那个来。
+///
+/// 命令存的是裸程序名（python / node / cargo），绑定的环境才是项目要用的版本。
+/// 但环境里的可执行文件可能叫别的名字（比如解释器叫 python3），
+/// 照命令里的名字去找会找不到人。
+fn align_program_with_env(program: &str, kind: &str, envs: &[DevEnvironment]) -> String {
+    let Some(tool) = tool_for_program(kind, program) else {
+        return program.to_string();
+    };
+    for env in envs.iter().filter(|e| e.kind == kind) {
+        if let Some(exe) = env.tool_exe_name(tool) {
+            if exe != program {
+                return exe;
+            }
+        }
+    }
+    program.to_string()
+}
+
+/// 命令里的程序名对应环境里的哪件工具。
+fn tool_for_program(kind: &str, program: &str) -> Option<&'static str> {
+    use crate::dev_env::{
+        TOOL_CARGO, TOOL_CC, TOOL_CMAKE, TOOL_DOTNET, TOOL_GO, TOOL_JDK, TOOL_MAVEN, TOOL_NODE,
+        TOOL_PYTHON,
+    };
+    match (kind, program) {
+        (crate::services::KIND_PYTHON, "python" | "python3") => Some(TOOL_PYTHON),
+        (crate::services::KIND_NODE, "node") => Some(TOOL_NODE),
+        (crate::services::KIND_RUST, "cargo") => Some(TOOL_CARGO),
+        (crate::services::KIND_GO, "go") => Some(TOOL_GO),
+        (crate::services::KIND_DOTNET, "dotnet") => Some(TOOL_DOTNET),
+        (crate::services::KIND_JAVA, "mvn") => Some(TOOL_MAVEN),
+        (crate::services::KIND_JAVA, "java") => Some(TOOL_JDK),
+        (crate::services::KIND_CPP, "cmake") => Some(TOOL_CMAKE),
+        (crate::services::KIND_CPP, "gcc" | "g++" | "clang" | "cc") => Some(TOOL_CC),
+        _ => None,
+    }
+}
+
 /// 组装实际要执行的命令。
 ///
 /// Windows 上 npm / mvn 是 .cmd 脚本，不能直接 exec，要经 cmd.exe 跑。
@@ -166,6 +206,57 @@ fn spawn_log_reader<R: Read + Send + 'static>(
     });
 }
 
+/// 先跑构建命令，成功了再启动服务进程。
+///
+/// 构建输出并进服务的日志缓冲 —— 编译报错要能在服务面板里直接看到。
+fn run_build_command(
+    app: &AppHandle,
+    service_id: &str,
+    build_command: &str,
+    working_dir: &str,
+    env_overrides: &[(String, String)],
+    search_path: &std::ffi::OsStr,
+) -> Result<(), String> {
+    let (program, args) = split_command(build_command);
+    if program.is_empty() {
+        return Ok(());
+    }
+    let (program, args) = prepare_command(&program, &args, search_path);
+
+    let mut command = Command::new(&program);
+    command
+        .args(&args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+
+    if !working_dir.trim().is_empty() {
+        command.current_dir(working_dir);
+    }
+    for (key, value) in env_overrides {
+        command.env(key, value);
+    }
+
+    let mut child = command
+        .spawn()
+        .map_err(|e| format!("构建失败：无法启动 {program}（{e}）"))?;
+
+    if let Some(stdout) = child.stdout.take() {
+        spawn_log_reader(stdout, app.clone(), service_id.to_string());
+    }
+    if let Some(stderr) = child.stderr.take() {
+        spawn_log_reader(stderr, app.clone(), service_id.to_string());
+    }
+
+    let status = child.wait().map_err(|e| format!("构建失败：{e}"))?;
+    if !status.success() {
+        let code = status.code().unwrap_or(-1);
+        return Err(format!("构建失败（退出码 {code}）"));
+    }
+
+    Ok(())
+}
+
 /// 启动一个服务进程。
 pub fn start_service(
     app: &AppHandle,
@@ -178,24 +269,17 @@ pub fn start_service(
 
     let service = crate::services::get_service(db, service_id)?;
 
-    let (project_path, java_env_id, node_env_id) = {
+    let project_path = {
         let conn = db.conn.lock().map_err(|e| e.to_string())?;
         let mut stmt = conn
-            .prepare("SELECT path, java_env_id, node_env_id FROM projects WHERE id = ?1")
+            .prepare("SELECT path FROM projects WHERE id = ?1")
             .map_err(|e| format!("Failed to prepare query: {}", e))?;
-        stmt.query_row([&service.project_id], |row| {
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, Option<String>>(1)?,
-                row.get::<_, Option<String>>(2)?,
-            ))
-        })
-        .map_err(|e| format!("Failed to query project env: {}", e))?
+        stmt.query_row([&service.project_id], |row| row.get::<_, String>(0))
+            .map_err(|e| format!("Failed to query project path: {}", e))?
     };
 
-    let (java_env, node_env) =
-        crate::dev_env::load_project_envs(db, java_env_id.as_deref(), node_env_id.as_deref())?;
-    let env_overrides = crate::dev_env::build_project_env(java_env.as_ref(), node_env.as_ref());
+    let envs = crate::dev_env::list_project_envs(db, &service.project_id)?;
+    let env_overrides = crate::dev_env::build_project_env(&envs);
 
     // 用项目环境的 PATH 解析命令，否则可能跑到系统里另一个版本的 mvn/npm
     let search_path: std::ffi::OsString = env_overrides
@@ -204,10 +288,34 @@ pub fn start_service(
         .map(|(_, v)| std::ffi::OsString::from(v))
         .unwrap_or_else(|| std::env::var_os("PATH").unwrap_or_default());
 
+    // 没填工作目录就用项目路径
+    let working_dir = if service.working_dir.trim().is_empty() {
+        project_path
+    } else {
+        service.working_dir.clone()
+    };
+
+    // C/C++ 这类要先构建出可执行文件，构建失败就别启动服务了
+    if let Some(build_command) = service
+        .build_command
+        .as_ref()
+        .filter(|c| !c.trim().is_empty())
+    {
+        run_build_command(
+            app,
+            service_id,
+            build_command,
+            &working_dir,
+            &env_overrides,
+            &search_path,
+        )?;
+    }
+
     let (program, args) = split_command(&service.command);
     if program.is_empty() {
         return Err("启动命令为空".to_string());
     }
+    let program = align_program_with_env(&program, &service.kind, &envs);
     let (program, args) = prepare_command(&program, &args, &search_path);
 
     let mut command = Command::new(&program);
@@ -217,12 +325,6 @@ pub fn start_service(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
 
-    // 没填工作目录就用项目路径
-    let working_dir = if service.working_dir.trim().is_empty() {
-        project_path
-    } else {
-        service.working_dir.clone()
-    };
     if !working_dir.trim().is_empty() {
         command.current_dir(&working_dir);
     }
@@ -360,5 +462,51 @@ pub fn stop_all_services() {
     };
     for id in ids {
         let _ = stop_service(&id);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::dev_env::{DevTool, TOOL_PYTHON};
+
+    fn python_env(path: &str) -> DevEnvironment {
+        DevEnvironment {
+            id: "py".to_string(),
+            kind: crate::dev_env::KIND_PYTHON.to_string(),
+            name: "Python".to_string(),
+            tools: vec![DevTool {
+                tool: TOOL_PYTHON.to_string(),
+                version: Some("3.12.3".to_string()),
+                path: Some(path.to_string()),
+            }],
+            created_at: 0,
+            updated_at: 0,
+        }
+    }
+
+    /// 环境里的解释器叫 python3 时，命令里的 python 要跟着改，
+    /// 否则按名字去找会找不到人。
+    #[test]
+    fn program_name_follows_the_bound_environment() {
+        let envs = vec![python_env("/opt/python/bin/python3")];
+        assert_eq!(
+            align_program_with_env("python", crate::dev_env::KIND_PYTHON, &envs),
+            "python3"
+        );
+        assert_eq!(
+            align_program_with_env("python3", crate::dev_env::KIND_PYTHON, &envs),
+            "python3"
+        );
+    }
+
+    /// 没有绑定环境、或程序名与语言无关时保持原样。
+    #[test]
+    fn program_name_untouched_without_environment() {
+        assert_eq!(align_program_with_env("python", crate::dev_env::KIND_PYTHON, &[]), "python");
+        assert_eq!(
+            align_program_with_env("npm", crate::dev_env::KIND_NODE, &[]),
+            "npm"
+        );
     }
 }

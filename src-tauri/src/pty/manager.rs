@@ -235,7 +235,8 @@ impl PtyManager {
             }
         }
 
-        // 项目绑定的开发环境（JDK / Maven / Node）。SSH 是远端会话，本地环境变量没有意义。
+        // 项目绑定的开发环境（JDK / Maven / Node / .NET / Rust / Go）。
+        // SSH 是远端会话，本地环境变量没有意义。
         if let Some(tools) = project_tools {
             if !matches!(tool_type, ToolType::Ssh) {
                 if let Some(home) = &tools.java_home {
@@ -244,6 +245,15 @@ impl PtyManager {
                 if let Some(home) = &tools.maven_home {
                     cmd.env("M2_HOME", home);
                     cmd.env("MAVEN_HOME", home);
+                }
+                if let Some(root) = &tools.dotnet_root {
+                    cmd.env("DOTNET_ROOT", root);
+                }
+                if let Some(root) = &tools.goroot {
+                    cmd.env("GOROOT", root);
+                }
+                if let Some(home) = &tools.cargo_home {
+                    cmd.env("CARGO_HOME", home);
                 }
                 if !tools.path_prefixes.is_empty() {
                     let base = login_shell_path

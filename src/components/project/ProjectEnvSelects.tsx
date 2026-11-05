@@ -1,21 +1,22 @@
 import { Select } from "antd";
 import { useEffect } from "react";
 import { useAppStore } from "../../stores/appStore";
+import { DEV_KIND_CONFIGS } from "../../utils/devEnvKinds";
 
 interface ProjectEnvSelectsProps {
-  javaEnvId?: string;
-  nodeEnvId?: string;
-  onChange: (next: { javaEnvId?: string; nodeEnvId?: string }) => void;
+  /** 项目绑定的开发环境 id 列表 */
+  devEnvIds?: string[];
+  onChange: (next: { devEnvIds: string[] }) => void;
 }
 
 /**
  * 项目的「运行环境」选择器。
  *
- * 选项来自「设置 - 开发环境」。清空表示不绑定 —— 会话与服务都走系统默认环境。
+ * 选项来自「设置 - 开发环境」，按语言分组。一个项目可以同时绑多套环境
+ * （比如 Java + Python），全部不绑就走系统默认环境。
  */
 export default function ProjectEnvSelects({
-  javaEnvId,
-  nodeEnvId,
+  devEnvIds,
   onChange,
 }: ProjectEnvSelectsProps) {
   const devEnvironments = useAppStore((s) => s.devEnvironments);
@@ -27,45 +28,29 @@ export default function ProjectEnvSelects({
     }
   }, [devEnvironments.length]);
 
-  const javaOptions = devEnvironments.filter((e) => e.kind === "java");
-  const nodeOptions = devEnvironments.filter((e) => e.kind === "node");
+  const options = DEV_KIND_CONFIGS.map((config) => ({
+    label: config.title,
+    options: devEnvironments
+      .filter((e) => e.kind === config.kind)
+      .map((e) => ({ value: e.id, label: e.name })),
+  })).filter((group) => group.options.length > 0);
 
   return (
-    <div className="space-y-3">
-      <div>
-        <label className="block text-xs text-[var(--ant-color-text-secondary)] mb-1">
-          Java 环境（JDK / Maven）
-        </label>
-        <Select
-          allowClear
-          className="w-full"
-          placeholder="不绑定，使用系统默认"
-          value={javaEnvId || undefined}
-          onChange={(value) => onChange({ javaEnvId: value, nodeEnvId })}
-          options={javaOptions.map((e) => ({
-            value: e.id,
-            label: e.name,
-          }))}
-          notFoundContent="还没有 Java 环境，去「设置 - 开发环境」添加"
-        />
-      </div>
-      <div>
-        <label className="block text-xs text-[var(--ant-color-text-secondary)] mb-1">
-          Node 环境
-        </label>
-        <Select
-          allowClear
-          className="w-full"
-          placeholder="不绑定，使用系统默认"
-          value={nodeEnvId || undefined}
-          onChange={(value) => onChange({ javaEnvId, nodeEnvId: value })}
-          options={nodeOptions.map((e) => ({
-            value: e.id,
-            label: e.name,
-          }))}
-          notFoundContent="还没有 Node 环境，去「设置 - 开发环境」添加"
-        />
-      </div>
+    <div>
+      <label className="block text-xs text-[var(--ant-color-text-secondary)] mb-1">
+        开发环境（可多选）
+      </label>
+      <Select
+        allowClear
+        mode="multiple"
+        className="w-full"
+        placeholder="不绑定，使用系统默认"
+        value={devEnvIds ?? []}
+        onChange={(value) => onChange({ devEnvIds: value })}
+        options={options}
+        notFoundContent="还没有开发环境，去「设置 - 开发环境」添加"
+        maxTagCount="responsive"
+      />
     </div>
   );
 }

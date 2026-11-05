@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Menu, Input } from "antd";
 import {
   SearchOutlined,
@@ -17,10 +17,14 @@ import {
   BuildOutlined,
   JavaOutlined,
   CodeSandboxOutlined,
+  WindowsOutlined,
+  ToolOutlined,
+  ThunderboltOutlined,
+  BranchesOutlined,
 } from "@ant-design/icons";
 import { CLI_TOOLS_IN_SETTINGS_GROUP, getCliToolIcon } from "../cli/cliTools";
 import { useAppStore } from "../../stores/appStore";
-import type { ToolType } from "../../types";
+import type { ToolType, DevEnvKind } from "../../types";
 import GeneralSettingsPage from "../settings/GeneralSettingsPage";
 import TerminalSettingsPage from "../settings/TerminalSettingsPage";
 import CliShellSettingsPage from "../settings/CliShellSettingsPage";
@@ -41,6 +45,7 @@ import McpAccessPage from "../settings/McpAccessPage";
 import AboutPage from "../settings/AboutPage";
 import LlmProvidersPage from "../settings/LlmProvidersPage";
 import DevEnvironmentPage from "../settings/DevEnvironmentPage";
+import { DEV_KIND_CONFIGS } from "../../utils/devEnvKinds";
 
 const SIDEBAR_WIDTH = 180;
 
@@ -57,6 +62,17 @@ const CLI_TOOL_MENU_KEYS: Partial<Record<ToolType, string>> = {
 function cliToolMenuKey(id: ToolType): string {
   return CLI_TOOL_MENU_KEYS[id] ?? id;
 }
+
+/** 各语言环境在菜单里的图标。 */
+const DEV_KIND_ICONS: Record<string, ReactNode> = {
+  java: <JavaOutlined />,
+  node: <CodeSandboxOutlined />,
+  dotnet: <WindowsOutlined />,
+  python: <ApiOutlined />,
+  rust: <ToolOutlined />,
+  go: <ThunderboltOutlined />,
+  cpp: <BranchesOutlined />,
+};
 
 const menuItems = [
   { key: "general", label: "通用设置", icon: <SettingOutlined /> },
@@ -76,10 +92,11 @@ const menuItems = [
     key: "dev-env-group",
     label: "开发环境",
     icon: <BuildOutlined />,
-    children: [
-      { key: "dev-env-java", label: "Java 环境", icon: <JavaOutlined /> },
-      { key: "dev-env-node", label: "Node 环境", icon: <CodeSandboxOutlined /> },
-    ],
+    children: DEV_KIND_CONFIGS.map((config) => ({
+      key: `dev-env-${config.kind}`,
+      label: config.title,
+      icon: DEV_KIND_ICONS[config.kind],
+    })),
   },
   { key: "ai-assistant", label: "AI 辅助", icon: <RobotOutlined /> },
   { key: "network", label: "网络", icon: <GlobalOutlined /> },
@@ -101,8 +118,6 @@ const PAGE_TITLES: Record<string, string> = {
   terminal: "终端设置",
   "cli-tools-group": "CLI 工具",
   "dev-env-group": "开发环境",
-  "dev-env-java": "Java 环境",
-  "dev-env-node": "Node 环境",
   "profile-management": "Profile 管理",
   "ai-assistant": "AI 辅助",
   network: "网络",
@@ -115,6 +130,9 @@ const PAGE_TITLES: Record<string, string> = {
   about: "关于",
   "llm-providers": "LLM 设置",
   ...CLI_TOOL_TITLES,
+  ...Object.fromEntries(
+    DEV_KIND_CONFIGS.map((config) => [`dev-env-${config.kind}`, config.title]),
+  ),
 };
 
 export default function SettingsPage() {
@@ -152,19 +170,15 @@ export default function SettingsPage() {
       case "profile-management":
         return <ProfileManagementPage />;
       case "dev-env-java":
-        return (
-          <DevEnvironmentPage
-            kind="java"
-            description="配置 JDK 与 Maven 的版本和安装路径，项目可以绑定这里的环境作为运行环境。"
-          />
-        );
       case "dev-env-node":
-        return (
-          <DevEnvironmentPage
-            kind="node"
-            description="配置 Node 的版本和安装路径，项目可以绑定这里的环境作为运行环境。"
-          />
-        );
+      case "dev-env-dotnet":
+      case "dev-env-python":
+      case "dev-env-rust":
+      case "dev-env-go":
+      case "dev-env-cpp": {
+        const kind = activeKey.replace("dev-env-", "") as DevEnvKind;
+        return <DevEnvironmentPage kind={kind} />;
+      }
       case "ai-assistant":
         return <AIAssistantPage {...props} />;
       case "network":

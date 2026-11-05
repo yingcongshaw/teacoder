@@ -40,13 +40,18 @@ pub async fn service_detect(
     .map_err(|e| format!("服务识别任务失败: {}", e))?
 }
 
+/// 启动服务。要先构建的服务会在构建阶段阻塞一阵，放到阻塞线程池里跑，别卡住 UI。
 #[tauri::command]
-pub fn service_start(
+pub async fn service_start(
     app: AppHandle,
-    db: tauri::State<AppDatabase>,
     id: String,
 ) -> Result<(), String> {
-    runtime::start_service(&app, &db, &id)
+    tauri::async_runtime::spawn_blocking(move || {
+        let db = app.state::<AppDatabase>();
+        runtime::start_service(&app, &db, &id)
+    })
+    .await
+    .map_err(|e| format!("启动服务任务失败: {}", e))?
 }
 
 #[tauri::command]

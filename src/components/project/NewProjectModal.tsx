@@ -23,8 +23,7 @@ export default function NewProjectModal({ open, onClose }: NewProjectModalProps)
   const [name, setName] = useState("");
   const [path, setPath] = useState("");
   const [color, setColor] = useState(PROJECT_COLORS[0]);
-  const [javaEnvId, setJavaEnvId] = useState<string | undefined>(undefined);
-  const [nodeEnvId, setNodeEnvId] = useState<string | undefined>(undefined);
+  const [devEnvIds, setDevEnvIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
 
   const handleBrowse = async () => {
@@ -50,8 +49,7 @@ export default function NewProjectModal({ open, onClose }: NewProjectModalProps)
     setLoading(true);
     try {
       const project = await createProject(name.trim(), path.trim(), color, {
-        javaEnvId,
-        nodeEnvId,
+        devEnvIds,
       });
       // 确保新项目展开
       if (collapsedProjectIds.includes(project.id)) {
@@ -70,8 +68,7 @@ export default function NewProjectModal({ open, onClose }: NewProjectModalProps)
     setName("");
     setPath("");
     setColor(PROJECT_COLORS[0]);
-    setJavaEnvId(undefined);
-    setNodeEnvId(undefined);
+    setDevEnvIds([]);
     onClose();
   };
 
@@ -134,12 +131,8 @@ export default function NewProjectModal({ open, onClose }: NewProjectModalProps)
         <div>
           <label className="block text-xs text-[var(--ant-color-text-secondary)] mb-1">运行环境</label>
           <ProjectEnvSelects
-            javaEnvId={javaEnvId}
-            nodeEnvId={nodeEnvId}
-            onChange={(next) => {
-              setJavaEnvId(next.javaEnvId);
-              setNodeEnvId(next.nodeEnvId);
-            }}
+            devEnvIds={devEnvIds}
+            onChange={(next) => setDevEnvIds(next.devEnvIds)}
           />
         </div>
       </div>

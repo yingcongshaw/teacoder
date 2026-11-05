@@ -6,9 +6,15 @@ pub mod detector;
 pub mod ports;
 pub mod runtime;
 
-/// 服务类型：java（Spring Boot 模块）、node（Node 脚本）、command（用户手填）。
+/// 服务类型：java（Spring Boot 模块）、node（Node 脚本）、command（用户手填），
+/// 以及 dotnet / python / rust / go / cpp 各语言的项目。
 pub const KIND_JAVA: &str = "java";
 pub const KIND_NODE: &str = "node";
+pub const KIND_DOTNET: &str = "dotnet";
+pub const KIND_PYTHON: &str = "python";
+pub const KIND_RUST: &str = "rust";
+pub const KIND_GO: &str = "go";
+pub const KIND_CPP: &str = "cpp";
 pub const KIND_COMMAND: &str = "command";
 
 /// 识别来源：自动识别 / 手工添加。
@@ -24,6 +30,8 @@ pub struct Service {
     pub kind: String,
     pub command: String,
     pub working_dir: String,
+    /// 先构建再运行的命令。C/C++ 这类要先编译出可执行文件才能跑。
+    pub build_command: Option<String>,
     pub source: String,
     pub fingerprint: String,
     pub created_at: i64,
@@ -38,6 +46,7 @@ pub struct CreateServiceInput {
     pub kind: Option<String>,
     pub command: String,
     pub working_dir: Option<String>,
+    pub build_command: Option<String>,
 }
 
 /// 识别结果统计。
@@ -48,7 +57,7 @@ pub struct DetectServicesResult {
     pub skipped: usize,
 }
 
-const SERVICE_COLUMNS: &str = "id, project_id, name, kind, command, working_dir, source, fingerprint, created_at, updated_at";
+const SERVICE_COLUMNS: &str = "id, project_id, name, kind, command, working_dir, build_command, source, fingerprint, created_at, updated_at";
 
 /// 服务的去重指纹。
 ///
@@ -66,10 +75,11 @@ fn row_to_service(row: &rusqlite::Row<'_>) -> rusqlite::Result<Service> {
         kind: row.get(3)?,
         command: row.get(4)?,
         working_dir: row.get(5)?,
-        source: row.get(6)?,
-        fingerprint: row.get(7)?,
-        created_at: row.get(8)?,
-        updated_at: row.get(9)?,
+        build_command: row.get(6)?,
+        source: row.get(7)?,
+        fingerprint: row.get(8)?,
+        created_at: row.get(9)?,
+        updated_at: row.get(10)?,
     })
 }
 
@@ -134,7 +144,7 @@ pub fn create_service(db: &AppDatabase, input: CreateServiceInput) -> Result<Ser
     let fp = fingerprint(&kind, &working_dir, &input.command);
 
     conn.execute(
-        "INSERT INTO services (id, project_id, name, kind, command, working_dir, source, fingerprint, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+        "INSERT INTO services (id, project_id, name, kind, command, working_dir, build_command, source, fingerprint, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
         rusqlite::params![
             id,
             input.project_id,
@@ -142,6 +152,7 @@ pub fn create_service(db: &AppDatabase, input: CreateServiceInput) -> Result<Ser
             kind,
             input.command,
             working_dir,
+            input.build_command,
             source,
             fp,
             now,
@@ -157,6 +168,7 @@ pub fn create_service(db: &AppDatabase, input: CreateServiceInput) -> Result<Ser
         kind,
         command: input.command,
         working_dir,
+        build_command: input.build_command,
         source: source.to_string(),
         fingerprint: fp,
         created_at: now,
@@ -211,28 +223,9 @@ pub fn detect_and_persist_services(
     let mut skipped = 0usize;
 
     for (pid, path) in projects {
-        let java_env = {
-            let conn = db.conn.lock().map_err(|e| e.to_string())?;
-            let mut stmt = conn
-                .prepare("SELECT java_env_id, node_env_id FROM projects WHERE id = ?1")
-                .map_err(|e| format!("Failed to prepare query: {}", e))?;
-            stmt.query_row([&pid], |row| {
-                Ok((row.get::<_, Option<String>>(0)?, row.get::<_, Option<String>>(1)?))
-            })
-            .map_err(|e| format!("Failed to query project env: {}", e))?
-        };
+        let envs = crate::dev_env::list_project_envs(db, &pid)?;
 
-        let (java_env, node_env) = crate::dev_env::load_project_envs(
-            db,
-            java_env.0.as_deref(),
-            java_env.1.as_deref(),
-        )?;
-
-        let detected = detector::detect_services(
-            std::path::Path::new(&path),
-            java_env.as_ref(),
-            node_env.as_ref(),
-        );
+        let detected = detector::detect_services(std::path::Path::new(&path), &envs);
 
         for d in detected {
             let fp = fingerprint(&d.kind, &d.working_dir, &d.command);
@@ -247,6 +240,7 @@ pub fn detect_and_persist_services(
                 kind: Some(d.kind),
                 command: d.command,
                 working_dir: Some(d.working_dir),
+                build_command: d.build_command,
             };
             let saved = insert_detected(db, input, &fp)?;
             created.push(saved);
@@ -270,7 +264,7 @@ fn insert_detected(
     let working_dir = input.working_dir.unwrap_or_default();
 
     conn.execute(
-        "INSERT INTO services (id, project_id, name, kind, command, working_dir, source, fingerprint, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+        "INSERT INTO services (id, project_id, name, kind, command, working_dir, build_command, source, fingerprint, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
         rusqlite::params![
             id,
             input.project_id,
@@ -278,6 +272,7 @@ fn insert_detected(
             kind,
             input.command,
             working_dir,
+            input.build_command,
             SOURCE_DETECTED,
             fp,
             now,
@@ -293,6 +288,7 @@ fn insert_detected(
         kind,
         command: input.command,
         working_dir,
+        build_command: input.build_command,
         source: SOURCE_DETECTED.to_string(),
         fingerprint: fp.to_string(),
         created_at: now,
@@ -350,6 +346,7 @@ mod tests {
                 kind: Some(KIND_COMMAND.to_string()),
                 command: "npm run start".to_string(),
                 working_dir: Some("/work/one".to_string()),
+                build_command: None,
             },
         )
         .expect("创建服务");
@@ -382,12 +379,11 @@ mod tests {
             crate::dev_env::SaveDevEnvironmentInput {
                 kind: crate::dev_env::KIND_NODE.to_string(),
                 name: "Node".to_string(),
-                jdk_version: None,
-                jdk_path: None,
-                maven_version: None,
-                maven_path: None,
-                node_version: Some("22.0.0".to_string()),
-                node_path: Some("/usr/bin/node".to_string()),
+                tools: vec![crate::dev_env::DevTool {
+                    tool: crate::dev_env::TOOL_NODE.to_string(),
+                    version: Some("22.0.0".to_string()),
+                    path: Some("/usr/bin/node".to_string()),
+                }],
             },
         )
         .expect("创建 Node 环境");
@@ -395,13 +391,13 @@ mod tests {
         {
             let conn = db.conn.lock().expect("锁");
             conn.execute(
-                "UPDATE projects SET node_env_id = ?1 WHERE id = 'p1'",
+                "INSERT INTO project_dev_envs (project_id, env_id, created_at, updated_at) VALUES ('p1', ?1, 1, 1)",
                 [&node_env.id],
             )
             .expect("绑定 Node 环境");
         }
 
-        let detected = detector::detect_services(&dir, None, Some(&node_env));
+        let detected = detector::detect_services(&dir, std::slice::from_ref(&node_env));
         assert!(
             detected.iter().any(|d| d.name == "demo:start"),
             "应识别出 demo:start，实际：{detected:?}"
@@ -431,11 +427,173 @@ mod tests {
                 kind: None,
                 command: "node index.js".to_string(),
                 working_dir: None,
+                build_command: None,
             },
         )
         .expect("创建服务");
 
         crate::project::delete_project(&db, "p1").expect("删除项目");
         assert!(list_services(&db, None).expect("查询服务").is_empty());
+    }
+
+    /// C/C++ 服务要先构建再运行：构建命令要跟着服务一起入库。
+    /// 假环境条目：只用来放行检测门控，不依赖这台机器装没装对应工具。
+    fn fake_env(kind: &str, tool: &str, path: &str) -> crate::dev_env::DevEnvironment {
+        crate::dev_env::DevEnvironment {
+            id: format!("{kind}-env"),
+            kind: kind.to_string(),
+            name: kind.to_string(),
+            tools: vec![crate::dev_env::DevTool {
+                tool: tool.to_string(),
+                version: Some("1.0".to_string()),
+                path: Some(path.to_string()),
+            }],
+            created_at: 0,
+            updated_at: 0,
+        }
+    }
+
+    #[test]
+    fn detects_python_go_rust_and_dotnet_services() {
+        let root = std::env::temp_dir().join(format!("teacoder-multi-{}", uuid::Uuid::new_v4()));
+
+        let py = root.join("django-site");
+        std::fs::create_dir_all(&py).expect("建目录");
+        std::fs::write(py.join("manage.py"), "import django\n").expect("写 manage.py");
+
+        let go = root.join("go-app");
+        std::fs::create_dir_all(&go).expect("建目录");
+        std::fs::write(go.join("main.go"), "package main\nfunc main() {}\n").expect("写 main.go");
+
+        let rs = root.join("rust-app");
+        std::fs::create_dir_all(rs.join("src")).expect("建目录");
+        std::fs::write(rs.join("Cargo.toml"), "[package]\nname = \"rust-app\"\n").expect("写 Cargo.toml");
+        std::fs::write(rs.join("src").join("main.rs"), "fn main() {}\n").expect("写 main.rs");
+
+        let net = root.join("net-app");
+        std::fs::create_dir_all(&net).expect("建目录");
+        std::fs::write(
+            net.join("net-app.csproj"),
+            "<Project Sdk=\"Microsoft.NET.Sdk.Web\"></Project>",
+        )
+        .expect("写 csproj");
+
+        let envs = vec![
+            fake_env(crate::dev_env::KIND_PYTHON, crate::dev_env::TOOL_PYTHON, "/usr/bin/python3"),
+            fake_env(crate::dev_env::KIND_GO, crate::dev_env::TOOL_GO, "/usr/local/go"),
+            fake_env(crate::dev_env::KIND_RUST, crate::dev_env::TOOL_CARGO, "/root/.cargo/bin/cargo"),
+            fake_env(crate::dev_env::KIND_DOTNET, crate::dev_env::TOOL_DOTNET, "/usr/share/dotnet/dotnet"),
+        ];
+
+        let detected = detector::detect_services(&root, &envs);
+
+        let find = |kind: &str| {
+            detected
+                .iter()
+                .find(|d| d.kind == kind)
+                .map(|d| (d.name.clone(), d.command.clone()))
+        };
+
+        assert_eq!(
+            find(KIND_PYTHON),
+            Some((
+                "django-site".to_string(),
+                "python manage.py runserver".to_string()
+            ))
+        );
+        assert_eq!(
+            find(KIND_GO),
+            Some(("go-app".to_string(), "go run .".to_string()))
+        );
+        assert_eq!(
+            find(KIND_RUST),
+            Some(("rust-app".to_string(), "cargo run".to_string()))
+        );
+        let dotnet = find(KIND_DOTNET).expect("应识别出 .NET 服务");
+        assert_eq!(dotnet.0, "net-app");
+        assert!(dotnet.1.starts_with("dotnet run --project"));
+
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    /// .NET Framework 老项目没有 Sdk 属性，只能让 MSBuild 编译。
+    #[test]
+    fn detects_dotnet_framework_project_with_msbuild() {
+        let root = std::env::temp_dir().join(format!("teacoder-netfx-{}", uuid::Uuid::new_v4()));
+        let dir = root.join("legacy-app");
+        std::fs::create_dir_all(&dir).expect("建目录");
+        let project = dir.join("legacy-app.csproj");
+        std::fs::write(
+            &project,
+            "<Project ToolsVersion=\"15.0\"><PropertyGroup><TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion></PropertyGroup></Project>",
+        )
+        .expect("写 csproj");
+
+        let envs = vec![fake_env(
+            crate::dev_env::KIND_DOTNET,
+            crate::dev_env::TOOL_MSBUILD,
+            "/usr/bin/msbuild",
+        )];
+
+        let detected = detector::detect_services(&root, &envs);
+        let svc = detected
+            .iter()
+            .find(|d| d.kind == KIND_DOTNET)
+            .expect("应识别出 .NET Framework 服务");
+
+        assert_eq!(svc.name, "legacy-app");
+        let build = svc.build_command.as_deref().expect("应带构建命令");
+        assert!(build.starts_with("MSBuild "), "构建命令应为：{build}");
+        assert!(build.contains("legacy-app.csproj"));
+        assert!(svc.command.contains("legacy-app"));
+
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn detects_cpp_service_with_build_command() {
+        let dir = std::env::temp_dir().join(format!("teacoder-cpp-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).expect("建临时目录");
+        std::fs::write(
+            dir.join("CMakeLists.txt"),
+            "cmake_minimum_required(VERSION 3.10)\nproject(demo)\nadd_executable(demo main.c)\n",
+        )
+        .expect("写 CMakeLists.txt");
+
+        // 用假的环境条目放行构建工具检测，别依赖这台机器上装没装 cmake
+        let cpp_env = crate::dev_env::DevEnvironment {
+            id: "cpp-env".to_string(),
+            kind: crate::dev_env::KIND_CPP.to_string(),
+            name: "C++".to_string(),
+            tools: vec![
+                crate::dev_env::DevTool {
+                    tool: crate::dev_env::TOOL_CMAKE.to_string(),
+                    version: Some("3.25".to_string()),
+                    path: Some("/usr/bin/cmake".to_string()),
+                },
+                crate::dev_env::DevTool {
+                    tool: crate::dev_env::TOOL_CC.to_string(),
+                    version: Some("12.0".to_string()),
+                    path: Some("/usr/bin/gcc".to_string()),
+                },
+            ],
+            created_at: 0,
+            updated_at: 0,
+        };
+
+        let detected = detector::detect_services(&dir, &[cpp_env]);
+        let svc = detected
+            .iter()
+            .find(|d| d.kind == KIND_CPP)
+            .expect("应识别出 C/C++ 服务");
+
+        assert_eq!(svc.name, "demo");
+        assert_eq!(
+            svc.build_command.as_deref(),
+            Some("cmake -S . -B build"),
+            "C/C++ 服务必须带构建命令"
+        );
+
+        std::fs::remove_dir_all(&dir).ok();
     }
 }

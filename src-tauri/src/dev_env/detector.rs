@@ -1,7 +1,11 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use super::{SaveDevEnvironmentInput, KIND_JAVA, KIND_NODE};
+use super::{
+    DevTool, SaveDevEnvironmentInput, KIND_CPP, KIND_DOTNET, KIND_GO, KIND_JAVA, KIND_NODE,
+    KIND_PYTHON, KIND_RUST, TOOL_CARGO, TOOL_CC, TOOL_CMAKE, TOOL_DOTNET, TOOL_GO, TOOL_JDK,
+    TOOL_MAVEN, TOOL_MSBUILD, TOOL_NODE, TOOL_PYTHON,
+};
 
 /// 在 PATH 里找可执行文件。
 ///
@@ -202,6 +206,43 @@ const NODE_ROOTS: &[&str] = &[
     "%APPDATA%\\nvm",
 ];
 
+const DOTNET_ROOTS: &[&str] = &[
+    "/usr/share/dotnet",
+    "/usr/lib/dotnet",
+    "/opt/dotnet*",
+    "~/.dotnet",
+    "C:\\Program Files\\dotnet",
+];
+
+const PYTHON_ROOTS: &[&str] = &[
+    "~/.pyenv/versions",
+    "~/miniconda3",
+    "~/anaconda3",
+    "/opt/conda",
+    "/usr/local",
+    "/usr",
+];
+
+const RUST_ROOTS: &[&str] = &["~/.rustup/toolchains", "~/.cargo", "/usr/local/rustup"];
+
+const GO_ROOTS: &[&str] = &[
+    "/usr/local/go",
+    "/usr/lib/go*",
+    "/opt/go*",
+    "/opt/homebrew/opt/go*",
+    "C:\\Program Files\\Go",
+];
+
+const CMAKE_ROOTS: &[&str] = &[
+    "/usr/local",
+    "/opt/cmake*",
+    "/opt",
+    "C:\\Program Files\\CMake",
+    "C:\\Program Files (x86)\\CMake",
+];
+
+const CC_ROOTS: &[&str] = &["/usr/local/bin", "/usr/bin", "/opt", "C:\\Program Files"];
+
 fn os_strs(items: &[&str]) -> Vec<String> {
     items.iter().map(|s| s.to_string()).collect()
 }
@@ -222,7 +263,8 @@ fn compare_versions_desc(a: &str, b: &str) -> std::cmp::Ordering {
     for i in 0..ka.len().max(kb.len()) {
         let va = ka.get(i).copied().unwrap_or(0);
         let vb = kb.get(i).copied().unwrap_or(0);
-        match va.cmp(&vb) {
+        // 反向比较：版本号大的排在前面
+        match vb.cmp(&va) {
             std::cmp::Ordering::Equal => continue,
             other => return other,
         }
@@ -280,6 +322,132 @@ fn parse_node_version(text: &str) -> Option<String> {
     }
 }
 
+/// 从文本里取出第一个形如 `1.2.3` 的版本片段。
+fn first_version_token(text: &str) -> Option<String> {
+    for token in text.split_whitespace() {
+        let cleaned = token.trim_matches(|c: char| !c.is_ascii_digit() && c != '.');
+        if cleaned.contains('.') && cleaned.chars().next().is_some_and(|c| c.is_ascii_digit()) {
+            return Some(cleaned.to_string());
+        }
+    }
+    None
+}
+
+/// Python 版本：Python 3.12.3
+fn parse_python_version(text: &str) -> Option<String> {
+    let line = text.lines().map(|l| l.trim()).find(|l| !l.is_empty())?;
+    let cleaned = line.strip_prefix("Python ").unwrap_or(line);
+    let version: String = cleaned
+        .chars()
+        .take_while(|c| c.is_ascii_digit() || *c == '.')
+        .collect();
+    if version.is_empty() {
+        None
+    } else {
+        Some(version)
+    }
+}
+
+/// Rust 版本：rustc 1.75.0 (82e1608df 2023-12-21)
+fn parse_rust_version(text: &str) -> Option<String> {
+    for line in text.lines() {
+        let line = line.trim();
+        // 探测用的是 `cargo --version`，输出是 "cargo 1.97.1 (...)"；
+        // rustc 的输出是 "rustc 1.97.1 (...)"，两种都得认。
+        let rest = match line.strip_prefix("cargo ").or_else(|| line.strip_prefix("rustc ")) {
+            Some(r) => r,
+            None => continue,
+        };
+        let version: String = rest
+            .chars()
+            .take_while(|c| c.is_ascii_digit() || *c == '.')
+            .collect();
+        if !version.is_empty() {
+            return Some(version);
+        }
+    }
+    None
+}
+
+/// Go 版本：go version go1.22.0 linux/amd64
+fn parse_go_version(text: &str) -> Option<String> {
+    let line = text.lines().map(|l| l.trim()).find(|l| !l.is_empty())?;
+    for token in line.split_whitespace() {
+        let cleaned = token.strip_prefix("go").unwrap_or(token);
+        if cleaned.chars().next().is_some_and(|c| c.is_ascii_digit()) {
+            return Some(cleaned.to_string());
+        }
+    }
+    None
+}
+
+/// .NET SDK 版本：8.0.404 [/usr/share/dotnet/sdk]
+fn parse_dotnet_version(line: &str) -> Option<String> {
+    let token = line.split_whitespace().next()?;
+    if token.chars().next().is_some_and(|c| c.is_ascii_digit()) {
+        Some(token.to_string())
+    } else {
+        None
+    }
+}
+
+/// .NET SDK 列表里的所有版本，取最新的一个。
+fn parse_dotnet_sdks(text: &str) -> Vec<String> {
+    let mut versions: Vec<String> = text
+        .lines()
+        .filter_map(parse_dotnet_version)
+        .collect();
+    versions.sort_by(|a, b| compare_versions_desc(a, b));
+    versions.dedup();
+    versions
+}
+
+/// 扫描候选根目录 + PATH，找出所有可执行文件及其版本。
+fn scan_tool_candidates(
+    roots: &[&str],
+    exe_names: &[&str],
+    version_args: &[&str],
+    parse: &dyn Fn(&str) -> Option<String>,
+) -> Vec<(PathBuf, String)> {
+    let mut out: Vec<(PathBuf, String)> = Vec::new();
+
+    let record = |exe: PathBuf, out: &mut Vec<(PathBuf, String)>| {
+        if out.iter().any(|(p, _)| *p == exe) {
+            return;
+        }
+        if let Some(text) = probe_version(&exe, version_args) {
+            if let Some(version) = parse(&text) {
+                out.push((exe, version));
+            }
+        }
+    };
+
+    for exe_name in exe_names {
+        for home in collect_tool_homes(&os_strs(roots), exe_name) {
+            let (_, bin_dir) = match resolve_tool_home(&home, exe_name) {
+                Some(v) => v,
+                None => continue,
+            };
+            record(bin_dir.join(exe_name), &mut out);
+        }
+
+        if let Some(exe) = find_in_path(exe_name) {
+            record(exe, &mut out);
+        }
+    }
+
+    out.sort_by(|a, b| compare_versions_desc(&a.1, &b.1));
+    out
+}
+
+fn tool(tool: &str, version: &str, path: &Path) -> DevTool {
+    DevTool {
+        tool: tool.to_string(),
+        version: Some(version.to_string()),
+        path: Some(path.to_string_lossy().into_owned()),
+    }
+}
+
 struct JdkInfo {
     home: PathBuf,
     version: String,
@@ -287,11 +455,6 @@ struct JdkInfo {
 
 struct MavenInfo {
     home: PathBuf,
-    version: String,
-}
-
-struct NodeInfo {
-    exe: PathBuf,
     version: String,
 }
 
@@ -362,7 +525,10 @@ fn detect_mavens() -> Vec<MavenInfo> {
             if !out.iter().any(|m| m.home == root) {
                 if let Some(text) = probe_version(&exe, &["-version"]) {
                     if let Some(version) = parse_maven_version(&text) {
-                        out.push(MavenInfo { home: root, version });
+                        out.push(MavenInfo {
+                            home: root,
+                            version,
+                        });
                     }
                 }
             }
@@ -374,79 +540,199 @@ fn detect_mavens() -> Vec<MavenInfo> {
     out
 }
 
-fn detect_nodes() -> Vec<NodeInfo> {
-    let mut out: Vec<NodeInfo> = Vec::new();
+/// 识别 .NET SDK 与 .NET Framework 的 MSBuild。
+///
+/// .NET Core / 5+ 走 `dotnet` 命令；.NET Framework 只在 Windows 上有，
+/// 用它自带的 MSBuild 编译老项目。
+fn detect_dotnets() -> Vec<SaveDevEnvironmentInput> {
+    let mut out = Vec::new();
 
-    for home in collect_tool_homes(&os_strs(NODE_ROOTS), "node") {
-        let (_, bin_dir) = match resolve_tool_home(&home, "node") {
-            Some(v) => v,
-            None => continue,
-        };
-        let exe = bin_dir.join("node");
-        let version = match probe_version(&exe, &["--version"]) {
-            Some(text) => match parse_node_version(&text) {
-                Some(v) => v,
-                None => continue,
-            },
-            None => continue,
-        };
-        out.push(NodeInfo { exe, version });
-    }
+    let sdks = scan_tool_candidates(
+        DOTNET_ROOTS,
+        &["dotnet"],
+        &["--list-sdks"],
+        &|text| parse_dotnet_sdks(text).first().cloned(),
+    );
 
-    if let Some(exe) = find_in_path("node") {
-        if !out.iter().any(|n| n.exe == exe) {
-            if let Some(text) = probe_version(&exe, &["--version"]) {
-                if let Some(version) = parse_node_version(&text) {
-                    out.push(NodeInfo { exe, version });
-                }
-            }
+    // .NET Framework 的 MSBuild：Windows 系统目录下的 v4.0.30319
+    let framework_msbuild = [
+        "C:\\Windows\\Microsoft.NET\\Framework64\\v4.0.30319\\MSBuild.exe",
+        "C:\\Windows\\Microsoft.NET\\Framework\\v4.0.30319\\MSBuild.exe",
+    ]
+    .iter()
+    .map(PathBuf::from)
+    .find(|p| p.is_file());
+
+    if let Some((exe, version)) = sdks.first() {
+        let mut tools = vec![tool(TOOL_DOTNET, version, exe)];
+        let mut name = format!(".NET SDK {}", version);
+
+        if let Some(msbuild) = &framework_msbuild {
+            tools.push(DevTool {
+                tool: TOOL_MSBUILD.to_string(),
+                version: None,
+                path: Some(msbuild.to_string_lossy().into_owned()),
+            });
+            name.push_str(" + .NET Framework");
         }
+
+        out.push(SaveDevEnvironmentInput {
+            kind: KIND_DOTNET.to_string(),
+            name,
+            tools,
+        });
+    } else if let Some(msbuild) = &framework_msbuild {
+        out.push(SaveDevEnvironmentInput {
+            kind: KIND_DOTNET.to_string(),
+            name: ".NET Framework".to_string(),
+            tools: vec![DevTool {
+                tool: TOOL_MSBUILD.to_string(),
+                version: None,
+                path: Some(msbuild.to_string_lossy().into_owned()),
+            }],
+        });
     }
 
-    out.sort_by(|a, b| compare_versions_desc(&a.version, &b.version));
-    out.dedup_by(|a, b| a.exe == b.exe);
     out
+}
+
+/// 识别 Python 解释器。
+fn detect_pythons() -> Vec<SaveDevEnvironmentInput> {
+    scan_tool_candidates(
+        PYTHON_ROOTS,
+        &["python3", "python"],
+        &["--version"],
+        &parse_python_version,
+    )
+    .into_iter()
+    .map(|(exe, version)| SaveDevEnvironmentInput {
+        kind: KIND_PYTHON.to_string(),
+        name: format!("Python {}", version),
+        tools: vec![tool(TOOL_PYTHON, &version, &exe)],
+    })
+    .collect()
+}
+
+/// 识别 Rust 工具链。
+fn detect_rusts() -> Vec<SaveDevEnvironmentInput> {
+    scan_tool_candidates(
+        RUST_ROOTS,
+        &["cargo"],
+        &["--version"],
+        &parse_rust_version,
+    )
+    .into_iter()
+    .map(|(exe, version)| SaveDevEnvironmentInput {
+        kind: KIND_RUST.to_string(),
+        name: format!("Rust {}", version),
+        tools: vec![tool(TOOL_CARGO, &version, &exe)],
+    })
+    .collect()
+}
+
+/// 识别 Go 工具链。路径存 GOROOT（`go env GOROOT` 的输出），不是可执行文件。
+fn detect_gos() -> Vec<SaveDevEnvironmentInput> {
+    let candidates = scan_tool_candidates(GO_ROOTS, &["go"], &["version"], &parse_go_version);
+
+    let mut out = Vec::new();
+    for (exe, version) in candidates {
+        let root = probe_version(&exe, &["env", "GOROOT"])
+            .map(|text| {
+                text.lines()
+                    .map(|l| l.trim())
+                    .find(|l| !l.is_empty())
+                    .map(PathBuf::from)
+            })
+            .unwrap_or(None)
+            .filter(|p| p.is_dir())
+            .or_else(|| {
+                exe.parent()
+                    .and_then(|bin| bin.parent())
+                    .filter(|p| p.is_dir())
+                    .map(|p| p.to_path_buf())
+            });
+
+        let root = match root {
+            Some(r) => r,
+            None => continue,
+        };
+
+        out.push(SaveDevEnvironmentInput {
+            kind: KIND_GO.to_string(),
+            name: format!("Go {}", version),
+            tools: vec![tool(TOOL_GO, &version, &root)],
+        });
+    }
+
+    out
+}
+
+/// 识别 C/C++ 工具链：CMake 加一个 C 编译器。
+fn detect_cpps() -> Vec<SaveDevEnvironmentInput> {
+    let cmakes = scan_tool_candidates(CMAKE_ROOTS, &["cmake"], &["--version"], &first_version_token);
+    let compilers = scan_tool_candidates(CC_ROOTS, &["gcc", "clang", "cc"], &["--version"], &first_version_token);
+
+    let mut tools: Vec<DevTool> = Vec::new();
+    let mut names: Vec<String> = Vec::new();
+
+    if let Some((exe, version)) = cmakes.first() {
+        tools.push(tool(TOOL_CMAKE, version, exe));
+        names.push(format!("CMake {}", version));
+    }
+    if let Some((exe, version)) = compilers.first() {
+        tools.push(tool(TOOL_CC, version, exe));
+        names.push(format!("编译器 {}", version));
+    }
+
+    if tools.is_empty() {
+        return Vec::new();
+    }
+
+    vec![SaveDevEnvironmentInput {
+        kind: KIND_CPP.to_string(),
+        name: names.join(" + "),
+        tools,
+    }]
 }
 
 /// 扫描系统，产出候选开发环境条目。
 pub fn detect(kind: &str) -> Result<Vec<SaveDevEnvironmentInput>, String> {
     match kind {
-        KIND_NODE => Ok(detect_nodes()
-            .into_iter()
-            .map(|n| SaveDevEnvironmentInput {
-                kind: KIND_NODE.to_string(),
-                name: format!("Node {}", n.version),
-                jdk_version: None,
-                jdk_path: None,
-                maven_version: None,
-                maven_path: None,
-                node_version: Some(n.version),
-                node_path: Some(n.exe.to_string_lossy().into_owned()),
-            })
-            .collect()),
+        KIND_NODE => {
+            let candidates = scan_tool_candidates(
+                NODE_ROOTS,
+                &["node"],
+                &["--version"],
+                &parse_node_version,
+            );
+            Ok(candidates
+                .into_iter()
+                .map(|(exe, version)| SaveDevEnvironmentInput {
+                    kind: KIND_NODE.to_string(),
+                    name: format!("Node {}", version),
+                    tools: vec![tool(TOOL_NODE, &version, &exe)],
+                })
+                .collect())
+        }
         KIND_JAVA => {
             let jdks = detect_jdks();
             let mavens = detect_mavens();
             let mut out = Vec::new();
 
             for jdk in &jdks {
-                let (maven_version, maven_path, name) = match mavens.first() {
-                    Some(m) => (
-                        Some(m.version.clone()),
-                        Some(m.home.to_string_lossy().into_owned()),
-                        format!("JDK {} + Maven {}", jdk.version, m.version),
-                    ),
-                    None => (None, None, format!("JDK {}", jdk.version)),
-                };
+                let mut tools = vec![tool(TOOL_JDK, &jdk.version, &jdk.home)];
+                let mut name = format!("JDK {}", jdk.version);
+
+                // 默认配最新的 Maven
+                if let Some(maven) = mavens.first() {
+                    tools.push(tool(TOOL_MAVEN, &maven.version, &maven.home));
+                    name = format!("JDK {} + Maven {}", jdk.version, maven.version);
+                }
+
                 out.push(SaveDevEnvironmentInput {
                     kind: KIND_JAVA.to_string(),
                     name,
-                    jdk_version: Some(jdk.version.clone()),
-                    jdk_path: Some(jdk.home.to_string_lossy().into_owned()),
-                    maven_version,
-                    maven_path,
-                    node_version: None,
-                    node_path: None,
+                    tools,
                 });
             }
 
@@ -455,33 +741,76 @@ pub fn detect(kind: &str) -> Result<Vec<SaveDevEnvironmentInput>, String> {
                 out.push(SaveDevEnvironmentInput {
                     kind: KIND_JAVA.to_string(),
                     name: format!("Maven {}", maven.version),
-                    jdk_version: None,
-                    jdk_path: None,
-                    maven_version: Some(maven.version.clone()),
-                    maven_path: Some(maven.home.to_string_lossy().into_owned()),
-                    node_version: None,
-                    node_path: None,
+                    tools: vec![tool(TOOL_MAVEN, &maven.version, &maven.home)],
                 });
             }
 
-            // 没有 JDK 时，MAVEN 列表的第一条也要单独成条
+            // 没有 JDK 时，Maven 也要单独成条
             if jdks.is_empty() {
                 if let Some(maven) = mavens.first() {
                     out.push(SaveDevEnvironmentInput {
                         kind: KIND_JAVA.to_string(),
                         name: format!("Maven {}", maven.version),
-                        jdk_version: None,
-                        jdk_path: None,
-                        maven_version: Some(maven.version.clone()),
-                        maven_path: Some(maven.home.to_string_lossy().into_owned()),
-                        node_version: None,
-                        node_path: None,
+                        tools: vec![tool(TOOL_MAVEN, &maven.version, &maven.home)],
                     });
                 }
             }
 
             Ok(out)
         }
+        KIND_DOTNET => Ok(detect_dotnets()),
+        KIND_PYTHON => Ok(detect_pythons()),
+        KIND_RUST => Ok(detect_rusts()),
+        KIND_GO => Ok(detect_gos()),
+        KIND_CPP => Ok(detect_cpps()),
         other => Err(format!("未知的开发环境类型: {}", other)),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_version_strings() {
+        assert_eq!(parse_java_version("openjdk version \"21.0.2\" 2024-01-16").as_deref(), Some("21.0.2"));
+        assert_eq!(parse_maven_version("Apache Maven 3.9.6 (abc123)").as_deref(), Some("3.9.6"));
+        assert_eq!(parse_python_version("Python 3.12.3").as_deref(), Some("3.12.3"));
+        assert_eq!(
+            parse_rust_version("rustc 1.75.0 (82e1608df 2023-12-21)").as_deref(),
+            Some("1.75.0")
+        );
+        assert_eq!(
+            parse_rust_version("cargo 1.75.0 (82e1608df 2023-12-21)").as_deref(),
+            Some("1.75.0")
+        );
+        assert_eq!(
+            parse_go_version("go version go1.22.0 linux/amd64").as_deref(),
+            Some("1.22.0")
+        );
+        assert_eq!(parse_dotnet_version("8.0.404 [/usr/share/dotnet/sdk]").as_deref(), Some("8.0.404"));
+        assert_eq!(first_version_token("cmake version 3.28.3").as_deref(), Some("3.28.3"));
+    }
+
+    #[test]
+    fn dotnet_sdk_list_takes_the_newest() {
+        let versions = parse_dotnet_sdks("6.0.428 [/usr/share/dotnet/sdk]\n8.0.404 [/usr/share/dotnet/sdk]");
+        assert_eq!(versions.first().map(String::as_str), Some("8.0.404"));
+    }
+
+    #[test]
+    fn every_kind_is_detectable() {
+        for kind in [
+            KIND_JAVA,
+            KIND_NODE,
+            KIND_DOTNET,
+            KIND_PYTHON,
+            KIND_RUST,
+            KIND_GO,
+            KIND_CPP,
+        ] {
+            // 机器上装没装都不要紧：不能因为没装就报错
+            assert!(detect(kind).is_ok(), "{kind} 识别失败");
+        }
     }
 }

@@ -9,10 +9,9 @@ pub struct Project {
     pub name: String,
     pub path: String,
     pub color: Option<String>,
-    /// 项目绑定的 Java 环境（JDK + Maven 一组）
-    pub java_env_id: Option<String>,
-    /// 项目绑定的 Node 环境
-    pub node_env_id: Option<String>,
+    /// 项目绑定的开发环境。一个项目可以同时绑 Java、Python、Go 多套环境，
+    /// 绑定的环境决定这个项目跑起来时能看到哪些工具。
+    pub dev_env_ids: Vec<String>,
     pub created_at: i64,
     pub updated_at: i64,
     /// 侧边栏展示序号,越小越靠前。只由 reorder_projects 写入。
@@ -25,8 +24,8 @@ pub struct CreateProjectInput {
     pub name: String,
     pub path: String,
     pub color: Option<String>,
-    pub java_env_id: Option<String>,
-    pub node_env_id: Option<String>,
+    #[serde(default)]
+    pub dev_env_ids: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -34,27 +33,46 @@ pub struct CreateProjectInput {
 pub struct UpdateProjectInput {
     pub name: Option<String>,
     pub color: Option<String>,
-    /// 双层 Option：外层 None 表示不修改，Some(None) 表示清空绑定。
-    /// serde 默认把 JSON 的 null 也解成外层 None，必须配 double_option
-    /// 才能区分「字段缺失」与「字段为 null」。
-    #[serde(default, deserialize_with = "double_option")]
-    pub java_env_id: Option<Option<String>>,
-    #[serde(default, deserialize_with = "double_option")]
-    pub node_env_id: Option<Option<String>>,
+    /// None 表示不修改绑定；Some(空数组) 表示清空所有绑定。
+    pub dev_env_ids: Option<Vec<String>>,
 }
 
-/// serde 对 `Option<Option<T>>` 的 null 会走 `visit_none`，与「字段缺失」不可区分。
-/// 包一层把 null 映射成 Some(None)，default 兜住缺失的字段。
-fn double_option<'de, T, D>(de: D) -> Result<Option<Option<T>>, D::Error>
-where
-    T: serde::Deserialize<'de>,
-    D: serde::Deserializer<'de>,
-{
-    serde::Deserialize::deserialize(de).map(Some)
+const PROJECT_COLUMNS: &str = "id, name, path, color, created_at, updated_at, sort_order";
+
+fn row_to_project(row: &rusqlite::Row<'_>) -> rusqlite::Result<Project> {
+    Ok(Project {
+        id: row.get(0)?,
+        name: row.get(1)?,
+        path: row.get(2)?,
+        color: row.get(3)?,
+        dev_env_ids: Vec::new(),
+        created_at: row.get(4)?,
+        updated_at: row.get(5)?,
+        sort_order: row.get(6)?,
+    })
 }
 
-const PROJECT_COLUMNS: &str =
-    "id, name, path, color, java_env_id, node_env_id, created_at, updated_at, sort_order";
+/// 项目与环境是多对多：一个项目绑多套环境，一套环境也能被多个项目用。
+fn load_project_env_ids(conn: &rusqlite::Connection) -> Result<Vec<(String, String)>, String> {
+    let mut stmt = conn
+        .prepare("SELECT project_id, env_id FROM project_dev_envs ORDER BY created_at ASC")
+        .map_err(|e| format!("Failed to prepare query: {}", e))?;
+
+    let rows = stmt
+        .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))
+        .map_err(|e| format!("Failed to query project dev envs: {}", e))?;
+
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| format!("Failed to collect project dev envs: {}", e))
+}
+
+fn attach_env_ids(projects: &mut [Project], bindings: Vec<(String, String)>) {
+    for (project_id, env_id) in bindings {
+        if let Some(project) = projects.iter_mut().find(|p| p.id == project_id) {
+            project.dev_env_ids.push(env_id);
+        }
+    }
+}
 
 pub fn list_projects(db: &AppDatabase) -> Result<Vec<Project>, String> {
     let conn = db.conn.lock().map_err(|e| e.to_string())?;
@@ -66,34 +84,29 @@ pub fn list_projects(db: &AppDatabase) -> Result<Vec<Project>, String> {
         ))
         .map_err(|e| format!("Failed to prepare query: {}", e))?;
 
-    let rows = stmt
-        .query_map([], |row| {
-            Ok(Project {
-                id: row.get(0)?,
-                name: row.get(1)?,
-                path: row.get(2)?,
-                color: row.get(3)?,
-                java_env_id: row.get(4)?,
-                node_env_id: row.get(5)?,
-                created_at: row.get(6)?,
-                updated_at: row.get(7)?,
-                sort_order: row.get(8)?,
-            })
-        })
-        .map_err(|e| format!("Failed to query projects: {}", e))?;
+    let mut projects = stmt
+        .query_map([], row_to_project)
+        .map_err(|e| format!("Failed to query projects: {}", e))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| format!("Failed to collect projects: {}", e))?;
 
-    rows.collect::<Result<Vec<_>, _>>()
-        .map_err(|e| format!("Failed to collect projects: {}", e))
+    attach_env_ids(&mut projects, load_project_env_ids(&conn)?);
+
+    Ok(projects)
 }
 
 pub fn create_project(db: &AppDatabase, input: CreateProjectInput) -> Result<Project, String> {
-    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let mut conn = db.conn.lock().map_err(|e| e.to_string())?;
 
     let id = uuid::Uuid::new_v4().to_string();
     let now = chrono::Utc::now().timestamp_millis();
 
+    let tx = conn
+        .transaction()
+        .map_err(|e| format!("Failed to begin transaction: {}", e))?;
+
     // 新项目追加到列表末尾
-    let next_sort_order: i32 = conn
+    let next_sort_order: i32 = tx
         .query_row(
             "SELECT COALESCE(MAX(sort_order), -1) + 1 FROM projects",
             [],
@@ -101,15 +114,13 @@ pub fn create_project(db: &AppDatabase, input: CreateProjectInput) -> Result<Pro
         )
         .map_err(|e| format!("Failed to compute project sort_order: {}", e))?;
 
-    conn.execute(
-        "INSERT INTO projects (id, name, path, color, java_env_id, node_env_id, created_at, updated_at, sort_order) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+    tx.execute(
+        "INSERT INTO projects (id, name, path, color, created_at, updated_at, sort_order) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
         rusqlite::params![
             id,
             input.name,
             input.path,
             input.color,
-            input.java_env_id,
-            input.node_env_id,
             now,
             now,
             next_sort_order
@@ -123,13 +134,23 @@ pub fn create_project(db: &AppDatabase, input: CreateProjectInput) -> Result<Pro
         }
     })?;
 
+    for env_id in &input.dev_env_ids {
+        tx.execute(
+            "INSERT OR IGNORE INTO project_dev_envs (project_id, env_id, created_at, updated_at) VALUES (?1, ?2, ?3, ?4)",
+            rusqlite::params![id, env_id, now, now],
+        )
+        .map_err(|e| format!("Failed to bind project dev env: {}", e))?;
+    }
+
+    tx.commit()
+        .map_err(|e| format!("Failed to commit project: {}", e))?;
+
     Ok(Project {
         id,
         name: input.name,
         path: input.path,
         color: input.color,
-        java_env_id: input.java_env_id,
-        node_env_id: input.node_env_id,
+        dev_env_ids: input.dev_env_ids,
         created_at: now,
         updated_at: now,
         sort_order: next_sort_order,
@@ -141,9 +162,13 @@ pub fn update_project(
     id: &str,
     input: UpdateProjectInput,
 ) -> Result<Project, String> {
-    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let mut conn = db.conn.lock().map_err(|e| e.to_string())?;
 
     let now = chrono::Utc::now().timestamp_millis();
+
+    let tx = conn
+        .transaction()
+        .map_err(|e| format!("Failed to begin transaction: {}", e))?;
 
     let mut set_clauses: Vec<String> = vec!["updated_at = ?1".to_string()];
     let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = vec![Box::new(now)];
@@ -158,28 +183,30 @@ pub fn update_project(
         params.push(Box::new(color.clone()));
     }
 
-    // 环境绑定：Some(None) 显式置空，None 保持原值不动
-    if let Some(v) = input.java_env_id {
-        set_clauses.push("java_env_id = ?".to_string());
-        params.push(Box::new(v));
-    }
-
-    if let Some(v) = input.node_env_id {
-        set_clauses.push("node_env_id = ?".to_string());
-        params.push(Box::new(v));
-    }
-
-    let sql = format!(
-        "UPDATE projects SET {} WHERE id = ?",
-        set_clauses.join(", ")
-    );
-
+    let sql = format!("UPDATE projects SET {} WHERE id = ?", set_clauses.join(", "));
     let param_refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
     let mut all_refs: Vec<&dyn rusqlite::types::ToSql> = param_refs;
     all_refs.push(&id);
 
-    conn.execute(&sql, all_refs.as_slice())
+    tx.execute(&sql, all_refs.as_slice())
         .map_err(|e| format!("Failed to update project: {}", e))?;
+
+    // 环境绑定：字段缺失时保持原值不动，传了就全量替换
+    if let Some(env_ids) = &input.dev_env_ids {
+        tx.execute("DELETE FROM project_dev_envs WHERE project_id = ?1", [id])
+            .map_err(|e| format!("Failed to clear project dev envs: {}", e))?;
+
+        for env_id in env_ids {
+            tx.execute(
+                "INSERT OR IGNORE INTO project_dev_envs (project_id, env_id, created_at, updated_at) VALUES (?1, ?2, ?3, ?4)",
+                rusqlite::params![id, env_id, now, now],
+            )
+            .map_err(|e| format!("Failed to bind project dev env: {}", e))?;
+        }
+    }
+
+    tx.commit()
+        .map_err(|e| format!("Failed to commit project update: {}", e))?;
 
     let mut stmt = conn
         .prepare(&format!(
@@ -188,20 +215,17 @@ pub fn update_project(
         ))
         .map_err(|e| format!("Failed to prepare query: {}", e))?;
 
-    stmt.query_row([id], |row| {
-        Ok(Project {
-            id: row.get(0)?,
-            name: row.get(1)?,
-            path: row.get(2)?,
-            color: row.get(3)?,
-            java_env_id: row.get(4)?,
-            node_env_id: row.get(5)?,
-            created_at: row.get(6)?,
-            updated_at: row.get(7)?,
-            sort_order: row.get(8)?,
-        })
-    })
-    .map_err(|e| format!("Failed to fetch updated project: {}", e))
+    let mut project = stmt
+        .query_row([id], row_to_project)
+        .map_err(|e| format!("Failed to fetch updated project: {}", e))?;
+
+    project.dev_env_ids = load_project_env_ids(&conn)?
+        .into_iter()
+        .filter(|(project_id, _)| project_id == id)
+        .map(|(_, env_id)| env_id)
+        .collect();
+
+    Ok(project)
 }
 
 /// 按调用方给定的顺序重写项目排序号。调用方需把完整顺序传进来、从 0 连续编号。
@@ -269,7 +293,7 @@ mod tests {
     fn project_keeps_bound_environments() {
         let db = test_db();
         let java_id = insert_env(&db, "java", "java-1");
-        let node_id = insert_env(&db, "node", "node-1");
+        let python_id = insert_env(&db, "python", "python-1");
 
         let project = create_project(
             &db,
@@ -277,18 +301,21 @@ mod tests {
                 name: "demo".to_string(),
                 path: "/work/demo".to_string(),
                 color: None,
-                java_env_id: Some(java_id.clone()),
-                node_env_id: Some(node_id.clone()),
+                dev_env_ids: vec![java_id.clone(), python_id.clone()],
             },
         )
         .expect("创建项目");
 
-        assert_eq!(project.java_env_id.as_deref(), Some(java_id.as_str()));
-        assert_eq!(project.node_env_id.as_deref(), Some(node_id.as_str()));
+        assert_eq!(project.dev_env_ids.len(), 2);
+        assert!(project.dev_env_ids.contains(&java_id));
+        assert!(project.dev_env_ids.contains(&python_id));
+
+        let listed = list_projects(&db).expect("查询项目");
+        assert_eq!(listed[0].dev_env_ids.len(), 2);
     }
 
     #[test]
-    fn update_without_env_fields_keeps_binding() {
+    fn update_without_env_field_keeps_binding() {
         let db = test_db();
         let java_id = insert_env(&db, "java", "java-1");
 
@@ -298,8 +325,7 @@ mod tests {
                 name: "demo".to_string(),
                 path: "/work/demo".to_string(),
                 color: None,
-                java_env_id: Some(java_id.clone()),
-                node_env_id: None,
+                dev_env_ids: vec![java_id.clone()],
             },
         )
         .expect("创建项目");
@@ -311,18 +337,17 @@ mod tests {
             UpdateProjectInput {
                 name: Some("demo2".to_string()),
                 color: None,
-                java_env_id: None,
-                node_env_id: None,
+                dev_env_ids: None,
             },
         )
         .expect("更新项目");
 
         assert_eq!(updated.name, "demo2");
-        assert_eq!(updated.java_env_id.as_deref(), Some(java_id.as_str()));
+        assert_eq!(updated.dev_env_ids, vec![java_id]);
     }
 
     #[test]
-    fn update_with_null_env_clears_binding() {
+    fn update_with_empty_env_list_clears_binding() {
         let db = test_db();
         let java_id = insert_env(&db, "java", "java-1");
         let node_id = insert_env(&db, "node", "node-1");
@@ -333,8 +358,7 @@ mod tests {
                 name: "demo".to_string(),
                 path: "/work/demo".to_string(),
                 color: None,
-                java_env_id: Some(java_id.clone()),
-                node_env_id: Some(node_id.clone()),
+                dev_env_ids: vec![java_id.clone(), node_id.clone()],
             },
         )
         .expect("创建项目");
@@ -345,13 +369,11 @@ mod tests {
             UpdateProjectInput {
                 name: None,
                 color: None,
-                java_env_id: Some(None),
-                node_env_id: Some(None),
+                dev_env_ids: Some(Vec::new()),
             },
         )
         .expect("更新项目");
 
-        assert!(updated.java_env_id.is_none());
-        assert!(updated.node_env_id.is_none());
+        assert!(updated.dev_env_ids.is_empty());
     }
 }

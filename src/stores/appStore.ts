@@ -322,15 +322,14 @@ interface AppState {
     name: string,
     path: string,
     color?: string,
-    env?: { javaEnvId?: string; nodeEnvId?: string },
+    env?: { devEnvIds?: string[] },
   ) => Promise<Project>;
   updateProject: (
     id: string,
     updates: {
       name?: string;
       color?: string;
-      javaEnvId?: string | null;
-      nodeEnvId?: string | null;
+      devEnvIds?: string[];
     },
   ) => Promise<void>;
   /** 正在编辑的项目（编辑项目弹窗用），null 表示未打开 */
@@ -634,8 +633,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       name,
       path,
       color,
-      javaEnvId: env?.javaEnvId,
-      nodeEnvId: env?.nodeEnvId,
+      devEnvIds: env?.devEnvIds,
     });
     set((state) => ({ projects: [...state.projects, project] }));
     return project;

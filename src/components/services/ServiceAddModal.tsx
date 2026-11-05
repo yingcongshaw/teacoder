@@ -3,6 +3,7 @@ import { Modal, Input, Select, App } from "antd";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { useAppStore } from "../../stores/appStore";
 import { serviceCreate } from "../../utils/ipc";
+import { DEV_KIND_CONFIGS } from "../../utils/devEnvKinds";
 
 interface ServiceAddModalProps {
   open: boolean;
@@ -24,7 +25,9 @@ export default function ServiceAddModal({
 
   const [projectId, setProjectId] = useState<string | undefined>(defaultProjectId);
   const [name, setName] = useState("");
+  const [kind, setKind] = useState("command");
   const [command, setCommand] = useState("");
+  const [buildCommand, setBuildCommand] = useState("");
   const [workingDir, setWorkingDir] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -32,7 +35,9 @@ export default function ServiceAddModal({
     if (open) {
       setProjectId(defaultProjectId);
       setName("");
+      setKind("command");
       setCommand("");
+      setBuildCommand("");
       setWorkingDir("");
     }
   }, [open, defaultProjectId]);
@@ -62,7 +67,9 @@ export default function ServiceAddModal({
       await serviceCreate({
         projectId,
         name: name.trim(),
+        kind,
         command: command.trim(),
+        buildCommand: buildCommand.trim() || undefined,
         workingDir: workingDir.trim() || undefined,
       });
       message.success("服务已添加");
@@ -108,6 +115,21 @@ export default function ServiceAddModal({
           />
         </div>
         <div>
+          <label className="block text-xs text-[var(--ant-color-text-secondary)] mb-1">环境类型</label>
+          <Select
+            className="w-full"
+            value={kind}
+            onChange={setKind}
+            options={[
+              ...DEV_KIND_CONFIGS.map((c) => ({ value: c.kind, label: c.title })),
+              { value: "command", label: "命令行 / 脚本" },
+            ]}
+          />
+          <div className="text-xs text-[var(--ant-color-text-tertiary)] mt-1">
+            决定服务名前面的环境标识
+          </div>
+        </div>
+        <div>
           <label className="block text-xs text-[var(--ant-color-text-secondary)] mb-1">启动命令</label>
           <Input
             value={command}
@@ -116,6 +138,17 @@ export default function ServiceAddModal({
           />
           <div className="text-xs text-[var(--ant-color-text-tertiary)] mt-1">
             不带 shell 语法，不支持管道与重定向
+          </div>
+        </div>
+        <div>
+          <label className="block text-xs text-[var(--ant-color-text-secondary)] mb-1">构建命令</label>
+          <Input
+            value={buildCommand}
+            onChange={(e) => setBuildCommand(e.target.value)}
+            placeholder="例如：cmake -S . -B build"
+          />
+          <div className="text-xs text-[var(--ant-color-text-tertiary)] mt-1">
+            可选。启动前先执行一次，构建失败则不启动服务
           </div>
         </div>
         <div>

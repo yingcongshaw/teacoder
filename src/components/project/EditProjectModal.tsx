@@ -22,16 +22,14 @@ export default function EditProjectModal() {
 
   const [name, setName] = useState("");
   const [color, setColor] = useState(PROJECT_COLORS[0]);
-  const [javaEnvId, setJavaEnvId] = useState<string | undefined>(undefined);
-  const [nodeEnvId, setNodeEnvId] = useState<string | undefined>(undefined);
+  const [devEnvIds, setDevEnvIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (!project) return;
     setName(project.name);
     setColor(project.color || PROJECT_COLORS[0]);
-    setJavaEnvId(project.javaEnvId);
-    setNodeEnvId(project.nodeEnvId);
+    setDevEnvIds(project.devEnvIds ?? []);
   }, [project]);
 
   const close = () => setEditingProjectId(null);
@@ -47,8 +45,7 @@ export default function EditProjectModal() {
       await updateProject(project.id, {
         name: name.trim(),
         color,
-        javaEnvId: javaEnvId ?? null,
-        nodeEnvId: nodeEnvId ?? null,
+        devEnvIds,
       });
       message.success("项目已更新");
       close();
@@ -104,12 +101,8 @@ export default function EditProjectModal() {
         <div>
           <label className="block text-xs text-[var(--ant-color-text-secondary)] mb-1">运行环境</label>
           <ProjectEnvSelects
-            javaEnvId={javaEnvId}
-            nodeEnvId={nodeEnvId}
-            onChange={(next) => {
-              setJavaEnvId(next.javaEnvId);
-              setNodeEnvId(next.nodeEnvId);
-            }}
+            devEnvIds={devEnvIds}
+            onChange={(next) => setDevEnvIds(next.devEnvIds)}
           />
         </div>
       </div>

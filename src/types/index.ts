@@ -61,27 +61,38 @@ export interface Project {
   name: string;
   path: string;
   color?: string;
-  /** 绑定的 Java 环境（JDK + Maven 一组） */
-  javaEnvId?: string;
-  /** 绑定的 Node 环境 */
-  nodeEnvId?: string;
+  /** 绑定的开发环境。一个项目可以同时绑多套（Java、Python、Go…） */
+  devEnvIds: string[];
   createdAt: number;
   updatedAt: number;
   /** 侧边栏展示序号，越小越靠前 */
   sortOrder: number;
 }
 
-/** 开发环境条目。kind=java 表示 JDK+Maven 一组，kind=node 表示 Node 一组。 */
+/** 开发环境的语言类型。 */
+export type DevEnvKind =
+  | "java"
+  | "node"
+  | "dotnet"
+  | "python"
+  | "rust"
+  | "go"
+  | "cpp";
+
+/** 环境里的一件工具（版本 + 路径）。 */
+export interface DevTool {
+  /** jdk | maven | node | dotnet | python | cargo | go | cmake | cc */
+  tool: string;
+  version?: string;
+  path?: string;
+}
+
+/** 开发环境条目：一套环境 = 一种语言下的一组工具。 */
 export interface DevEnvironment {
   id: string;
-  kind: "java" | "node";
+  kind: DevEnvKind;
   name: string;
-  jdkVersion?: string;
-  jdkPath?: string;
-  mavenVersion?: string;
-  mavenPath?: string;
-  nodeVersion?: string;
-  nodePath?: string;
+  tools: DevTool[];
   createdAt: number;
   updatedAt: number;
 }
@@ -91,10 +102,12 @@ export interface Service {
   id: string;
   projectId: string;
   name: string;
-  /** java | node | command */
+  /** java | node | dotnet | python | rust | go | cpp | command */
   kind: string;
   command: string;
   workingDir: string;
+  /** 先构建再运行的命令。C/C++ 这类要先编译出可执行文件 */
+  buildCommand?: string;
   /** detected（自动识别） | manual（手工添加） */
   source: "detected" | "manual";
   fingerprint: string;

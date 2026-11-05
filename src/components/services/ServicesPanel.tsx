@@ -19,6 +19,7 @@ import {
 } from "../../utils/ipc";
 import type { Service, ServiceRuntimeState } from "../../types";
 import { openExternal } from "../../utils/openExternal";
+import { DEV_KIND_COLORS, devKindShort } from "../../utils/devEnvKinds";
 import ServiceAddModal from "./ServiceAddModal";
 
 interface ServicesPanelProps {
@@ -280,7 +281,18 @@ export default function ServicesPanel({ visible, onClose, anchorRef }: ServicesP
                       }}
                     />
                     <span
-                      className="text-xs cursor-pointer truncate w-[140px] flex-shrink-0"
+                      className="text-[10px] leading-[14px] px-1 rounded flex-shrink-0 font-medium"
+                      style={{
+                        backgroundColor:
+                          DEV_KIND_COLORS[service.kind] ?? DEV_KIND_COLORS.command,
+                        color: "#fff",
+                      }}
+                      title={`${devKindShort(service.kind)} 服务`}
+                    >
+                      {devKindShort(service.kind)}
+                    </span>
+                    <span
+                      className="text-xs cursor-pointer truncate w-[130px] flex-shrink-0"
                       style={{ color: "var(--ant-color-text)" }}
                       onClick={() => setExpandedId(expanded ? null : service.id)}
                       title={service.command}

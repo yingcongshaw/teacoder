@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Button, Card, Form, Input, Modal, Popconfirm, Space, Table, App } from "antd";
 import {
   DeleteOutlined,
@@ -14,25 +14,19 @@ import {
   devEnvironmentUpdate,
 } from "../../utils/ipc";
 import { useAppStore } from "../../stores/appStore";
-import type { DevEnvironment } from "../../types";
+import type { DevEnvironment, DevEnvKind, DevTool } from "../../types";
+import { DEV_KIND_CONFIGS, type DevKindConfig } from "../../utils/devEnvKinds";
 
 interface DevEnvironmentPageProps {
-  kind: "java" | "node";
-  /** 标题栏上的说明文案 */
-  description: string;
+  kind: DevEnvKind;
 }
 
-interface EnvFormValues {
-  name: string;
-  jdkVersion?: string;
-  jdkPath?: string;
-  mavenVersion?: string;
-  mavenPath?: string;
-  nodeVersion?: string;
-  nodePath?: string;
+interface ToolDraft {
+  version: string;
+  path: string;
 }
 
-export default function DevEnvironmentPage({ kind, description }: DevEnvironmentPageProps) {
+export default function DevEnvironmentPage({ kind }: DevEnvironmentPageProps) {
   const { message } = App.useApp();
   const devEnvironments = useAppStore((s) => s.devEnvironments);
   const loadDevEnvironments = useAppStore((s) => s.loadDevEnvironments);
@@ -40,16 +34,27 @@ export default function DevEnvironmentPage({ kind, description }: DevEnvironment
   const [detecting, setDetecting] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [form] = Form.useForm<EnvFormValues>();
+  const [name, setName] = useState("");
+  const [drafts, setDrafts] = useState<Record<string, ToolDraft>>({});
 
-  const isJava = kind === "java";
-  const title = isJava ? "Java 环境" : "Node 环境";
+  const config = useMemo<DevKindConfig>(
+    () => DEV_KIND_CONFIGS.find((c) => c.kind === kind)!,
+    [kind],
+  );
 
   const rows = devEnvironments.filter((e) => e.kind === kind);
 
   useEffect(() => {
     loadDevEnvironments().catch(() => message.error("加载开发环境失败"));
   }, []);
+
+  const emptyDrafts = (): Record<string, ToolDraft> => {
+    const next: Record<string, ToolDraft> = {};
+    for (const tool of config.tools) {
+      next[tool.tool] = { version: "", path: "" };
+    }
+    return next;
+  };
 
   const handleDetect = async () => {
     setDetecting(true);
@@ -70,21 +75,23 @@ export default function DevEnvironmentPage({ kind, description }: DevEnvironment
 
   const handleCreate = () => {
     setEditingId(null);
-    form.resetFields();
+    setName("");
+    setDrafts(emptyDrafts());
     setModalOpen(true);
   };
 
   const handleEdit = (record: DevEnvironment) => {
     setEditingId(record.id);
-    form.setFieldsValue({
-      name: record.name,
-      jdkVersion: record.jdkVersion ?? "",
-      jdkPath: record.jdkPath ?? "",
-      mavenVersion: record.mavenVersion ?? "",
-      mavenPath: record.mavenPath ?? "",
-      nodeVersion: record.nodeVersion ?? "",
-      nodePath: record.nodePath ?? "",
-    });
+    setName(record.name);
+    const next = emptyDrafts();
+    for (const tool of config.tools) {
+      const found = record.tools.find((t) => t.tool === tool.tool);
+      next[tool.tool] = {
+        version: found?.version ?? "",
+        path: found?.path ?? "",
+      };
+    }
+    setDrafts(next);
     setModalOpen(true);
   };
 
@@ -99,18 +106,23 @@ export default function DevEnvironmentPage({ kind, description }: DevEnvironment
   };
 
   const handleSave = async () => {
+    const trimmedName = name.trim();
+    if (!trimmedName) {
+      message.error("请输入名称");
+      return;
+    }
+
+    // 填了路径才算这件工具，版本可有可无
+    const tools: DevTool[] = config.tools
+      .filter((tool) => (drafts[tool.tool]?.path ?? "").trim())
+      .map((tool) => ({
+        tool: tool.tool,
+        version: drafts[tool.tool]?.version.trim() || undefined,
+        path: drafts[tool.tool]?.path.trim(),
+      }));
+
     try {
-      const values = await form.validateFields();
-      const payload = {
-        kind,
-        name: values.name.trim(),
-        jdkVersion: isJava ? values.jdkVersion?.trim() || undefined : undefined,
-        jdkPath: isJava ? values.jdkPath?.trim() || undefined : undefined,
-        mavenVersion: isJava ? values.mavenVersion?.trim() || undefined : undefined,
-        mavenPath: isJava ? values.mavenPath?.trim() || undefined : undefined,
-        nodeVersion: isJava ? undefined : values.nodeVersion?.trim() || undefined,
-        nodePath: isJava ? undefined : values.nodePath?.trim() || undefined,
-      };
+      const payload = { kind, name: trimmedName, tools };
       if (editingId) {
         await devEnvironmentUpdate(editingId, payload);
         message.success("已更新");
@@ -127,115 +139,67 @@ export default function DevEnvironmentPage({ kind, description }: DevEnvironment
     }
   };
 
-  const browse = async (field: "jdkPath" | "mavenPath" | "nodePath") => {
-    const selected = await openDialog({ directory: true, multiple: false });
+  const browse = async (tool: string, pathType: "dir" | "file") => {
+    const selected = await openDialog(
+      pathType === "dir"
+        ? { directory: true, multiple: false }
+        : { directory: false, multiple: false },
+    );
     if (selected && typeof selected === "string") {
-      form.setFieldValue(field, selected);
+      setDrafts((prev) => ({ ...prev, [tool]: { ...prev[tool], path: selected } }));
     }
   };
 
-  const columns = isJava
-    ? [
-        {
-          title: "名称",
-          dataIndex: "name",
-          key: "name",
-        },
-        {
-          title: "JDK",
-          key: "jdk",
-          render: (_: unknown, record: DevEnvironment) => (
-            <div className="text-xs">
-              <div>{record.jdkVersion || "未指定版本"}</div>
-              <div className="text-[var(--ant-color-text-tertiary)] break-all">
-                {record.jdkPath || "未指定路径"}
-              </div>
+  const columns = [
+    {
+      title: "名称",
+      dataIndex: "name",
+      key: "name",
+    },
+    ...config.tools.map((tool) => ({
+      title: tool.label,
+      key: tool.tool,
+      render: (_: unknown, record: DevEnvironment) => {
+        const found = record.tools.find((t) => t.tool === tool.tool);
+        return (
+          <div className="text-xs">
+            <div>{found?.version || "未指定版本"}</div>
+            <div className="text-[var(--ant-color-text-tertiary)] break-all">
+              {found?.path || "未指定路径"}
             </div>
-          ),
-        },
-        {
-          title: "Maven",
-          key: "maven",
-          render: (_: unknown, record: DevEnvironment) => (
-            <div className="text-xs">
-              <div>{record.mavenVersion || "未指定版本"}</div>
-              <div className="text-[var(--ant-color-text-tertiary)] break-all">
-                {record.mavenPath || "未指定路径"}
-              </div>
-            </div>
-          ),
-        },
-        {
-          title: "操作",
-          key: "action",
-          width: 160,
-          render: (_: unknown, record: DevEnvironment) => (
-            <Space size="small">
-              <Button size="small" icon={<EditOutlined />} onClick={() => handleEdit(record)}>
-                编辑
-              </Button>
-              <Popconfirm
-                title="确认删除"
-                description="删除后引用它的项目会退回默认环境，是否继续？"
-                onConfirm={() => handleDelete(record.id)}
-                okText="删除"
-                cancelText="取消"
-              >
-                <Button size="small" danger icon={<DeleteOutlined />}>
-                  删除
-                </Button>
-              </Popconfirm>
-            </Space>
-          ),
-        },
-      ]
-    : [
-        {
-          title: "名称",
-          dataIndex: "name",
-          key: "name",
-        },
-        {
-          title: "Node",
-          key: "node",
-          render: (_: unknown, record: DevEnvironment) => (
-            <div className="text-xs">
-              <div>{record.nodeVersion || "未指定版本"}</div>
-              <div className="text-[var(--ant-color-text-tertiary)] break-all">
-                {record.nodePath || "未指定路径"}
-              </div>
-            </div>
-          ),
-        },
-        {
-          title: "操作",
-          key: "action",
-          width: 160,
-          render: (_: unknown, record: DevEnvironment) => (
-            <Space size="small">
-              <Button size="small" icon={<EditOutlined />} onClick={() => handleEdit(record)}>
-                编辑
-              </Button>
-              <Popconfirm
-                title="确认删除"
-                description="删除后引用它的项目会退回默认环境，是否继续？"
-                onConfirm={() => handleDelete(record.id)}
-                okText="删除"
-                cancelText="取消"
-              >
-                <Button size="small" danger icon={<DeleteOutlined />}>
-                  删除
-                </Button>
-              </Popconfirm>
-            </Space>
-          ),
-        },
-      ];
+          </div>
+        );
+      },
+    })),
+    {
+      title: "操作",
+      key: "action",
+      width: 160,
+      render: (_: unknown, record: DevEnvironment) => (
+        <Space size="small">
+          <Button size="small" icon={<EditOutlined />} onClick={() => handleEdit(record)}>
+            编辑
+          </Button>
+          <Popconfirm
+            title="确认删除"
+            description="删除后引用它的项目会退回默认环境，是否继续？"
+            onConfirm={() => handleDelete(record.id)}
+            okText="删除"
+            cancelText="取消"
+          >
+            <Button size="small" danger icon={<DeleteOutlined />}>
+              删除
+            </Button>
+          </Popconfirm>
+        </Space>
+      ),
+    },
+  ];
 
   return (
     <div className="p-6">
       <div className="flex items-center justify-between mb-1">
-        <h4 className="text-lg font-medium m-0">{title}</h4>
+        <h4 className="text-lg font-medium m-0">{config.title}</h4>
         <Space>
           <Button icon={<ScanOutlined />} loading={detecting} onClick={handleDetect}>
             自动识别
@@ -245,7 +209,9 @@ export default function DevEnvironmentPage({ kind, description }: DevEnvironment
           </Button>
         </Space>
       </div>
-      <p className="text-xs text-[var(--ant-color-text-secondary)] mt-0 mb-4">{description}</p>
+      <p className="text-xs text-[var(--ant-color-text-secondary)] mt-0 mb-4">
+        {config.description}
+      </p>
 
       <Card>
         <Table
@@ -259,7 +225,7 @@ export default function DevEnvironmentPage({ kind, description }: DevEnvironment
       </Card>
 
       <Modal
-        title={editingId ? `编辑${title}` : `新建${title}`}
+        title={editingId ? `编辑${config.title}` : `新建${config.title}`}
         open={modalOpen}
         onOk={handleSave}
         onCancel={() => setModalOpen(false)}
@@ -268,70 +234,52 @@ export default function DevEnvironmentPage({ kind, description }: DevEnvironment
         width={520}
         destroyOnHidden
       >
-        <Form form={form} layout="vertical">
-          <Form.Item
-            name="name"
-            label="名称"
-            rules={[{ required: true, message: "请输入名称" }]}
-          >
-            <Input placeholder={isJava ? "例如：JDK 21 + Maven 3.9.11" : "例如：Node 22.13.1"} />
+        <Form layout="vertical">
+          <Form.Item label="名称" required>
+            <Input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder={`例如：${config.title.replace(" 环境", "")} 21.0.2`}
+            />
           </Form.Item>
 
-          {isJava ? (
-            <>
-              <Form.Item name="jdkVersion" label="JDK 版本">
-                <Input placeholder="例如：21.0.2" />
-              </Form.Item>
-              <Form.Item name="jdkPath" label="JDK 路径">
-                <Input
-                  placeholder="JDK 安装根目录，例如 /usr/lib/jvm/java-21"
-                  addonAfter={
-                    <span
-                      className="cursor-pointer text-xs text-[var(--ant-color-primary)]"
-                      onClick={() => browse("jdkPath")}
-                    >
-                      浏览
-                    </span>
-                  }
-                />
-              </Form.Item>
-              <Form.Item name="mavenVersion" label="Maven 版本">
-                <Input placeholder="例如：3.9.11" />
-              </Form.Item>
-              <Form.Item name="mavenPath" label="Maven 路径">
-                <Input
-                  placeholder="Maven 安装根目录，例如 /opt/maven"
-                  addonAfter={
-                    <span
-                      className="cursor-pointer text-xs text-[var(--ant-color-primary)]"
-                      onClick={() => browse("mavenPath")}
-                    >
-                      浏览
-                    </span>
-                  }
-                />
-              </Form.Item>
-            </>
-          ) : (
-            <>
-              <Form.Item name="nodeVersion" label="Node 版本">
-                <Input placeholder="例如：22.13.1" />
-              </Form.Item>
-              <Form.Item name="nodePath" label="Node 路径">
-                <Input
-                  placeholder="Node 安装根目录，例如 ~/.nvm/versions/node/v22.13.1"
-                  addonAfter={
-                    <span
-                      className="cursor-pointer text-xs text-[var(--ant-color-primary)]"
-                      onClick={() => browse("nodePath")}
-                    >
-                      浏览
-                    </span>
-                  }
-                />
-              </Form.Item>
-            </>
-          )}
+          {config.tools.map((tool) => (
+            <Form.Item key={tool.tool} label={`${tool.label} 版本`}>
+              <Input
+                value={drafts[tool.tool]?.version ?? ""}
+                onChange={(e) =>
+                  setDrafts((prev) => ({
+                    ...prev,
+                    [tool.tool]: { ...prev[tool.tool], version: e.target.value },
+                  }))
+                }
+                placeholder={tool.versionPlaceholder}
+              />
+            </Form.Item>
+          ))}
+
+          {config.tools.map((tool) => (
+            <Form.Item key={`${tool.tool}-path`} label={`${tool.label} 路径`}>
+              <Input
+                value={drafts[tool.tool]?.path ?? ""}
+                onChange={(e) =>
+                  setDrafts((prev) => ({
+                    ...prev,
+                    [tool.tool]: { ...prev[tool.tool], path: e.target.value },
+                  }))
+                }
+                placeholder={tool.pathPlaceholder}
+                addonAfter={
+                  <span
+                    className="cursor-pointer text-xs text-[var(--ant-color-primary)]"
+                    onClick={() => browse(tool.tool, tool.pathType)}
+                  >
+                    浏览
+                  </span>
+                }
+              />
+            </Form.Item>
+          ))}
         </Form>
       </Modal>
     </div>
