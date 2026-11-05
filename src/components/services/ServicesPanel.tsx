@@ -31,6 +31,9 @@ interface ServicesPanelProps {
 
 const LOG_MAX_LINES = 200;
 
+/** 服务行的列宽：状态点 | 环境标识 | 名称 | 项目 | 端口 | 弹性留白 | 启停 | 删除。 */
+const GRID_COLUMNS = "8px 40px 120px 90px 80px 1fr 28px 28px";
+
 /** 行尾两个图标按钮统一成方块，图标才会上下对齐成一列。 */
 const ICON_BUTTON_STYLE: React.CSSProperties = {
   width: 28,
@@ -315,15 +318,9 @@ export default function ServicesPanel({ visible, onClose, anchorRef }: ServicesP
               return (
                 <div key={service.id} className="px-3 py-1.5">
                   {/* 用网格排版，各列宽度写死 —— 环境标识的字数不一样，
-                      用弹性布局的话后面的端口、项目、按钮会跟着漂。 */}
-                  <div
-                    className="grid items-center gap-1"
-                    style={{
-                      gridTemplateColumns: allProjects
-                        ? "8px 40px 120px 90px 80px 1fr 28px 28px"
-                        : "8px 40px 120px 80px 1fr 28px 28px",
-                    }}
-                  >
+                      用弹性布局的话后面的端口、项目、按钮会跟着漂。
+                      项目列不显示时也留着空位，端口列的位置才不会跟着变。 */}
+                  <div className="grid items-center gap-1" style={{ gridTemplateColumns: GRID_COLUMNS }}>
                     <span
                       className="w-2 h-2 rounded-full"
                       style={{
@@ -353,14 +350,12 @@ export default function ServicesPanel({ visible, onClose, anchorRef }: ServicesP
                     >
                       {service.name}
                     </span>
-                    {allProjects && (
-                      <span
-                        className="text-xs text-[var(--ant-color-text-quaternary)] truncate min-w-0"
-                        title={projectName(service.projectId)}
-                      >
-                        {projectName(service.projectId)}
-                      </span>
-                    )}
+                    <span
+                      className="text-xs text-[var(--ant-color-text-quaternary)] truncate min-w-0"
+                      title={allProjects ? projectName(service.projectId) : undefined}
+                    >
+                      {allProjects ? projectName(service.projectId) : ""}
+                    </span>
                     <span className="flex items-center justify-end gap-1.5 overflow-hidden whitespace-nowrap min-w-0">
                       {(states[service.id]?.ports ?? []).map((port) => {
                         const url = `http://127.0.0.1:${port}`;
