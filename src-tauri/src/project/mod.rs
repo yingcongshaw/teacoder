@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use serde::{Deserialize, Serialize};
 
 use crate::storage::AppDatabase;
@@ -74,6 +76,42 @@ fn attach_env_ids(projects: &mut [Project], bindings: Vec<(String, String)>) {
     }
 }
 
+/// 一个环境类别里最多只能绑一套：同 kind 的环境只保留传入列表末位的那套。
+/// 保留末位是因为绑定按创建时间升序读取，末位即最新的一套，
+/// 与运行时 `list_project_envs` 取最新环境的顺序一致。
+fn dedupe_env_ids_by_kind(conn: &rusqlite::Connection, env_ids: &[String]) -> Vec<String> {
+    let mut kinds: Vec<Option<String>> = Vec::with_capacity(env_ids.len());
+    let mut last_of_kind: HashMap<String, usize> = HashMap::new();
+
+    for (index, env_id) in env_ids.iter().enumerate() {
+        let kind = conn
+            .query_row(
+                "SELECT kind FROM dev_environments WHERE id = ?1",
+                [env_id],
+                |row| row.get::<_, String>(0),
+            )
+            .ok();
+        if let Some(ref k) = kind {
+            last_of_kind.insert(k.clone(), index);
+        }
+        kinds.push(kind);
+    }
+
+    let mut result = Vec::with_capacity(env_ids.len());
+    for (index, (env_id, kind)) in env_ids.iter().zip(kinds).enumerate() {
+        match kind {
+            // 认不出 kind 的环境 id 原样放过，交给外键约束报错
+            None => result.push(env_id.clone()),
+            Some(k) => {
+                if last_of_kind.get(&k) == Some(&index) {
+                    result.push(env_id.clone());
+                }
+            }
+        }
+    }
+    result
+}
+
 pub fn list_projects(db: &AppDatabase) -> Result<Vec<Project>, String> {
     let conn = db.conn.lock().map_err(|e| e.to_string())?;
 
@@ -134,7 +172,8 @@ pub fn create_project(db: &AppDatabase, input: CreateProjectInput) -> Result<Pro
         }
     })?;
 
-    for env_id in &input.dev_env_ids {
+    let env_ids = dedupe_env_ids_by_kind(&tx, &input.dev_env_ids);
+    for env_id in &env_ids {
         tx.execute(
             "INSERT OR IGNORE INTO project_dev_envs (project_id, env_id, created_at, updated_at) VALUES (?1, ?2, ?3, ?4)",
             rusqlite::params![id, env_id, now, now],
@@ -150,7 +189,7 @@ pub fn create_project(db: &AppDatabase, input: CreateProjectInput) -> Result<Pro
         name: input.name,
         path: input.path,
         color: input.color,
-        dev_env_ids: input.dev_env_ids,
+        dev_env_ids: env_ids,
         created_at: now,
         updated_at: now,
         sort_order: next_sort_order,
@@ -193,10 +232,11 @@ pub fn update_project(
 
     // 环境绑定：字段缺失时保持原值不动，传了就全量替换
     if let Some(env_ids) = &input.dev_env_ids {
+        let env_ids = dedupe_env_ids_by_kind(&tx, env_ids);
         tx.execute("DELETE FROM project_dev_envs WHERE project_id = ?1", [id])
             .map_err(|e| format!("Failed to clear project dev envs: {}", e))?;
 
-        for env_id in env_ids {
+        for env_id in &env_ids {
             tx.execute(
                 "INSERT OR IGNORE INTO project_dev_envs (project_id, env_id, created_at, updated_at) VALUES (?1, ?2, ?3, ?4)",
                 rusqlite::params![id, env_id, now, now],
@@ -312,6 +352,34 @@ mod tests {
 
         let listed = list_projects(&db).expect("查询项目");
         assert_eq!(listed[0].dev_env_ids.len(), 2);
+    }
+
+    #[test]
+    fn same_kind_environments_keep_only_the_last_one() {
+        let db = test_db();
+        let java_21 = insert_env(&db, "java", "java-21");
+        let java_25 = insert_env(&db, "java", "java-25");
+        let node_22 = insert_env(&db, "node", "node-22");
+
+        let project = create_project(
+            &db,
+            CreateProjectInput {
+                name: "demo".to_string(),
+                path: "/work/demo".to_string(),
+                color: None,
+                dev_env_ids: vec![java_21.clone(), node_22.clone(), java_25.clone()],
+            },
+        )
+        .expect("创建项目");
+
+        // 同一类别只留一套，且留的是列表里靠后的那套
+        assert_eq!(project.dev_env_ids, vec![node_22.clone(), java_25.clone()]);
+
+        let listed = list_projects(&db).expect("查询项目");
+        assert_eq!(listed[0].dev_env_ids.len(), 2);
+        assert!(!listed[0].dev_env_ids.contains(&java_21));
+        assert!(listed[0].dev_env_ids.contains(&java_25));
+        assert!(listed[0].dev_env_ids.contains(&node_22));
     }
 
     #[test]
