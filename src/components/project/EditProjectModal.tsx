@@ -1,12 +1,8 @@
 import { useEffect, useState } from "react";
 import { Modal, Input, App } from "antd";
 import { useAppStore } from "../../stores/appStore";
+import { PROJECT_COLORS } from "../../utils/projectColors";
 import ProjectEnvSelects from "./ProjectEnvSelects";
-
-const PROJECT_COLORS = [
-  "#3b82f6", "#722ed1", "#1890ff", "#52c41a",
-  "#fa8c16", "#eb2f96", "#f5222d", "#888888",
-];
 
 /**
  * 编辑项目弹窗。

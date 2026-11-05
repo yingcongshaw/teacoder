@@ -6,6 +6,7 @@ import { CLAUDE_TIER_ENTRIES } from "../../utils/claudeModels";
 import { BUILTIN_SESSION_TEMPLATES, TOOL_PROVIDER_KIND_MAP } from "../../types";
 import type { ToolType, CliTool, LlmProvider, SshArgs } from "../../types";
 import { EMPTY_SSH_ARGS, serializeSshArgs } from "../../utils/sshArgs";
+import { SESSION_COLORS } from "../../utils/sessionColors";
 import { CLI_TOOLS, sortCliToolsByAvailability, isCliToolAvailable, type CliToolMeta } from "../cli/cliTools";
 import CliArgsClaude from "../cli/CliArgsClaude";
 import SshArgsFields from "../cli/SshArgsFields";
@@ -16,12 +17,6 @@ interface NewSessionModalProps {
   categoryId?: string | null;
   onClose: () => void;
 }
-
-const COLOR_PRESETS = [
-  "#722ed1", "#1890ff", "#1677ff", "#fa8c16",
-  "#52c41a", "#13c2c2", "#eb2f96", "#ff4d4f",
-];
-
 
 function buildCliArgs(toolType: ToolType, params: Record<string, unknown>): string {
   const args: string[] = [];
@@ -67,7 +62,7 @@ export default function NewSessionModal({ open: isOpen, projectId, categoryId, o
   const loadLlmProviders = useAppStore((s) => s.loadLlmProviders);
 
   const [selectedTool, setSelectedTool] = useState<ToolType | null>(null);
-  const [selectedColor, setSelectedColor] = useState<string>(COLOR_PRESETS[0]);
+  const [selectedColor, setSelectedColor] = useState<string>(SESSION_COLORS[0]);
   const [title, setTitle] = useState("");
   const [profileId, setProfileId] = useState<string | undefined>();
   const [thinkingIntensity, setThinkingIntensity] = useState(globalThinkingIntensity);
@@ -158,7 +153,7 @@ export default function NewSessionModal({ open: isOpen, projectId, categoryId, o
   useEffect(() => {
     if (isOpen) {
       setSelectedTool(null);
-      setSelectedColor(project?.color || COLOR_PRESETS[0]);
+      setSelectedColor(project?.color || SESSION_COLORS[0]);
       setTitle("");
       setProfileId(undefined);
       setThinkingIntensity(globalThinkingIntensity);
@@ -585,7 +580,7 @@ export default function NewSessionModal({ open: isOpen, projectId, categoryId, o
             <div style={{ marginBottom: 12 }}>
               <label style={{ display: "block", fontSize: 12, color: "#aaaaaa", marginBottom: 4 }}>颜色标记</label>
               <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                {COLOR_PRESETS.map((color) => (
+                {SESSION_COLORS.map((color) => (
                   <div
                     key={color}
                     style={{

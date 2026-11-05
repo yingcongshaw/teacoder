@@ -1,11 +1,7 @@
 import { useState } from "react";
 import { Modal, Input, App } from "antd";
 import { useAppStore } from "../../stores/appStore";
-
-const CATEGORY_COLORS = [
-  "#722ed1", "#1890ff", "#1677ff", "#fa8c16",
-  "#52c41a", "#13c2c2", "#eb2f96", "#ff4d4f",
-];
+import { SESSION_COLORS } from "../../utils/sessionColors";
 
 interface NewCategoryModalProps {
   open: boolean;
@@ -18,7 +14,7 @@ export default function NewCategoryModal({ open, projectId, onClose }: NewCatego
   const { message } = App.useApp();
 
   const [name, setName] = useState("");
-  const [color, setColor] = useState(CATEGORY_COLORS[0]);
+  const [color, setColor] = useState(SESSION_COLORS[0]);
   const [loading, setLoading] = useState(false);
 
   const handleOk = async () => {
@@ -44,7 +40,7 @@ export default function NewCategoryModal({ open, projectId, onClose }: NewCatego
 
   const resetAndClose = () => {
     setName("");
-    setColor(CATEGORY_COLORS[0]);
+    setColor(SESSION_COLORS[0]);
     onClose();
   };
 
@@ -75,7 +71,7 @@ export default function NewCategoryModal({ open, projectId, onClose }: NewCatego
         <div>
           <label className="block text-xs text-[var(--ant-color-text-secondary)] mb-1">颜色标记</label>
           <div className="flex gap-2">
-            {CATEGORY_COLORS.map((c) => (
+            {SESSION_COLORS.map((c) => (
               <span
                 key={c}
                 className="inline-block w-5 h-5 rounded-full cursor-pointer border-2 transition-transform"

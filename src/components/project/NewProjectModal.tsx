@@ -2,17 +2,8 @@ import { useEffect, useState } from "react";
 import { Modal, Input, App } from "antd";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { useAppStore } from "../../stores/appStore";
+import { PROJECT_COLORS, randomProjectColor } from "../../utils/projectColors";
 import ProjectEnvSelects from "./ProjectEnvSelects";
-
-const PROJECT_COLORS = [
-  "#3b82f6", "#722ed1", "#1890ff", "#52c41a",
-  "#fa8c16", "#eb2f96", "#f5222d", "#888888",
-];
-
-/** 随机取一个颜色，新建项目时不至于每次都是同一个蓝。 */
-function randomProjectColor(): string {
-  return PROJECT_COLORS[Math.floor(Math.random() * PROJECT_COLORS.length)];
-}
 
 interface NewProjectModalProps {
   open: boolean;
