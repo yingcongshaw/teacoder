@@ -31,6 +31,16 @@ interface ServicesPanelProps {
 
 const LOG_MAX_LINES = 200;
 
+/** 行尾两个图标按钮统一成方块，图标才会上下对齐成一列。 */
+const ICON_BUTTON_STYLE: React.CSSProperties = {
+  width: 28,
+  height: 28,
+  padding: 0,
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+};
+
 export default function ServicesPanel({ visible, onClose, anchorRef }: ServicesPanelProps) {
   const { message } = App.useApp();
   const activeTabId = useAppStore((s) => s.activeTabId);
@@ -47,6 +57,7 @@ export default function ServicesPanel({ visible, onClose, anchorRef }: ServicesP
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [renameTarget, setRenameTarget] = useState<Service | null>(null);
   const [renameValue, setRenameValue] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState<Service | null>(null);
 
   const activeSession = sessions.find((s) => s.id === activeTabId);
   const currentProjectId = activeSession?.projectId;
@@ -134,7 +145,7 @@ export default function ServicesPanel({ visible, onClose, anchorRef }: ServicesP
     // 「添加服务」「改名」弹窗渲染在 body 的 portal 里，不在面板 DOM 内。
     // 它们开着的时候不能让面板的「点外部关闭」把面板一起收掉。
     const handleClickOutside = (e: MouseEvent) => {
-      if (addOpen || renameTarget) return;
+      if (addOpen || renameTarget || deleteTarget) return;
       const anchor = anchorRef.current;
       const panel = panelRef.current;
       if (
@@ -148,7 +159,7 @@ export default function ServicesPanel({ visible, onClose, anchorRef }: ServicesP
     };
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (addOpen || renameTarget) return;
+      if (addOpen || renameTarget || deleteTarget) return;
       if (e.key === "Escape") onClose();
     };
 
@@ -158,7 +169,7 @@ export default function ServicesPanel({ visible, onClose, anchorRef }: ServicesP
       document.removeEventListener("mousedown", handleClickOutside);
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [visible, anchorRef, onClose, addOpen, renameTarget]);
+  }, [visible, anchorRef, onClose, addOpen, renameTarget, deleteTarget]);
 
   const handleDetect = async () => {
     setDetecting(true);
@@ -200,9 +211,16 @@ export default function ServicesPanel({ visible, onClose, anchorRef }: ServicesP
     }
   };
 
-  const handleDelete = async (service: Service) => {
+  const handleDelete = (service: Service) => {
+    setDeleteTarget(service);
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    const service = deleteTarget;
     try {
       await serviceDelete(service.id);
+      setDeleteTarget(null);
       await reload();
       await reloadStates();
       message.success("服务已删除");
@@ -241,7 +259,7 @@ export default function ServicesPanel({ visible, onClose, anchorRef }: ServicesP
     <>
       <div
         ref={panelRef}
-        className="absolute bottom-full mb-1 left-0 z-50 bg-[var(--ant-color-bg-elevated)] border border-[var(--ant-color-border)] rounded-lg shadow-lg w-[440px]"
+        className="absolute bottom-full mb-1 left-0 z-50 bg-[var(--ant-color-bg-elevated)] border border-[var(--ant-color-border)] rounded-lg shadow-lg w-[460px]"
         style={{ boxShadow: "0 6px 16px 0 rgba(0, 0, 0, 0.16)" }}
       >
         <div className="flex items-center justify-between px-3 py-2 border-b border-[var(--ant-color-border-secondary)]">
@@ -296,9 +314,18 @@ export default function ServicesPanel({ visible, onClose, anchorRef }: ServicesP
               const expanded = expandedId === service.id;
               return (
                 <div key={service.id} className="px-3 py-1.5">
-                  <div className="flex items-center gap-2">
+                  {/* 用网格排版，各列宽度写死 —— 环境标识的字数不一样，
+                      用弹性布局的话后面的端口、项目、按钮会跟着漂。 */}
+                  <div
+                    className="grid items-center gap-1"
+                    style={{
+                      gridTemplateColumns: allProjects
+                        ? "8px 40px 120px 90px 80px 1fr 28px 28px"
+                        : "8px 40px 120px 80px 1fr 28px 28px",
+                    }}
+                  >
                     <span
-                      className="inline-block w-2 h-2 rounded-full flex-shrink-0"
+                      className="w-2 h-2 rounded-full"
                       style={{
                         backgroundColor: running
                           ? "var(--ant-color-success)"
@@ -306,8 +333,9 @@ export default function ServicesPanel({ visible, onClose, anchorRef }: ServicesP
                       }}
                     />
                     <span
-                      className="text-[10px] leading-[14px] px-1 rounded flex-shrink-0 font-medium cursor-pointer"
+                      className="text-[10px] leading-[14px] rounded font-medium cursor-pointer flex items-center justify-center"
                       style={{
+                        width: 40,
                         backgroundColor:
                           DEV_KIND_COLORS[service.kind] ?? DEV_KIND_COLORS.command,
                         color: "#fff",
@@ -318,14 +346,22 @@ export default function ServicesPanel({ visible, onClose, anchorRef }: ServicesP
                       {devKindShort(service.kind)}
                     </span>
                     <span
-                      className="text-xs cursor-pointer truncate w-[130px] flex-shrink-0"
+                      className="text-xs cursor-pointer truncate min-w-0"
                       style={{ color: "var(--ant-color-text)" }}
                       onClick={() => setExpandedId(expanded ? null : service.id)}
                       title={service.command}
                     >
                       {service.name}
                     </span>
-                    <span className="w-[110px] flex-shrink-0 flex items-center gap-2 overflow-hidden whitespace-nowrap">
+                    {allProjects && (
+                      <span
+                        className="text-xs text-[var(--ant-color-text-quaternary)] truncate min-w-0"
+                        title={projectName(service.projectId)}
+                      >
+                        {projectName(service.projectId)}
+                      </span>
+                    )}
+                    <span className="flex items-center justify-end gap-1.5 overflow-hidden whitespace-nowrap min-w-0">
                       {(states[service.id]?.ports ?? []).map((port) => {
                         const url = `http://127.0.0.1:${port}`;
                         return (
@@ -350,15 +386,11 @@ export default function ServicesPanel({ visible, onClose, anchorRef }: ServicesP
                         );
                       })}
                     </span>
-                    {allProjects && (
-                      <span className="text-xs text-[var(--ant-color-text-tertiary)] flex-shrink-0">
-                        {projectName(service.projectId)}
-                      </span>
-                    )}
-                    <span className="flex-1" />
+                    <span />
                     <Button
                       size="small"
                       type="text"
+                      style={ICON_BUTTON_STYLE}
                       icon={running ? <PauseCircleOutlined /> : <PlayCircleOutlined />}
                       onClick={() => (running ? handleStop(service) : handleStart(service))}
                     />
@@ -366,6 +398,7 @@ export default function ServicesPanel({ visible, onClose, anchorRef }: ServicesP
                       size="small"
                       type="text"
                       danger
+                      style={ICON_BUTTON_STYLE}
                       icon={<DeleteOutlined />}
                       onClick={() => handleDelete(service)}
                     />
@@ -394,6 +427,23 @@ export default function ServicesPanel({ visible, onClose, anchorRef }: ServicesP
         defaultProjectId={currentProjectId}
         allowProjectSelect={allProjects}
       />
+
+      <Modal
+        title="删除服务"
+        open={!!deleteTarget}
+        onOk={confirmDelete}
+        onCancel={() => setDeleteTarget(null)}
+        okText="删除"
+        cancelText="取消"
+        okButtonProps={{ danger: true }}
+        width={360}
+        destroyOnHidden
+        mask={{ closable: false }}
+      >
+        <div className="text-sm text-[var(--ant-color-text-secondary)]">
+          确定要删除服务「{deleteTarget?.name}」吗？删除后无法恢复。
+        </div>
+      </Modal>
 
       <Modal
         title="修改服务名称"
