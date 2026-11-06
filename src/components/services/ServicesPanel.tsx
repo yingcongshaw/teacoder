@@ -1,9 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button, Switch, Tooltip, App, Empty, Modal, Input } from "antd";
 import {
+  CaretRightFilled,
   DeleteOutlined,
-  PauseCircleOutlined,
-  PlayCircleOutlined,
   PlusOutlined,
   ScanOutlined,
 } from "@ant-design/icons";
@@ -13,6 +12,7 @@ import {
   serviceDelete,
   serviceDetect,
   serviceList,
+  serviceLogs,
   serviceRename,
   serviceStart,
   serviceStates,
@@ -43,6 +43,29 @@ const ICON_BUTTON_STYLE: React.CSSProperties = {
   alignItems: "center",
   justifyContent: "center",
 };
+
+/** 后端留存的日志与实时收到的日志会重叠，实时那段通常是历史的尾部。 */
+function mergeLogs(history: string[], live: string[]): string[] {
+  if (live.length === 0) return history;
+  if (history.length === 0) return live;
+  if (history.join("").endsWith(live.join(""))) return history;
+  return [...history, ...live].slice(-LOG_MAX_LINES);
+}
+
+/** 开关里的文字塞在轨道内，默认字号偏大，压到 10px 才不挤。 */
+const SWITCH_TEXT_STYLE: React.CSSProperties = {
+  fontSize: 10,
+  lineHeight: 1,
+};
+
+/** 停止用红色实心方块 —— AntD 的 StopFilled 是圆圈加斜杠，跟 IDEA 的方块对不上。 */
+function StopSquareIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true" focusable="false">
+      <rect x="1" y="1" width="10" height="10" rx="1" fill="var(--ant-color-error)" />
+    </svg>
+  );
+}
 
 export default function ServicesPanel({ visible, onClose, anchorRef }: ServicesPanelProps) {
   const { message } = App.useApp();
@@ -141,6 +164,32 @@ export default function ServicesPanel({ visible, onClose, anchorRef }: ServicesP
       dispose?.();
     };
   }, [visible]);
+
+  const toggleExpand = (id: string) => {
+    setExpandedId((cur) => (cur === id ? null : id));
+  };
+
+  // 展开时把后端留存的日志拉回来 —— 面板没开着的时候服务也在跑，
+  // 那段时间的输出收不到事件，只能从后端的日志缓冲里取
+  useEffect(() => {
+    if (!expandedId) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const history = await serviceLogs(expandedId, LOG_MAX_LINES);
+        if (cancelled) return;
+        setLogs((prev) => {
+          const live = prev[expandedId] ?? [];
+          return { ...prev, [expandedId]: mergeLogs(history, live) };
+        });
+      } catch {
+        // 拉不到历史就只剩实时日志
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [expandedId]);
 
   useEffect(() => {
     if (!visible) return;
@@ -272,8 +321,8 @@ export default function ServicesPanel({ visible, onClose, anchorRef }: ServicesP
             size="small"
             checked={allProjects}
             onChange={setAllProjects}
-            checkedChildren="所有项目"
-            unCheckedChildren="本项目"
+            checkedChildren={<span style={SWITCH_TEXT_STYLE}>所有项目</span>}
+            unCheckedChildren={<span style={SWITCH_TEXT_STYLE}>本项目</span>}
           />
           <div className="flex items-center gap-2">
             <Tooltip title="按项目绑定的开发/运行环境添加服务">
@@ -347,16 +396,17 @@ export default function ServicesPanel({ visible, onClose, anchorRef }: ServicesP
                     <span
                       className="text-xs cursor-pointer truncate min-w-0"
                       style={{ color: "var(--ant-color-text)" }}
-                      onClick={() => setExpandedId(expanded ? null : service.id)}
-                      title={service.command}
+                      onClick={() => toggleExpand(service.id)}
+                      title={`${service.command}\n点击查看启动日志`}
                     >
                       {service.name}
                     </span>
                     <span
-                      className="text-xs text-[var(--ant-color-text-quaternary)] truncate min-w-0"
-                      title={allProjects ? projectName(service.projectId) : undefined}
+                      className="text-xs text-[var(--ant-color-text-quaternary)] truncate min-w-0 cursor-pointer"
+                      onClick={() => toggleExpand(service.id)}
+                      title={`${projectName(service.projectId)}\n点击查看启动日志`}
                     >
-                      {allProjects ? projectName(service.projectId) : ""}
+                      {projectName(service.projectId)}
                     </span>
                     <span />
                     <span className="flex items-center gap-1.5 overflow-hidden whitespace-nowrap min-w-0">
@@ -384,13 +434,22 @@ export default function ServicesPanel({ visible, onClose, anchorRef }: ServicesP
                         );
                       })}
                     </span>
-                    <Button
-                      size="small"
-                      type="text"
-                      style={ICON_BUTTON_STYLE}
-                      icon={running ? <PauseCircleOutlined /> : <PlayCircleOutlined />}
-                      onClick={() => (running ? handleStop(service) : handleStart(service))}
-                    />
+                    <Tooltip title={running ? "停止服务" : "启动服务"}>
+                      <Button
+                        size="small"
+                        type="text"
+                        style={ICON_BUTTON_STYLE}
+                        aria-label={running ? "停止服务" : "启动服务"}
+                        icon={
+                          running ? (
+                            <StopSquareIcon />
+                          ) : (
+                            <CaretRightFilled style={{ color: "var(--ant-color-success)" }} />
+                          )
+                        }
+                        onClick={() => (running ? handleStop(service) : handleStart(service))}
+                      />
+                    </Tooltip>
                     <Button
                       size="small"
                       type="text"
@@ -401,15 +460,21 @@ export default function ServicesPanel({ visible, onClose, anchorRef }: ServicesP
                     />
                   </div>
                   {expanded && (
-                    <pre
-                      className="mt-1 p-2 rounded text-xs whitespace-pre-wrap break-all max-h-[160px] overflow-y-auto"
-                      style={{
-                        backgroundColor: "var(--ant-color-fill-quaternary)",
-                        color: "var(--ant-color-text-secondary)",
-                      }}
-                    >
-                      {(logs[service.id] || []).join("") || "（暂无输出）"}
-                    </pre>
+                    <div className="mt-1">
+                      <div className="flex items-center justify-between text-xs text-[var(--ant-color-text-tertiary)] mb-0.5">
+                        <span>启动日志</span>
+                        <span className="truncate">{projectName(service.projectId)}</span>
+                      </div>
+                      <pre
+                        className="p-2 rounded text-xs whitespace-pre-wrap break-all max-h-[220px] overflow-y-auto"
+                        style={{
+                          backgroundColor: "var(--ant-color-fill-quaternary)",
+                          color: "var(--ant-color-text-secondary)",
+                        }}
+                      >
+                        {(logs[service.id] || []).join("") || "（暂无输出）"}
+                      </pre>
+                    </div>
                   )}
                 </div>
               );
