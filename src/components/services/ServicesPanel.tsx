@@ -184,10 +184,12 @@ export default function ServicesPanel({ visible, onClose, anchorRef }: ServicesP
       }
       const result = await serviceDetect(scope);
       await reload();
-      if (result.created.length === 0) {
-        message.info("没有发现新的服务");
-      } else {
+      if (result.created.length > 0) {
         message.success(`识别到 ${result.created.length} 个新服务`);
+      } else if (result.updated > 0) {
+        message.info(`没有新增服务，已按当前开发/运行环境更新 ${result.updated} 个`);
+      } else {
+        message.info("没有发现新的服务");
       }
     } catch (e) {
       message.error(`服务识别失败：${e}`);
@@ -274,7 +276,7 @@ export default function ServicesPanel({ visible, onClose, anchorRef }: ServicesP
             unCheckedChildren="本项目"
           />
           <div className="flex items-center gap-2">
-            <Tooltip title="添加服务">
+            <Tooltip title="按项目绑定的开发/运行环境添加服务">
               <Button
                 size="small"
                 icon={<PlusOutlined />}
@@ -289,8 +291,8 @@ export default function ServicesPanel({ visible, onClose, anchorRef }: ServicesP
                 detectDisabled
                   ? "当前会话没有所属项目"
                   : allProjects
-                    ? "识别所有项目的服务"
-                    : "识别当前项目的服务"
+                    ? "按各项目绑定的开发/运行环境识别服务"
+                    : "按本项目绑定的开发/运行环境识别服务"
               }
             >
               <Button

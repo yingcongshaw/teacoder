@@ -13,9 +13,8 @@
   <img src="./public/logo.png" width="96" alt="TeaCoder Logo" />
 
   **动动你发财的小手，给点一颗星星吧！**
+
 </div>
-
-
 
 ## 项目简介
 
@@ -23,57 +22,112 @@ TeaCoder是一款为 **AI 编程 CLI 工具** 量身打造的桌面管理客户�
 
 **核心原则：零额外 Token 开销。** TeaCoder 通过 PTY 直通运行 CLI 工具，**不拦截、不代理任何 API 请求**。Token 统计直接读取各 CLI 工具本地的 JSONL / 数据库，不解析 PTY 输出——CLI 工具的协议怎么变都不会影响 TeaCoder 的统计准确性。
 
-
-
 ## 核心特性
 
-| 特性 | 说明 |
-| --- | --- |
-| **多主题** |通用的十多个主题，系统主题与终端主题分离 |
-| **多平台支持** |基于Rust+React 的Tauri框架，支持一键发布Linux、Window、IOS平台，x86、 Arm架构 |
-| **多标签 + 分屏** | 浏览器式标签 + 最多 2 个 Pane 左右分屏，`共享 PTY 双开`（同一会话两端同步显示） |
-| **多工具终端管理** | 同时支持 Claude Code/ Codex CLI/ Gemini CLI/ OpenCode/ Antigravity/ 裸终端/ SSH。自定义不同类似的`快捷输入`/`代码块` |
-| **裸终端 / SSH集成sFTP** | 支持SSH帐号记录和登录，基于sFTP的`图形化`上传、下载文件支持，`操作记录持久化` |
-| **PTY 直通** | 真实 PTY 伪终端运行，无 API 拦截，`零额外 Token 消耗` |
-| **四层会话模型** | Project → SessionCategory → Session + SessionMessage，结构清晰 |
-| **LLM 供应商系统** | 会话独立选择模型，多会话多供应商多模型同时运行 |
-| **会话历史+搜索+定位**  | 支持用户会话、系统会话查看，关键词搜索。一键`定位`PTY会话窗口位置。 |
-| **系统托盘 + 关闭行为** | 可关闭至托盘、可配置开机自启 |
-| **Profile 隔离** | 每个 Profile 独立的 `CLAUDE_CONFIG_DIR`，账号数据完全隔离 |
-| **凭据分层存储** | Profile 凭据走系统 Keychain，LlmProvider 走 SQLite（Base64 编码） |
-| **18 个设置项** | 通用 / 终端 / LLM / 每个 CLI 工具独立 / 网络 / 通知 / 数据管理 / 关于 等 |
-| **新手引导** | 首次启动引导流程，快速上手 |
+### 核心一览表
+
+| 特性                     | 说明                                                                                                                              |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------- |
+| **多主题**               | 通用的十多个主题，系统主题与终端主题分离                                                                                          |
+| **多平台支持**           | 基于Rust+React 的Tauri框架，支持一键发布Linux、Window、IOS平台，x86、 Arm架构                                                     |
+| **多标签 + 分屏**        | 浏览器式标签 + 最多 2 个 Pane 左右分屏，`共享 PTY 双开`（同一会话两端同步显示）                                                   |
+| **多工具终端管理**       | 同时支持 Claude Code/ Codex CLI/ Gemini CLI/ OpenCode/ Antigravity/ 裸终端/ SSH。自定义不同类似的`快捷输入`/`代码块`              |
+| **裸终端 / SSH集成sFTP** | 支持SSH帐号记录和登录，基于sFTP的`图形化`上传、下载文件支持，`操作记录持久化`                                                     |
+| **PTY 直通**             | 真实 PTY 伪终端运行，无 API 拦截，`零额外 Token 消耗`                                                                             |
+| **四层会话模型**         | Project → SessionCategory → Session + SessionMessage，结构清晰                                                                    |
+| **LLM 供应商系统**       | 会话独立选择模型，多会话多供应商多模型同时运行                                                                                    |
+| **开发/运行项目和服务**  | 自动识别宿主机开发环境（支持Java、Node、.NET、PythonRust、Go、C++识别），项目中自主识别可运行的对应服务。一键启停服务及日志跟踪。 |
+| **会话历史+搜索+定位**   | 支持用户会话、系统会话查看，关键词搜索。一键`定位`PTY会话窗口位置。                                                               |
+| **系统托盘 + 关闭行为**  | 可关闭至托盘、可配置开机自启                                                                                                      |
+| **Profile 隔离**         | 每个 Profile 独立的 `CLAUDE_CONFIG_DIR`，账号数据完全隔离                                                                         |
+| **凭据分层存储**         | Profile 凭据走系统 Keychain，LlmProvider 走 SQLite（Base64 编码）                                                                 |
+| **18 个设置项**          | 通用 / 终端 / LLM / 每个 CLI 工具独立 / 网络 / 通知 / 数据管理 / 关于 等                                                          |
+| **新手引导**             | 首次启动引导流程，快速上手                                                                                                        |
 
 > **注：**
+>
 > - 因为要实现多会话多供应商，打开`Claude Code`时会`清空其setings.json`文件中的ENV环境变量（可以使用CC Switch还源）。
 > - Codex CLI/ Gemini CLI/ OpenCode/ Antigravity 相关功能未实现。
 > - Window、IOS平台，Arm架构 未实测。本人环境为Linux amd64。
 > - 18 个设置项 尚未完全实现。
 
-### 特性图示
+### 特性图示-主题风格
 
-#### 通用主题：![通用主题](./public/help/11.png "通用主题")
-#### 终端主题：![终端主题](public/help/12.png "终端主题")
-#### 主题示例-蓝色系：![主题示例1](public/help/13.png "主题示例1")
-#### 主题示例-暖色系：![主题示例2](public/help/14.png "主题示例2")
-#### 集成SSH,sFTP工具：![集成SSH,sFTP工具](public/help/21.png "集成SSH,sFTP工具")
-#### 自定义LLM供应商：![自定义LLM供应商](public/help/31.png "自定义LLM供应商")
+#### 通用主题
+
+![通用主题](./public/help/11.png "通用主题")
+
+#### 终端主题
+
+![终端主题](public/help/12.png "终端主题")
+
+#### 主题示例-蓝色系
+
+![主题示例1](public/help/13.png "主题示例1")
+
+#### 主题示例-暖色系
+
+![主题示例2](public/help/14.png "主题示例2")
+
+### 特性图示-多会话独立调用不同的LLM
+
+#### 自定义LLM供应商
+
+![自定义LLM供应商](public/help/31.png "自定义LLM供应商")
+
 #### 会话独立选择模型，多会话多供应商多模型同时运行：
-![会话独立选择模型，多会话多供应商多模型同时运行](public/help/32.png "会话独立选择模型，多会话多供应商多模型同时运行")
-#### 会话历史+搜索+定位：![多标签+分屏](public/help/61.png "会话历史+搜索+定位")
-#### 分类型设置快捷命令或代码块：![分类型设置快捷命令或代码块](public/help/41.png "分类型设置快捷命令或代码块")
-#### 终端快捷命令示例：![终端快捷命令示例](public/help/42.png "终端快捷命令示例")
-#### Claude终端终端快捷命令示例：![Claude终端终端快捷命令示例](public/help/43.png "Claude终端终端快捷命令示例")
-#### 多标签+分屏：![多标签+分屏](public/help/51.png "多标签+分屏")
 
+![会话独立选择模型，多会话多供应商多模型同时运行](public/help/32.png "会话独立选择模型，多会话多供应商多模型同时运行")
+
+### 特性图示-工具支持
+
+#### 会话历史+搜索+定位
+
+![多标签+分屏](public/help/61.png "会话历史+搜索+定位")
+
+#### 分类型设置快捷命令或代码块
+
+##### 快捷命令设置
+
+![分类型设置快捷命令或代码块](public/help/41.png "分类型设置快捷命令或代码块")
+
+##### 终端快捷命令示例
+
+![终端快捷命令示例](public/help/42.png "终端快捷命令示例")
+
+##### Claude终端终端快捷命令示例
+
+![Claude终端终端快捷命令示例](public/help/43.png "Claude终端终端快捷命令示例")
+
+#### 多标签+左右分屏
+
+![多标签+分屏](public/help/51.png "多标签+分屏")
+
+#### 集成SSH/sFTP工具
+
+![集成SSH,sFTP工具](public/help/21.png "集成SSH,sFTP工具")
+
+#### 开发/运行环境和服务启动
+
+##### 开发/运行环境自动识别
+
+![开发/运行环境自动识别](public/help/71.png "开发/运行环境自动识别")
+
+##### 项目注入环境
+
+![项目注入环境](public/help/72.png "项目注入环境")
+
+##### 会话关联服务启停
+
+![会话关联服务启停](public/help/73.png "会话关联服务启停")
 
 ## 系统要求
 
-| 平台 | 最低版本 |
-| --- | --- |
-| Windows | Windows 10+ |
-| macOS | macOS 11 (Big Sur) |
-| Ubuntu | 20.04+ |
+| 平台       | 最低版本                    |
+| ---------- | --------------------------- |
+| Windows    | Windows 10+                 |
+| macOS      | macOS 11 (Big Sur)          |
+| Ubuntu     | 20.04+                      |
 | 其他 Linux | 主流发行版（提供 AppImage） |
 
 **前置条件**：至少安装一个 AI 编程 CLI 工具：
@@ -91,8 +145,6 @@ npm install -g @google/gemini-cli
 # OpenCode
 npm install -g opencode-ai
 ```
-
-
 
 ## 快速开始
 
@@ -125,18 +177,16 @@ npm install -g opencode-ai
 
 ### 常用快捷键
 
-| 快捷键 | 作用 |
-| --- | --- |
-| `Ctrl + T` | 新建会话 |
-| `Ctrl + W` | 关闭当前 Tab |
-| `Ctrl + Tab` / `Ctrl + Shift + Tab` | 切换 Tab |
-| `Ctrl + P` | 搜索会话 |
-| `Ctrl + Shift + C` | 复制终端选中内容 |
-| `Ctrl + Shift + V` | 粘贴到终端 |
+| 快捷键                              | 作用             |
+| ----------------------------------- | ---------------- |
+| `Ctrl + T`                          | 新建会话         |
+| `Ctrl + W`                          | 关闭当前 Tab     |
+| `Ctrl + Tab` / `Ctrl + Shift + Tab` | 切换 Tab         |
+| `Ctrl + P`                          | 搜索会话         |
+| `Ctrl + Shift + C`                  | 复制终端选中内容 |
+| `Ctrl + Shift + V`                  | 粘贴到终端       |
 
-
-
-## 开发
+## 开发/编译运行
 
 ### 环境准备
 
@@ -162,7 +212,7 @@ pnpm tauri build        # 构建发布版本
 pnpm build:release      # 打包全部 Linux 格式(见下方说明)
 pnpm build:appimage     # 只打包 AppImage
 pnpm build:windows      # 在 Linux/macOS 上交叉编译 Windows 安装包(见下方说明)
-pnpm build:all          # 一次打包宿主平台 + Windows 两套安装包(见下方说明)
+pnpm build:all          # 一次打包Linux+Windows+MAC（宿主）三套安装包(见下方说明)
 pnpm exec tsc --noEmit  # TypeScript 类型检查
 cargo clippy            # Rust lint(在 src-tauri/ 下)
 cargo test              # Rust 单元测试(在 src-tauri/ 下)
@@ -208,15 +258,15 @@ cargo install --locked cargo-xwin
 ### 一次打包多个平台
 
 ```bash
-pnpm build:all                    # 宿主平台 + Windows 两套安装包
+pnpm build:all                    # Linux+Windows+MAC（宿主）三套安装包
 pnpm build:all -- --config '{"version":"0.1.2"}'   # 指定版本号
 ```
 
-| 宿主平台 | 产物 |
-| --- | --- |
-| Linux | `.AppImage` + `.deb` + `.rpm`，外加 Windows `.exe`（NSIS 交叉编译） |
-| macOS | `.dmg`，外加 Windows `.exe`（NSIS 交叉编译） |
-| Windows | `.msi` + `.exe` |
+| 宿主平台 | 产物                                                                         |
+| -------- | ---------------------------------------------------------------------------- |
+| Linux    | `.AppImage` + `.deb` + `.rpm`，外加 Windows `.exe`（NSIS 交叉编译）          |
+| macOS    | `.AppImage` + `.deb` + `.rpm` +` .dmg`，外加 Windows `.exe`（NSIS 交叉编译） |
+| Windows  | `.msi` + `.exe`                                                              |
 
 `pnpm tauri build` 本身出不了两个平台：`--target` 只能给一次（clap 限制），
 且 `--runner` 是全局的 —— Windows MSVC 目标在 Linux/macOS 上必须走 `cargo-xwin`，
@@ -231,11 +281,11 @@ macOS 的 `.dmg` 需要 macOS 宿主（bundle 与签名都依赖它），Linux �
 `.github/workflows/release.yml` 在**推送 `v*` tag** 时并行打包三平台安装包，
 并自动发布到 GitHub Release：
 
-| 平台 | 产物 | 构建机器 |
-| --- | --- | --- |
+| 平台        | 产物                                                  | 构建机器         |
+| ----------- | ----------------------------------------------------- | ---------------- |
 | Windows x64 | `.msi`（安装语言 zh-CN）+ `.exe`（NSIS 简体中文界面） | `windows-latest` |
-| macOS | `.dmg`（universal，Intel + Apple Silicon） | `macos-latest` |
-| Linux x64 | `.AppImage` + `.deb` + `.rpm` | `ubuntu-latest` |
+| macOS       | `.dmg`（universal，Intel + Apple Silicon）            | `macos-latest`   |
+| Linux x64   | `.AppImage` + `.deb` + `.rpm`                         | `ubuntu-latest`  |
 
 ```bash
 # 版本号取自 tag（v0.1.2 → 0.1.2），产物文件名随之变化
@@ -294,30 +344,24 @@ TeaCoder/
 └── README.md               # 本文件
 ```
 
-
-
 ## 技术栈
 
-| 层 | 技术 |
-| --- | --- |
-| 桌面框架 | Tauri 2.x |
-| 后端 | Rust (stable) |
-| 前端 | React 19 + TypeScript 5 |
-| UI 组件 | Ant Design 6 |
-| 样式 | TailwindCSS 4（仅布局 / 间距 / 自定义） |
-| 状态管理 | Zustand |
-| 终端 | xterm.js |
-| 持久化 | SQLite (rusqlite) + JSONL |
-| 包管理 | pnpm |
-
-
+| 层       | 技术                                    |
+| -------- | --------------------------------------- |
+| 桌面框架 | Tauri 2.x                               |
+| 后端     | Rust (stable)                           |
+| 前端     | React 19 + TypeScript 5                 |
+| UI 组件  | Ant Design 6                            |
+| 样式     | TailwindCSS 4（仅布局 / 间距 / 自定义） |
+| 状态管理 | Zustand                                 |
+| 终端     | xterm.js                                |
+| 持久化   | SQLite (rusqlite) + JSONL               |
+| 包管理   | pnpm                                    |
 
 ## 文档
 
 - 📍 [路线图](./doc/teacoder-roadmap.md) — v0.1.2 已发布 v1.0.0+ 远期规划
 - 📋 [需求规格](./doc/requirements.md) — 完整功能需求、数据模型、IPC 命令清单
-
-
 
 ## 路线图
 
@@ -334,9 +378,8 @@ TeaCoder/
 多工具终端管理 · 多分屏共享 PTY · LLM 供应商系统 · Profile 隔离 · Token 费用追踪（Claude）· 托盘 + 开机自启 · Onboarding · 18 个设置项
 
 ### v1.0.0（规划）
+
 Token中转代理 ·Saas认证和授权 ·代理开发数字人 ·代理测试 ·托管智能运维
-
-
 
 ## 贡献
 
@@ -348,8 +391,6 @@ Token中转代理 ·Saas认证和授权 ·代理开发数字人 ·代理测试 �
 - 📖 **文档改进**：欢迎直接 PR 修复错别字、补充示例
 
 提交前请阅读 [CLAUDE.md](./CLAUDE.md) 中的编码规范与提交规范。
-
-
 
 ## 协议
 
@@ -364,8 +405,6 @@ MIT 协议允许：
 - ✅ 再许可
 
 唯一要求：在所有副本中保留版权声明与协议声明。
-
-
 
 ## 致谢
 

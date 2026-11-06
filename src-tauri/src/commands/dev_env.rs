@@ -33,6 +33,17 @@ pub fn dev_environment_delete(db: tauri::State<AppDatabase>, id: String) -> Resu
     dev_env::delete_dev_environment(&db, &id)
 }
 
+/// 项目绑定的开发环境。
+///
+/// 服务面板要看项目到底绑了哪套环境 —— 识别服务、启动服务都按这套环境来。
+#[tauri::command]
+pub fn dev_environment_list_for_project(
+    db: tauri::State<AppDatabase>,
+    project_id: String,
+) -> Result<Vec<dev_env::DevEnvironment>, String> {
+    dev_env::list_project_envs(&db, &project_id)
+}
+
 /// 自动识别。扫盘 + 跑 `java -version` 之类，可能要好几秒，放阻塞线程池里跑。
 #[tauri::command]
 pub async fn dev_environment_detect(

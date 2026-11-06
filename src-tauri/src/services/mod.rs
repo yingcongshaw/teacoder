@@ -32,6 +32,12 @@ pub struct Service {
     pub working_dir: String,
     /// 先构建再运行的命令。C/C++ 这类要先编译出可执行文件才能跑。
     pub build_command: Option<String>,
+    /// 构建产物的基名。Java 取 pom 的 artifactId，C/C++ 取可执行文件名。
+    pub artifact_id: Option<String>,
+    /// 产物所在子目录，相对工作目录。Java 是 target。
+    pub artifact_dir: Option<String>,
+    /// 入口类全限定名。
+    pub main_class: Option<String>,
     pub source: String,
     pub fingerprint: String,
     pub created_at: i64,
@@ -47,6 +53,9 @@ pub struct CreateServiceInput {
     pub command: String,
     pub working_dir: Option<String>,
     pub build_command: Option<String>,
+    pub artifact_id: Option<String>,
+    pub artifact_dir: Option<String>,
+    pub main_class: Option<String>,
 }
 
 /// 识别结果统计。
@@ -54,10 +63,13 @@ pub struct CreateServiceInput {
 #[serde(rename_all = "camelCase")]
 pub struct DetectServicesResult {
     pub created: Vec<Service>,
+    /// 已有服务被更新了多少条（识别规则变了，命令与产物信息跟着改）。
+    pub updated: usize,
+    /// 完全重复、一条都不用动的条数。
     pub skipped: usize,
 }
 
-const SERVICE_COLUMNS: &str = "id, project_id, name, kind, command, working_dir, build_command, source, fingerprint, created_at, updated_at";
+const SERVICE_COLUMNS: &str = "id, project_id, name, kind, command, working_dir, build_command, artifact_id, artifact_dir, main_class, source, fingerprint, created_at, updated_at";
 
 /// 服务的去重指纹。
 ///
@@ -76,10 +88,13 @@ fn row_to_service(row: &rusqlite::Row<'_>) -> rusqlite::Result<Service> {
         command: row.get(4)?,
         working_dir: row.get(5)?,
         build_command: row.get(6)?,
-        source: row.get(7)?,
-        fingerprint: row.get(8)?,
-        created_at: row.get(9)?,
-        updated_at: row.get(10)?,
+        artifact_id: row.get(7)?,
+        artifact_dir: row.get(8)?,
+        main_class: row.get(9)?,
+        source: row.get(10)?,
+        fingerprint: row.get(11)?,
+        created_at: row.get(12)?,
+        updated_at: row.get(13)?,
     })
 }
 
@@ -119,6 +134,16 @@ pub fn list_services(
         .map_err(|e| format!("Failed to collect services: {}", e))
 }
 
+/// 项目的根目录。
+pub fn project_path(db: &AppDatabase, project_id: &str) -> Result<String, String> {
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let mut stmt = conn
+        .prepare("SELECT path FROM projects WHERE id = ?1")
+        .map_err(|e| format!("Failed to prepare query: {}", e))?;
+    stmt.query_row([project_id], |row| row.get::<_, String>(0))
+        .map_err(|e| format!("Failed to query project path: {}", e))
+}
+
 pub fn get_service(db: &AppDatabase, id: &str) -> Result<Service, String> {
     let conn = db.conn.lock().map_err(|e| e.to_string())?;
 
@@ -144,7 +169,7 @@ pub fn create_service(db: &AppDatabase, input: CreateServiceInput) -> Result<Ser
     let fp = fingerprint(&kind, &working_dir, &input.command);
 
     conn.execute(
-        "INSERT INTO services (id, project_id, name, kind, command, working_dir, build_command, source, fingerprint, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+        "INSERT INTO services (id, project_id, name, kind, command, working_dir, build_command, artifact_id, artifact_dir, main_class, source, fingerprint, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
         rusqlite::params![
             id,
             input.project_id,
@@ -153,6 +178,9 @@ pub fn create_service(db: &AppDatabase, input: CreateServiceInput) -> Result<Ser
             input.command,
             working_dir,
             input.build_command,
+            input.artifact_id,
+            input.artifact_dir,
+            input.main_class,
             source,
             fp,
             now,
@@ -169,6 +197,9 @@ pub fn create_service(db: &AppDatabase, input: CreateServiceInput) -> Result<Ser
         command: input.command,
         working_dir,
         build_command: input.build_command,
+        artifact_id: input.artifact_id,
+        artifact_dir: input.artifact_dir,
+        main_class: input.main_class,
         source: source.to_string(),
         fingerprint: fp,
         created_at: now,
@@ -212,7 +243,8 @@ pub fn delete_service(db: &AppDatabase, id: &str) -> Result<(), String> {
 
 /// 识别项目里能跑的服务并入库。
 ///
-/// project_id 为 None 时识别全部项目。只增不减 —— 已存在的指纹跳过。
+/// project_id 为 None 时识别全部项目。识别结果只增不改 —— 已存在的条目跳过，
+/// 同工程重认一次只更新命令，不会凭空多出一条。
 pub fn detect_and_persist_services(
     db: &AppDatabase,
     project_id: Option<&str>,
@@ -242,8 +274,9 @@ pub fn detect_and_persist_services(
         }
     };
 
-    let existing = list_services(db, None)?;
+    let mut existing = list_services(db, None)?;
     let mut created = Vec::new();
+    let mut updated = 0usize;
     let mut skipped = 0usize;
 
     for (pid, path) in projects {
@@ -252,6 +285,29 @@ pub fn detect_and_persist_services(
         let detected = detector::detect_services(std::path::Path::new(&path), &envs);
 
         for d in detected {
+            // 同一个工程重认一次只更新命令：识别规则变了（比如从 mvn spring-boot:run
+            // 换成打 jar 再跑）时，不该在列表里留下两条。
+            //
+            // 认的是「同一个工程」：Java 看 artifactId（一个模块一个），
+            // 其余语言没有产物标识，就退回看命令 —— 同一目录里可能有多个
+            // 入口（manage.py 与 main.py），光看目录会把它们认成同一个。
+            let same_unit = existing.iter().find(|s| {
+                s.project_id == pid
+                    && s.source == SOURCE_DETECTED
+                    && s.kind == d.kind
+                    && s.working_dir == d.working_dir
+                    && s.artifact_id == d.artifact_id
+                    && (d.artifact_id.is_some() || s.command == d.command)
+            });
+            if let Some(old) = same_unit {
+                if update_detected(db, &old.id, &d)? {
+                    updated += 1;
+                } else {
+                    skipped += 1;
+                }
+                continue;
+            }
+
             let fp = fingerprint(&d.kind, &d.working_dir, &d.command);
             if existing.iter().any(|s| s.project_id == pid && s.fingerprint == fp) {
                 skipped += 1;
@@ -265,13 +321,23 @@ pub fn detect_and_persist_services(
                 command: d.command,
                 working_dir: Some(d.working_dir),
                 build_command: d.build_command,
+                artifact_id: d.artifact_id,
+                artifact_dir: d.artifact_dir,
+                main_class: d.main_class,
             };
             let saved = insert_detected(db, input, &fp)?;
-            created.push(saved);
+            created.push(saved.clone());
+            // 新建的也要进候选池 —— 同一批里若还有候选指向同一个工程，
+            // 得走更新而不是再插一条。
+            existing.push(saved);
         }
     }
 
-    Ok(DetectServicesResult { created, skipped })
+    Ok(DetectServicesResult {
+        created,
+        updated,
+        skipped,
+    })
 }
 
 /// 写入一条识别出来的服务。source 固定为 detected。
@@ -288,7 +354,7 @@ fn insert_detected(
     let working_dir = input.working_dir.unwrap_or_default();
 
     conn.execute(
-        "INSERT INTO services (id, project_id, name, kind, command, working_dir, build_command, source, fingerprint, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+        "INSERT INTO services (id, project_id, name, kind, command, working_dir, build_command, artifact_id, artifact_dir, main_class, source, fingerprint, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
         rusqlite::params![
             id,
             input.project_id,
@@ -297,6 +363,9 @@ fn insert_detected(
             input.command,
             working_dir,
             input.build_command,
+            input.artifact_id,
+            input.artifact_dir,
+            input.main_class,
             SOURCE_DETECTED,
             fp,
             now,
@@ -313,11 +382,62 @@ fn insert_detected(
         command: input.command,
         working_dir,
         build_command: input.build_command,
+        artifact_id: input.artifact_id,
+        artifact_dir: input.artifact_dir,
+        main_class: input.main_class,
         source: SOURCE_DETECTED.to_string(),
         fingerprint: fp.to_string(),
         created_at: now,
         updated_at: now,
     })
+}
+
+/// 更新识别出来的服务。名字不动 —— 用户改过的名字不该被识别覆盖回去。
+///
+/// 返回是否真的改了内容 —— 识别结果没变时不该算成「更新」。
+fn update_detected(
+    db: &AppDatabase,
+    id: &str,
+    d: &detector::DetectedService,
+) -> Result<bool, String> {
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+
+    let unchanged: bool = conn
+        .query_row(
+            "SELECT command = ?2 AND build_command IS ?3 AND artifact_id IS ?4 AND artifact_dir IS ?5 AND main_class IS ?6 FROM services WHERE id = ?1",
+            rusqlite::params![
+                id,
+                d.command,
+                d.build_command,
+                d.artifact_id,
+                d.artifact_dir,
+                d.main_class
+            ],
+            |row| row.get::<_, bool>(0),
+        )
+        .unwrap_or(false);
+    if unchanged {
+        return Ok(false);
+    }
+
+    let now = chrono::Utc::now().timestamp_millis();
+    let fp = fingerprint(&d.kind, &d.working_dir, &d.command);
+
+    conn.execute(
+        "UPDATE services SET command = ?2, build_command = ?3, artifact_id = ?4, artifact_dir = ?5, main_class = ?6, fingerprint = ?7, updated_at = ?8 WHERE id = ?1",
+        rusqlite::params![
+            id,
+            d.command,
+            d.build_command,
+            d.artifact_id,
+            d.artifact_dir,
+            d.main_class,
+            fp,
+            now
+        ],
+    )
+    .map_err(|e| format!("Failed to update detected service: {}", e))?;
+    Ok(true)
 }
 
 #[cfg(test)]
@@ -359,6 +479,9 @@ mod tests {
                 command: "python main.py".to_string(),
                 working_dir: None,
                 build_command: None,
+                artifact_id: None,
+                artifact_dir: None,
+                main_class: None,
             },
         )
         .expect("建服务");
@@ -400,6 +523,9 @@ mod tests {
                 command: "npm run start".to_string(),
                 working_dir: Some("/work/one".to_string()),
                 build_command: None,
+                artifact_id: None,
+                artifact_dir: None,
+                main_class: None,
             },
         )
         .expect("创建服务");
@@ -467,6 +593,88 @@ mod tests {
         std::fs::remove_dir_all(&dir).ok();
     }
 
+    /// Java 模块重认一次只更新，不该在列表里留下两条 ——
+    /// 识别规则变了（命令、产物信息）也要更新到原来那条上。
+    #[test]
+    fn redetect_updates_the_same_java_service() {
+        let db = test_db();
+
+        let dir = std::env::temp_dir().join(format!("teacoder-svc-{}", uuid::Uuid::new_v4()));
+        let module = dir.join("demo");
+        std::fs::create_dir_all(module.join("src/main/java/com/demo")).expect("建目录");
+        std::fs::write(
+            module.join("pom.xml"),
+            r#"<project>
+  <artifactId>demo-service</artifactId>
+  <dependencies>
+    <dependency>
+      <artifactId>spring-boot-starter</artifactId>
+    </dependency>
+  </dependencies>
+</project>"#,
+        )
+        .expect("写 pom");
+        std::fs::write(
+            module.join("src/main/java/com/demo/DemoApplication.java"),
+            "package com.demo;\npublic class DemoApplication {\n  public static void main(String[] args) {}\n}\n",
+        )
+        .expect("写入口类");
+
+        insert_project(&db, "p1", dir.to_string_lossy().as_ref());
+
+        let java_env = crate::dev_env::create_dev_environment(
+            &db,
+            crate::dev_env::SaveDevEnvironmentInput {
+                kind: crate::dev_env::KIND_JAVA.to_string(),
+                name: "Java".to_string(),
+                tools: vec![
+                    crate::dev_env::DevTool {
+                        tool: crate::dev_env::TOOL_JDK.to_string(),
+                        version: Some("21.0.2".to_string()),
+                        path: Some("/opt/jdk21".to_string()),
+                    },
+                    crate::dev_env::DevTool {
+                        tool: crate::dev_env::TOOL_MAVEN.to_string(),
+                        version: Some("3.9.11".to_string()),
+                        path: Some("/opt/maven".to_string()),
+                    },
+                ],
+            },
+        )
+        .expect("创建 Java 环境");
+
+        {
+            let conn = db.conn.lock().expect("锁");
+            conn.execute(
+                "INSERT INTO project_dev_envs (project_id, env_id, created_at, updated_at) VALUES ('p1', ?1, 1, 1)",
+                [&java_env.id],
+            )
+            .expect("绑定 Java 环境");
+        }
+
+        let first = detect_and_persist_services(&db, Some("p1")).expect("首次识别");
+        assert_eq!(first.created.len(), 1);
+        assert_eq!(first.created[0].name, "demo-service");
+        assert_eq!(first.created[0].artifact_id.as_deref(), Some("demo-service"));
+        assert_eq!(first.created[0].artifact_dir.as_deref(), Some("target"));
+        assert_eq!(
+            first.created[0].command,
+            format!("java -jar {}", crate::services::detector::ARTIFACT_PLACEHOLDER)
+        );
+
+        // 用户改过名字后重认，名字不该被覆盖回去
+        rename_service(&db, &first.created[0].id, "我的服务").expect("改名");
+
+        let second = detect_and_persist_services(&db, Some("p1")).expect("再次识别");
+        assert_eq!(second.created.len(), 0, "重认不该多出一条");
+
+        let all = list_services(&db, Some("p1")).expect("查询服务");
+        assert_eq!(all.len(), 1, "重认后仍应只有一条");
+        assert_eq!(all[0].name, "我的服务");
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
     #[test]
     fn deleting_project_cascades_to_services() {
         let db = test_db();
@@ -481,6 +689,9 @@ mod tests {
                 command: "node index.js".to_string(),
                 working_dir: None,
                 build_command: None,
+                artifact_id: None,
+                artifact_dir: None,
+                main_class: None,
             },
         )
         .expect("创建服务");
@@ -596,7 +807,8 @@ mod tests {
 
         assert_eq!(svc.name, "legacy-app");
         let build = svc.build_command.as_deref().expect("应带构建命令");
-        assert!(build.starts_with("MSBuild "), "构建命令应为：{build}");
+        // 命令里写小写的 msbuild —— 运行时按程序名找环境里的那件工具
+        assert!(build.starts_with("msbuild "), "构建命令应为：{build}");
         assert!(build.contains("legacy-app.csproj"));
         assert!(svc.command.contains("legacy-app"));
 

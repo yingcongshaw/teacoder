@@ -11,6 +11,7 @@ import type {
   DevEnvironment,
   DevTool,
   Service,
+  ServiceCandidate,
   ServiceRuntimeState,
   Session,
   SessionCategory,
@@ -336,6 +337,13 @@ export async function devEnvironmentDetect(kind: string): Promise<{
   return invoke("dev_environment_detect", { kind });
 }
 
+/** 项目绑定的开发环境。服务识别与启动都按这套环境来。 */
+export async function devEnvironmentListForProject(
+  projectId: string,
+): Promise<DevEnvironment[]> {
+  return invoke<DevEnvironment[]>("dev_environment_list_for_project", { projectId });
+}
+
 // 服务 IPC
 export async function serviceList(projectId?: string): Promise<Service[]> {
   return invoke<Service[]>("service_list", { projectId });
@@ -348,8 +356,18 @@ export async function serviceCreate(input: {
   command: string;
   workingDir?: string;
   buildCommand?: string;
+  artifactId?: string;
+  artifactDir?: string;
+  mainClass?: string;
 }): Promise<Service> {
   return invoke<Service>("service_create", { input });
+}
+
+/** 手工添加服务时的入口候选。只列项目绑定的开发/运行环境能跑起来的工程。 */
+export async function serviceEntryCandidates(
+  projectId: string,
+): Promise<ServiceCandidate[]> {
+  return invoke<ServiceCandidate[]>("service_entry_candidates", { projectId });
 }
 
 export async function serviceDelete(id: string): Promise<void> {
@@ -364,6 +382,7 @@ export async function serviceRename(id: string, name: string): Promise<void> {
 /** 识别服务。projectId 不传表示识别所有项目。 */
 export async function serviceDetect(projectId?: string): Promise<{
   created: Service[];
+  updated: number;
   skipped: number;
 }> {
   return invoke("service_detect", { projectId });

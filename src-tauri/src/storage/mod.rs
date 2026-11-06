@@ -112,6 +112,11 @@ const EMBEDDED_MIGRATIONS: &[(i32, &str, &str)] = &[
         "v20_clear_legacy_env_columns.sql",
         include_str!("../../migrations/v20_clear_legacy_env_columns.sql"),
     ),
+    (
+        21,
+        "v21_service_spec_fields.sql",
+        include_str!("../../migrations/v21_service_spec_fields.sql"),
+    ),
 ];
 
 /// 从 `v13_claude_models.sql` 这样的文件名解析出 13。

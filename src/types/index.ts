@@ -108,11 +108,37 @@ export interface Service {
   workingDir: string;
   /** 先构建再运行的命令。C/C++ 这类要先编译出可执行文件 */
   buildCommand?: string;
+  /** 构建产物的基名。Java 取 pom 的 artifactId，C/C++ 取可执行文件名 */
+  artifactId?: string;
+  /** 产物所在子目录，相对工作目录。Java 是 target */
+  artifactDir?: string;
+  /** 入口类全限定名 */
+  mainClass?: string;
   /** detected（自动识别） | manual（手工添加） */
   source: "detected" | "manual";
   fingerprint: string;
   createdAt: number;
   updatedAt: number;
+}
+
+/**
+ * 手工添加服务时的入口候选。
+ *
+ * 只来自项目绑定的开发/运行环境能跑起来的源代码工程，
+ * 用户选完入口就行，版本、用哪个 JDK 都不用自己挑。
+ */
+export interface ServiceCandidate {
+  /** 默认名称：Java 取入口类名，其余取工程名 */
+  name: string;
+  kind: string;
+  /** 入口文件或清单文件路径 */
+  path: string;
+  command: string;
+  workingDir: string;
+  buildCommand?: string;
+  artifactId?: string;
+  artifactDir?: string;
+  mainClass?: string;
 }
 
 /** 服务的运行时状态，由后端进程注册表导出。 */

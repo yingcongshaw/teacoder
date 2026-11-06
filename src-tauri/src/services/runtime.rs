@@ -1,5 +1,6 @@
 use std::collections::{HashMap, VecDeque};
 use std::io::{BufRead, BufReader, Read};
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::Duration;
 
@@ -121,16 +122,21 @@ fn resolve_executable(program: &str, search_path: &std::ffi::OsStr) -> String {
         .unwrap_or_else(|| program.to_string())
 }
 
-/// 命令里的程序名与项目环境里的工具对不上时，按环境里的那个来。
+/// 命令里的程序名换成项目绑定环境里的那个可执行文件。
 ///
-/// 命令存的是裸程序名（python / node / cargo），绑定的环境才是项目要用的版本。
-/// 但环境里的可执行文件可能叫别的名字（比如解释器叫 python3），
-/// 照命令里的名字去找会找不到人。
+/// 拿到完整路径最稳：跑的就是项目选定的那个版本，不会因为 PATH 上还有别的
+/// 同名程序而跑错。环境里只记了名字时退回按名字找。
 fn align_program_with_env(program: &str, kind: &str, envs: &[DevEnvironment]) -> String {
     let Some(tool) = tool_for_program(kind, program) else {
         return program.to_string();
     };
     for env in envs.iter().filter(|e| e.kind == kind) {
+        let Some(raw) = env.tool_path(tool) else {
+            continue;
+        };
+        if let Some(exe) = crate::dev_env::tool_exe_path(tool, raw) {
+            return exe.to_string_lossy().into_owned();
+        }
         if let Some(exe) = env.tool_exe_name(tool) {
             if exe != program {
                 return exe;
@@ -143,8 +149,8 @@ fn align_program_with_env(program: &str, kind: &str, envs: &[DevEnvironment]) ->
 /// 命令里的程序名对应环境里的哪件工具。
 fn tool_for_program(kind: &str, program: &str) -> Option<&'static str> {
     use crate::dev_env::{
-        TOOL_CARGO, TOOL_CC, TOOL_CMAKE, TOOL_DOTNET, TOOL_GO, TOOL_JDK, TOOL_MAVEN, TOOL_NODE,
-        TOOL_PYTHON,
+        TOOL_CARGO, TOOL_CC, TOOL_CMAKE, TOOL_DOTNET, TOOL_GO, TOOL_JDK, TOOL_MAVEN, TOOL_MSBUILD,
+        TOOL_NODE, TOOL_PYTHON,
     };
     match (kind, program) {
         (crate::services::KIND_PYTHON, "python" | "python3") => Some(TOOL_PYTHON),
@@ -152,12 +158,107 @@ fn tool_for_program(kind: &str, program: &str) -> Option<&'static str> {
         (crate::services::KIND_RUST, "cargo") => Some(TOOL_CARGO),
         (crate::services::KIND_GO, "go") => Some(TOOL_GO),
         (crate::services::KIND_DOTNET, "dotnet") => Some(TOOL_DOTNET),
+        (crate::services::KIND_DOTNET, "msbuild") => Some(TOOL_MSBUILD),
         (crate::services::KIND_JAVA, "mvn") => Some(TOOL_MAVEN),
         (crate::services::KIND_JAVA, "java") => Some(TOOL_JDK),
         (crate::services::KIND_CPP, "cmake") => Some(TOOL_CMAKE),
         (crate::services::KIND_CPP, "gcc" | "g++" | "clang" | "cc") => Some(TOOL_CC),
         _ => None,
     }
+}
+
+/// 在目录里找构建产物。
+///
+/// 产物常带版本号（demo-1.0.jar），也有不带版本号的（demo.jar），两种都算命中；
+/// 多个候选取最新的那个。
+fn find_artifact(dir: &Path, base: &str) -> Option<PathBuf> {
+    let entries = std::fs::read_dir(dir).ok()?;
+    let mut best: Option<(std::time::SystemTime, PathBuf)> = None;
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+        let Some(file_name) = path.file_name().and_then(|n| n.to_str()) else {
+            continue;
+        };
+        if !artifact_matches(file_name, base) {
+            continue;
+        }
+        let mtime = entry
+            .metadata()
+            .and_then(|m| m.modified())
+            .unwrap_or(std::time::UNIX_EPOCH);
+        match &best {
+            Some((best_time, _)) if *best_time >= mtime => {}
+            _ => best = Some((mtime, path)),
+        }
+    }
+
+    best.map(|(_, path)| path)
+}
+
+/// 产物名跟基名对不对得上。demo-1.0.jar、demo.jar、demo 都算 demo。
+fn artifact_matches(file_name: &str, base: &str) -> bool {
+    let stem = file_name
+        .strip_suffix(".jar")
+        .or_else(|| file_name.strip_suffix(".exe"))
+        .unwrap_or(file_name);
+    stem == base || stem.starts_with(&format!("{}-", base))
+}
+
+/// 产物是不是比源码旧。旧了得重新构建，不然跑的是老代码。
+fn artifact_is_stale(artifact: &Path, working_dir: &Path) -> bool {
+    let Ok(artifact_time) = std::fs::metadata(artifact).and_then(|m| m.modified()) else {
+        return false;
+    };
+    match newest_source_time(working_dir) {
+        Some(source_time) => source_time > artifact_time,
+        None => false,
+    }
+}
+
+/// 工程里最新的源文件时间。产物目录不算源文件。
+fn newest_source_time(root: &Path) -> Option<std::time::SystemTime> {
+    const SOURCE_EXTS: &[&str] = &[
+        "java", "kt", "scala", "xml", "properties", "yml", "yaml", "json", "ts", "tsx", "js", "jsx",
+        "py", "go", "rs", "c", "cc", "cpp", "cxx", "h", "hpp", "cs", "vue",
+    ];
+
+    let mut newest: Option<std::time::SystemTime> = None;
+    let walker = walkdir::WalkDir::new(root)
+        .max_depth(12)
+        .into_iter()
+        .filter_entry(|entry| {
+            if entry.depth() == 0 {
+                return true;
+            }
+            let name = entry.file_name().to_string_lossy();
+            !crate::services::detector::SKIP_DIRS.contains(&name.as_ref())
+        });
+
+    for entry in walker.flatten() {
+        if !entry.file_type().is_file() {
+            continue;
+        }
+        let path = entry.path();
+        let is_source = path
+            .extension()
+            .and_then(|e| e.to_str())
+            .is_some_and(|e| SOURCE_EXTS.contains(&e));
+        if !is_source {
+            continue;
+        }
+        let Ok(time) = std::fs::metadata(path).and_then(|m| m.modified()) else {
+            continue;
+        };
+        if newest.map(|t| time > t).unwrap_or(true) {
+            newest = Some(time);
+        }
+    }
+
+    newest
 }
 
 /// 组装实际要执行的命令。
@@ -206,6 +307,18 @@ fn spawn_log_reader<R: Read + Send + 'static>(
     });
 }
 
+/// 跑服务时用的一整套环境：项目绑定环境算出来的变量、PATH 与语言类别。
+///
+/// 构建与启动都得用同一套 —— 拿系统里的另一套 JDK 去跑项目绑定环境打出来的包，
+/// 轻则版本对不上，重则直接起不来。
+struct RunEnv<'a> {
+    working_dir: &'a str,
+    overrides: &'a [(String, String)],
+    search_path: &'a std::ffi::OsStr,
+    kind: &'a str,
+    envs: &'a [DevEnvironment],
+}
+
 /// 先跑构建命令，成功了再启动服务进程。
 ///
 /// 构建输出并进服务的日志缓冲 —— 编译报错要能在服务面板里直接看到。
@@ -213,15 +326,15 @@ fn run_build_command(
     app: &AppHandle,
     service_id: &str,
     build_command: &str,
-    working_dir: &str,
-    env_overrides: &[(String, String)],
-    search_path: &std::ffi::OsStr,
+    run_env: &RunEnv<'_>,
 ) -> Result<(), String> {
     let (program, args) = split_command(build_command);
     if program.is_empty() {
         return Ok(());
     }
-    let (program, args) = prepare_command(&program, &args, search_path);
+    // 构建工具也得是项目绑定的那套，否则打出来的包跟运行时的 JDK 对不上
+    let program = align_program_with_env(&program, run_env.kind, run_env.envs);
+    let (program, args) = prepare_command(&program, &args, run_env.search_path);
 
     let mut command = Command::new(&program);
     command
@@ -230,10 +343,10 @@ fn run_build_command(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
 
-    if !working_dir.trim().is_empty() {
-        command.current_dir(working_dir);
+    if !run_env.working_dir.trim().is_empty() {
+        command.current_dir(run_env.working_dir);
     }
-    for (key, value) in env_overrides {
+    for (key, value) in run_env.overrides {
         command.env(key, value);
     }
 
@@ -269,14 +382,7 @@ pub fn start_service(
 
     let service = crate::services::get_service(db, service_id)?;
 
-    let project_path = {
-        let conn = db.conn.lock().map_err(|e| e.to_string())?;
-        let mut stmt = conn
-            .prepare("SELECT path FROM projects WHERE id = ?1")
-            .map_err(|e| format!("Failed to prepare query: {}", e))?;
-        stmt.query_row([&service.project_id], |row| row.get::<_, String>(0))
-            .map_err(|e| format!("Failed to query project path: {}", e))?
-    };
+    let project_path = crate::services::project_path(db, &service.project_id)?;
 
     let envs = crate::dev_env::list_project_envs(db, &service.project_id)?;
     let env_overrides = crate::dev_env::build_project_env(&envs);
@@ -294,24 +400,76 @@ pub fn start_service(
     } else {
         service.working_dir.clone()
     };
+    let working_dir_path = PathBuf::from(&working_dir);
 
-    // C/C++ 这类要先构建出可执行文件，构建失败就别启动服务了
-    if let Some(build_command) = service
-        .build_command
-        .as_ref()
-        .filter(|c| !c.trim().is_empty())
-    {
-        run_build_command(
-            app,
-            service_id,
-            build_command,
-            &working_dir,
-            &env_overrides,
-            &search_path,
-        )?;
+    let run_env = RunEnv {
+        working_dir: &working_dir,
+        overrides: &env_overrides,
+        search_path: &search_path,
+        kind: &service.kind,
+        envs: &envs,
+    };
+
+    // 构建产物：Java 这类要先用项目绑定环境的 Maven 打包，有了产物才启动。
+    // 产物比源码旧也得重新构建，不然跑的是老代码。
+    let artifact = match service.artifact_id.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+        Some(base) => {
+            let dir = match service
+                .artifact_dir
+                .as_deref()
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+            {
+                Some(sub) => working_dir_path.join(sub),
+                None => working_dir_path.clone(),
+            };
+            let existing = find_artifact(&dir, base);
+            let usable = existing.filter(|p| !artifact_is_stale(p, &working_dir_path));
+            match usable {
+                Some(path) => Some(path),
+                None => {
+                    let build = service
+                        .build_command
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|c| !c.is_empty())
+                        .ok_or_else(|| format!("缺少构建产物（{base}），也没有可用的构建命令"))?;
+                    run_build_command(app, service_id, build, &run_env)?;
+                    Some(
+                        find_artifact(&dir, base)
+                            .ok_or_else(|| format!("构建完成但仍找不到产物：{base}"))?,
+                    )
+                }
+            }
+        }
+        None => None,
+    };
+
+    // 没有产物信息的命令：配了构建命令就先构建一次
+    if artifact.is_none() {
+        if let Some(build_command) = service
+            .build_command
+            .as_deref()
+            .map(str::trim)
+            .filter(|c| !c.is_empty())
+        {
+            run_build_command(app, service_id, build_command, &run_env)?;
+        }
     }
 
-    let (program, args) = split_command(&service.command);
+    // 启动命令里的产物占位符换成实际构建出来的文件
+    let mut command_text = service.command.clone();
+    if let Some(path) = &artifact {
+        command_text = command_text.replace(
+            crate::services::detector::ARTIFACT_PLACEHOLDER,
+            &path.to_string_lossy(),
+        );
+    }
+    if command_text.contains(crate::services::detector::ARTIFACT_PLACEHOLDER) {
+        return Err("服务缺少构建产物，无法启动".to_string());
+    }
+
+    let (program, args) = split_command(&command_text);
     if program.is_empty() {
         return Err("启动命令为空".to_string());
     }

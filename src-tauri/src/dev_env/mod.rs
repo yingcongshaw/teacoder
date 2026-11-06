@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
@@ -81,6 +81,41 @@ impl DevEnvironment {
         exe.file_name()
             .map(|n| n.to_string_lossy().into_owned())
     }
+}
+
+/// 工具可执行文件的完整路径。
+///
+/// 路径不存在就返回 None —— 装了但没落在这台机器上时不能瞎猜，
+/// 否则启动时会跑到别处去。
+pub fn tool_exe_path(tool: &str, raw: &str) -> Option<PathBuf> {
+    let path = Path::new(raw);
+    match tool {
+        TOOL_JDK => find_exe_in_bin(path, &["java", "java.exe"]),
+        TOOL_MAVEN => find_exe_in_bin(path, &["mvn", "mvn.cmd", "mvn.bat"]),
+        TOOL_GO => find_exe_in_bin(path, &["go", "go.exe"]),
+        _ => {
+            if path.is_file() {
+                Some(path.to_path_buf())
+            } else {
+                None
+            }
+        }
+    }
+}
+
+/// 在 <root>/bin 下找可执行文件。路径本身就是可执行文件时按它自己算。
+fn find_exe_in_bin(root: &Path, names: &[&str]) -> Option<PathBuf> {
+    let bin = root.join("bin");
+    for name in names {
+        let candidate = bin.join(name);
+        if candidate.is_file() {
+            return Some(candidate);
+        }
+    }
+    if root.is_file() {
+        return Some(root.to_path_buf());
+    }
+    None
 }
 
 #[derive(Debug, Clone, Deserialize)]

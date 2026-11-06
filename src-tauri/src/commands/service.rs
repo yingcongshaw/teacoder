@@ -74,6 +74,28 @@ pub fn service_logs(id: String, limit: Option<usize>) -> Result<Vec<String>, Str
     Ok(runtime::service_logs(&id, limit.unwrap_or(200)))
 }
 
+/// 手工添加服务时的入口候选。
+///
+/// 候选只列项目绑定的开发/运行环境能跑起来的源代码工程，
+/// 跟自动识别一个口径。扫盘可能很慢，放到阻塞线程池里跑。
+#[tauri::command]
+pub async fn service_entry_candidates(
+    app: AppHandle,
+    project_id: String,
+) -> Result<Vec<crate::services::detector::ServiceCandidate>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let db = app.state::<AppDatabase>();
+        let path = crate::services::project_path(&db, &project_id)?;
+        let envs = crate::dev_env::list_project_envs(&db, &project_id)?;
+        Ok(crate::services::detector::entry_candidates(
+            std::path::Path::new(&path),
+            &envs,
+        ))
+    })
+    .await
+    .map_err(|e| format!("查询服务入口候选失败: {}", e))?
+}
+
 /// 查询运行中的服务及其占用的端口。
 ///
 /// 端口要探 TCP 才能确定，耗时不可控，放到阻塞线程池里跑，别卡住 UI。
