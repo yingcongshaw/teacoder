@@ -214,6 +214,7 @@ pnpm build:appimage     # 只打包 AppImage
 pnpm build:windows      # 在 Linux/macOS 上交叉编译 Windows 安装包(见下方说明)
 pnpm build:all          # 一次打包Linux+Windows+MAC（宿主）三套安装包(见下方说明)
 pnpm exec tsc --noEmit  # TypeScript 类型检查
+pnpm test               # 前端单元测试(vitest)
 cargo clippy            # Rust lint(在 src-tauri/ 下)
 cargo test              # Rust 单元测试(在 src-tauri/ 下)
 ```

@@ -1303,11 +1303,11 @@ export const useAppStore = create<AppState>((set, get) => ({
       const sessions = state.sessions.map((s) =>
         s.id === id ? { ...s, isRunning: true, closedAt: undefined } : s,
       );
-      // 目标 pane：显式 opts 优先，其次 activePane，最后 fallback 到 panes 末尾 / 新建
-      const optsTarget = opts?.targetPaneId;
-      const candidateId = optsTarget
-        ?? state.activePaneId
-        ?? state.panes[state.panes.length - 1]?.id;
+      // 目标 pane：用 openTab 入口时确定的值，而不是此处重读 state。
+      // openTab 是 async，其间可能有 await（Claude 预检）；
+      // 若此刻重读 state.activePaneId，会拿到被其他调用推进后的值，
+      // 导致 restoreTabs 批量恢复时所有 tab 落进同一个 pane（分屏塌缩成单栏）。
+      const candidateId = targetPaneId;
       let nextPanes: Pane[];
       let nextActivePaneId: string | null;
       if (state.panes.some((p) => p.id === candidateId)) {
@@ -1366,7 +1366,11 @@ export const useAppStore = create<AppState>((set, get) => ({
           // 启动期静默吞掉 SESSION_DELETED / ERR_TOO_MANY_OPEN_TABS：用户首次启动 app
           // 不在屏幕前，立即弹提示会骚扰；这些 tab 会以"未打开"呈现，
           // 后续在侧边栏点击时会再次触发预检并正常提示。
-          get().openTab(tabId).catch(() => {});
+          //
+          // 显式传 targetPaneId：openTab 是 async，其间可能 await（Claude 预检），
+          // 期间 activePaneId 会被后续循环推进。依赖隐式的 activePaneId 会让
+          // 所有 tab 落进同一个 pane，分屏恢复后塌缩成单栏。
+          get().openTab(tabId, { targetPaneId: p.id }).catch(() => {});
         }
       }
       // 最后切回保存的 activePaneId
