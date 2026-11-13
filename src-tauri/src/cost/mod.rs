@@ -191,6 +191,19 @@ pub fn update_pricing(
     Ok(())
 }
 
+/// 某会话的费用是否已在库里。
+///
+/// 扫描缓存跳过文件前必须先确认它 —— profile 被删除会级联清掉 `session_costs`,
+/// 若只靠内存缓存判断,这些会话就再也补不回来了。
+pub fn session_cost_exists(db: &AppDatabase, session_id: &str) -> Result<bool, String> {
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let mut stmt = conn
+        .prepare("SELECT 1 FROM session_costs WHERE session_id = ?1 LIMIT 1")
+        .map_err(|e| format!("Failed to prepare query: {}", e))?;
+    stmt.exists([session_id])
+        .map_err(|e| format!("Failed to query session cost: {}", e))
+}
+
 pub fn upsert_session_cost(db: &AppDatabase, cost: &SessionCost) -> Result<(), String> {
     let conn = db.conn.lock().map_err(|e| e.to_string())?;
 

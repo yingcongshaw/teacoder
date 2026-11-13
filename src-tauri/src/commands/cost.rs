@@ -1,7 +1,7 @@
 use crate::cost;
 use crate::profile;
 use crate::storage::AppDatabase;
-use tauri::Emitter;
+use tauri::{Emitter, Manager};
 
 #[tauri::command]
 pub fn get_session_cost(
@@ -64,36 +64,57 @@ pub fn update_pricing(
     cost::update_pricing(&db, &model, input_price, output_price, cache_creation_price, cache_read_price)
 }
 
+/// 手动扫描费用。
+///
+/// 扫描要遍历整个 `~/.claude/projects`(本机实测 210 个文件 / 1.74 GB),
+/// 同步命令会跑在 Tauri 主线程上 —— 那正是 WebView 的 UI 线程,
+/// 主线程被占住时界面就整块卡住。所以整个扫描丢到阻塞线程池里跑。
 #[tauri::command]
-pub fn scan_costs(
-    db: tauri::State<AppDatabase>,
+pub async fn scan_costs(
+    app: tauri::AppHandle,
     profile_id: Option<String>,
 ) -> Result<usize, String> {
-    scan_costs_inner(&db, profile_id.as_deref())
+    Ok(run_scan(app, profile_id.as_deref()).await?.total)
 }
 
-/// Periodic cost polling: scan Claude sessions and emit cost:updated event.
-/// Called by the frontend every 30 seconds for running sessions.
+/// 周期性的费用轮询:扫描 Claude 会话,有变化时发 `cost:updated` 事件。
+/// 前端在有会话运行时每 30 秒调一次。
 #[tauri::command]
-pub fn poll_costs(
-    app: tauri::AppHandle,
-    db: tauri::State<AppDatabase>,
-) -> Result<usize, String> {
-    let count = scan_costs_inner(&db, None)?;
+pub async fn poll_costs(app: tauri::AppHandle) -> Result<usize, String> {
+    let outcome = run_scan(app.clone(), None).await?;
 
-    if count > 0 {
+    // 只有真的重算了才发事件:文件没变的会话被缓存跳过时,费用数字不会变,
+    // 发事件只会让前端白刷新一次。
+    if outcome.refreshed > 0 {
         let _ = app.emit("cost:updated", serde_json::json!({
-            "scanned": count,
+            "scanned": outcome.refreshed,
         }));
     }
 
-    Ok(count)
+    Ok(outcome.total)
+}
+
+/// 把扫描丢到阻塞线程池执行。
+///
+/// `AppHandle` 是 'static 的,可以在闭包里 `app.state::<AppDatabase>()` 取到
+/// 数据库 —— 比把 `State<'_, _>` 带进 future 少一层生命周期麻烦。
+async fn run_scan(
+    app: tauri::AppHandle,
+    profile_id: Option<&str>,
+) -> Result<cost::claude::ScanOutcome, String> {
+    let profile_id = profile_id.map(str::to_string);
+    tauri::async_runtime::spawn_blocking(move || {
+        let db = app.state::<AppDatabase>();
+        scan_costs_inner(&db, profile_id.as_deref())
+    })
+    .await
+    .map_err(|e| format!("费用扫描任务失败: {e}"))?
 }
 
 fn scan_costs_inner(
     db: &AppDatabase,
     profile_id: Option<&str>,
-) -> Result<usize, String> {
+) -> Result<cost::claude::ScanOutcome, String> {
     let profiles = profile::list_profiles(db, None)?;
 
     let target_profiles: Vec<_> = if let Some(pid) = profile_id {
@@ -103,10 +124,14 @@ fn scan_costs_inner(
     };
 
     let mut total = 0;
+    let mut refreshed = 0;
     for p in target_profiles {
         let claude_dir = p.app_data_root.as_deref();
-        total += cost::claude::scan_claude_sessions(db, &p.id, claude_dir)?;
+        let outcome = cost::claude::scan_claude_sessions(db, &p.id, claude_dir)?;
+        total += outcome.total;
+        refreshed += outcome.refreshed;
     }
 
-    Ok(total)
+    Ok(cost::claude::ScanOutcome { total, refreshed })
 }
+

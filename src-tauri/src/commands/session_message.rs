@@ -1,6 +1,6 @@
 use crate::session_message::{self, CreateSessionMessageInput, SessionMessage};
 use crate::storage::AppDatabase;
-use tauri::State;
+use tauri::{Manager, State};
 
 #[tauri::command]
 pub fn session_message_list(
@@ -10,12 +10,21 @@ pub fn session_message_list(
     session_message::list_session_messages(&db, &session_id)
 }
 
+/// 落库一条用户输入。
+///
+/// 回车即触发,和后台的费用扫描抢同一把数据库锁 —— 放在主线程上,
+/// 一旦锁被占住,回车就会顿一下。丢到阻塞线程池里跑,输入不再被拖慢。
 #[tauri::command]
-pub fn session_message_create(
-    db: State<AppDatabase>,
+pub async fn session_message_create(
+    app: tauri::AppHandle,
     input: CreateSessionMessageInput,
 ) -> Result<SessionMessage, String> {
-    session_message::create_session_message(&db, input)
+    tauri::async_runtime::spawn_blocking(move || {
+        let db = app.state::<AppDatabase>();
+        session_message::create_session_message(&db, input)
+    })
+    .await
+    .map_err(|e| format!("消息落库任务失败: {e}"))?
 }
 
 #[tauri::command]
