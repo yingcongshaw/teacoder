@@ -431,7 +431,7 @@ interface AppState {
   closeAllTabs: () => void;
   setActiveTab: (id: string | null) => void;
   duplicateSession: (id: string) => Promise<Session | null>;
-  closeOtherTabs: (id: string) => void;
+  closeOtherTabs: (id: string, paneId?: string) => void;
   closeTabsToRight: (id: string) => void;
 
   favoriteTabs: string[];
@@ -1485,46 +1485,45 @@ export const useAppStore = create<AppState>((set, get) => ({
     return normalizedSession;
   },
 
-  closeOtherTabs: (id) => {
+  closeOtherTabs: (id, paneId) => {
     const state = get();
-    // 找到 id 所在的任意一个 host pane(host pane 唯一,因为 openTab 防御性
-    // 保证同 pane 内不重复,但跨 pane 双开时 id 可能在多个 pane 中)
-    const hostPane = state.panes.find((p) => p.openTabIds.includes(id));
+    // 只作用于 id 所在的那个面板：分屏时"关闭其他标签"是面板内的操作，
+    // 不能顺手把另一栏的标签一起清掉 —— 同一会话双开时那会把另一边的实例也关掉。
+    const hostPane = paneId
+      ? state.panes.find((p) => p.id === paneId && p.openTabIds.includes(id))
+      : state.panes.find((p) => p.openTabIds.includes(id));
     if (!hostPane) return;
 
-    // 共享 PTY 语义：先计算"被关闭的实例"和"剩余实例"。
-    //   - 关闭 = 所有非 host pane 中 id 的 instance + host pane 内除 id 之外的 tab
-    //   - 剩余 = host pane 中保留的 [id] 列表
-    // 哪些 tabId 的所有 instance 归零:对每个被关闭的 tabId,若 hostPane.openTabIds 不含它,归零。
-    const closedTabIds = new Set<string>();
-    for (const p of state.panes) {
-      if (p.id === hostPane.id) continue;
-      for (const tid of p.openTabIds) closedTabIds.add(tid);
-    }
-    for (const tid of hostPane.openTabIds) {
-      if (tid !== id) closedTabIds.add(tid);
-    }
-    for (const tid of closedTabIds) {
-      // 若 host pane 还含该 tid,说明只是清掉其它 pane 的 instance,不算 0
-      if (hostPane.openTabIds.includes(tid) && closedTabIds.has(tid) && tid !== id) {
-        // host pane 内该 tid 也被清掉 → 归零
-      }
+    // 面板内除 id 之外的标签才是"其他标签"；id 本身保留
+    const firstIdx = hostPane.openTabIds.indexOf(id);
+    const closingIds = hostPane.openTabIds.filter((_, i) => i !== firstIdx);
+    const nextOpen = [id];
+
+    const nextPanes = state.panes.map((p) =>
+      p.id === hostPane.id ? { ...p, openTabIds: nextOpen, activeTabId: id } : p,
+    );
+
+    // 共享 PTY 语义：只有该 tabId 在所有面板里的实例都归零了才停 PTY。
+    // 同一会话在另一栏还开着时在这里停 PTY，会把那边的终端一起弄死。
+    const zeroedIds = new Set(closingIds.filter((tid) => instanceCount(nextPanes, tid) === 0));
+    for (const tid of zeroedIds) {
       const s = state.sessions.find((sess) => sess.id === tid);
       if (s?.isRunning) stopSession(tid).catch(() => {});
       sessionUpdate(tid, { isRunning: false, closedAt: Date.now() }).catch(() => {});
     }
     set((state) => {
-      const hostPaneNew: Pane = { id: hostPane.id, openTabIds: [id], activeTabId: id };
-      const nextPanes = [hostPaneNew];
-      const sessions = state.sessions.map((s) => {
-        if (closedTabIds.has(s.id)) {
-          return { ...s, isRunning: false, closedAt: Date.now() };
-        }
-        return s;
-      });
-      const openTabIds = [id];
+      const sessions = state.sessions.map((s) =>
+        zeroedIds.has(s.id) ? { ...s, isRunning: false, closedAt: Date.now() } : s,
+      );
+      const openTabIds = flattenPaneOpenIds(nextPanes);
       saveOpenTabIds(openTabIds);
-      return { panes: nextPanes, activePaneId: hostPane.id, sessions, openTabIds, activeTabId: id };
+      return {
+        panes: nextPanes,
+        sessions,
+        openTabIds,
+        activePaneId: hostPane.id,
+        activeTabId: id,
+      };
     });
   },
 

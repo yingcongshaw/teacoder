@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect } from "react";
+import { Fragment, useState, useRef, useCallback, useEffect } from "react";
 import { Button, Tooltip, Modal, App } from "antd";
 import {
   FolderOutlined,
@@ -138,49 +138,36 @@ export default function AppContent() {
           ref={panesContainerRef}
           className="flex-1 flex min-w-0 bg-[var(--ant-color-bg-container)] overflow-hidden"
         >
-          {panes.length === 1 ? (
-            <div className="flex-1 min-w-0">
-              <PaneView
-                paneId={panes[0].id}
-                isActivePane={panes[0].id === activePaneId}
-                terminalRefs={terminalRefs}
-                onCopy={copyTerminalSelection}
-                onPaste={pasteIntoTerminal}
-              />
-            </div>
-          ) : (
-            <>
+          {/* 每个面板套一个带 key 的 Fragment：面板数量变化时 React 按 key 复用还开着的面板，
+              不会因为结构切换把整个面板卸载重建 —— 重建会让 xterm 实例被 dispose，
+              屏幕内容和 scrollback 一起丢失（关掉一边的标签，另一边的终端就白了）。 */}
+          {panes.map((pane, i) => (
+            <Fragment key={pane.id}>
+              {i > 0 && (
+                <PaneSplitter
+                  ratio={splitRatio}
+                  onRatioChange={setSplitRatio}
+                  containerRef={panesContainerRef}
+                />
+              )}
               <div
-                className="min-w-0 h-full"
-                style={{ width: `${splitRatio * 100}%` }}
+                className={panes.length === 1 ? "flex-1 min-w-0" : "min-w-0 h-full"}
+                style={
+                  panes.length === 1
+                    ? undefined
+                    : { width: `${(i === 0 ? splitRatio : 1 - splitRatio) * 100}%` }
+                }
               >
                 <PaneView
-                  paneId={panes[0].id}
-                  isActivePane={panes[0].id === activePaneId}
+                  paneId={pane.id}
+                  isActivePane={pane.id === activePaneId}
                   terminalRefs={terminalRefs}
                   onCopy={copyTerminalSelection}
                   onPaste={pasteIntoTerminal}
                 />
               </div>
-              <PaneSplitter
-                ratio={splitRatio}
-                onRatioChange={setSplitRatio}
-                containerRef={panesContainerRef}
-              />
-              <div
-                className="min-w-0 h-full"
-                style={{ width: `${(1 - splitRatio) * 100}%` }}
-              >
-                <PaneView
-                  paneId={panes[1].id}
-                  isActivePane={panes[1].id === activePaneId}
-                  terminalRefs={terminalRefs}
-                  onCopy={copyTerminalSelection}
-                  onPaste={pasteIntoTerminal}
-                />
-              </div>
-            </>
-          )}
+            </Fragment>
+          ))}
         </div>
       );
     }

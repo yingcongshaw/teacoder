@@ -41,10 +41,11 @@ vi.mock("../../utils/ipc", () => ({
 }));
 
 import { useAppStore } from "../appStore";
+import { stopSession } from "../../utils/ipc";
 
 const PANES_KEY = "teacoder_panes_layout";
 
-function makeSession(id: string) {
+function makeSession(id: string, isRunning = false) {
   return {
     id,
     name: id,
@@ -56,7 +57,7 @@ function makeSession(id: string) {
     profileId: "",
     cliArgs: "[]",
     envVars: "",
-    isRunning: false,
+    isRunning,
     createdAt: 0,
     updatedAt: 0,
   };
@@ -150,6 +151,132 @@ describe("restoreTabs — 分屏布局恢复", () => {
 
     const persisted = JSON.parse(localStorage.getItem(PANES_KEY)!);
     expect(persisted.panes.length).toBe(2);
+  });
+});
+
+describe("closeTab — 共享会话在两边分屏双开", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    ipcState.sessions = [];
+    ipcState.projects = [];
+    ipcState.jsonlDelayMs = 0;
+    vi.mocked(stopSession).mockClear();
+    useAppStore.setState({
+      sessions: [],
+      projects: [],
+      panes: [],
+      openTabIds: [],
+      activeTabId: null,
+      activePaneId: null,
+    } as never);
+  });
+
+  test("关掉一边的实例，另一边仍保留，且不停 PTY", () => {
+    ipcState.sessions = [makeSession("tab-a")];
+    useAppStore.setState({
+      sessions: ipcState.sessions,
+      panes: [
+        { id: "pane-left", openTabIds: ["tab-a"], activeTabId: "tab-a" },
+        { id: "pane-right", openTabIds: ["tab-a"], activeTabId: "tab-a" },
+      ],
+      activePaneId: "pane-left",
+    } as never);
+
+    useAppStore.getState().closeTab("tab-a", "pane-left");
+
+    const panes = useAppStore.getState().panes;
+    expect(panes.map((p) => p.openTabIds)).toEqual([["tab-a"]]);
+    expect(stopSession, "还有一边开着,不该停 PTY").not.toHaveBeenCalled();
+  });
+
+  test("最后一个实例关闭时才停 PTY", () => {
+    ipcState.sessions = [makeSession("tab-a", true)];
+    useAppStore.setState({
+      sessions: ipcState.sessions,
+      panes: [
+        { id: "pane-left", openTabIds: ["tab-a"], activeTabId: "tab-a" },
+        { id: "pane-right", openTabIds: ["tab-a"], activeTabId: "tab-a" },
+      ],
+      activePaneId: "pane-left",
+    } as never);
+
+    useAppStore.getState().closeTab("tab-a", "pane-left");
+    expect(stopSession).not.toHaveBeenCalled();
+
+    useAppStore.getState().closeTab("tab-a", "pane-right");
+
+    expect(useAppStore.getState().panes).toEqual([]);
+    expect(stopSession).toHaveBeenCalledWith("tab-a");
+  });
+});
+
+describe("closeOtherTabs — 分屏下不应波及其它面板", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    ipcState.sessions = [];
+    ipcState.projects = [];
+    ipcState.jsonlDelayMs = 0;
+    vi.mocked(stopSession).mockClear();
+    useAppStore.setState({
+      sessions: [],
+      projects: [],
+      panes: [],
+      openTabIds: [],
+      activeTabId: null,
+      activePaneId: null,
+    } as never);
+  });
+
+  test("只清本面板的其它标签，另一面板原样保留", () => {
+    ipcState.sessions = [makeSession("tab-a"), makeSession("tab-b")];
+    useAppStore.setState({
+      sessions: ipcState.sessions,
+      panes: [
+        { id: "pane-left", openTabIds: ["tab-a", "tab-b"], activeTabId: "tab-b" },
+        { id: "pane-right", openTabIds: ["tab-a"], activeTabId: "tab-a" },
+      ],
+      activePaneId: "pane-left",
+    } as never);
+
+    useAppStore.getState().closeOtherTabs("tab-b", "pane-left");
+
+    const panes = useAppStore.getState().panes;
+    expect(panes.map((p) => p.openTabIds)).toEqual([["tab-b"], ["tab-a"]]);
+    expect(stopSession, "tab-a 在右面板还开着,不该停它的 PTY").not.toHaveBeenCalled();
+  });
+
+  test("同一会话双开时点「关闭其他标签」，不停共享 PTY", () => {
+    ipcState.sessions = [makeSession("tab-a", true)];
+    useAppStore.setState({
+      sessions: ipcState.sessions,
+      panes: [
+        { id: "pane-left", openTabIds: ["tab-a"], activeTabId: "tab-a" },
+        { id: "pane-right", openTabIds: ["tab-a"], activeTabId: "tab-a" },
+      ],
+      activePaneId: "pane-left",
+    } as never);
+
+    useAppStore.getState().closeOtherTabs("tab-a", "pane-left");
+
+    expect(useAppStore.getState().panes.map((p) => p.openTabIds)).toEqual([["tab-a"], ["tab-a"]]);
+    expect(stopSession, "另一面板还开着这个会话,不该停 PTY").not.toHaveBeenCalled();
+  });
+
+  test("本面板其它标签在别处还开着时，不停它的 PTY", () => {
+    ipcState.sessions = [makeSession("tab-a", true), makeSession("tab-b", true)];
+    useAppStore.setState({
+      sessions: ipcState.sessions,
+      panes: [
+        { id: "pane-left", openTabIds: ["tab-a", "tab-b"], activeTabId: "tab-a" },
+        { id: "pane-right", openTabIds: ["tab-b"], activeTabId: "tab-b" },
+      ],
+      activePaneId: "pane-left",
+    } as never);
+
+    useAppStore.getState().closeOtherTabs("tab-a", "pane-left");
+
+    expect(useAppStore.getState().panes.map((p) => p.openTabIds)).toEqual([["tab-a"], ["tab-b"]]);
+    expect(stopSession, "tab-b 在右面板还开着,不该停它的 PTY").not.toHaveBeenCalled();
   });
 });
 

@@ -332,7 +332,7 @@ export default function TabBar({ paneId }: TabBarProps = {}) {
       key: "closeOthers",
       label: "关闭其他标签",
       icon: <CloseCircleOutlined />,
-      onClick: () => closeOtherTabs(tab.id),
+      onClick: () => closeOtherTabs(tab.id, pane?.id),
     },
     {
       key: "closeAll",
