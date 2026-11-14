@@ -24,17 +24,27 @@ type ConfigCache = HashMap<String, (i64, Vec<u16>)>;
 
 static CONFIG_CACHE: Lazy<Mutex<ConfigCache>> = Lazy::new(|| Mutex::new(HashMap::new()));
 
-/// 可能写着端口的配置文件。
-const CONFIG_FILES: &[&str] = &[
-    "application.properties",
-    "application.yml",
-    "application.yaml",
-    "package.json",
-    ".env",
-    "vite.config.ts",
-    "vite.config.js",
-    "vue.config.js",
-];
+/// 可能写着端口的配置文件，按服务类别分。
+///
+/// 同一个工程里常同时有 Java 与 Node 的服务，各写各的配置文件。
+/// 读错类别就会把别人的端口算到自己头上。
+fn config_files_for(kind: &str) -> &'static [&'static str] {
+    match kind {
+        crate::dev_env::KIND_JAVA => {
+            &["application.properties", "application.yml", "application.yaml"]
+        }
+        crate::dev_env::KIND_NODE => &[
+            "package.json",
+            ".env",
+            "vite.config.ts",
+            "vite.config.js",
+            "vue.config.js",
+        ],
+        crate::dev_env::KIND_DOTNET => &["appsettings.json", "Properties/launchSettings.json"],
+        crate::dev_env::KIND_PYTHON => &[".env"],
+        _ => &[".env"],
+    }
+}
 
 /// Java 工程把配置放在资源目录里，位置是约定好的。
 const RESOURCE_CONFIG_FILES: &[&str] = &[
@@ -63,7 +73,7 @@ pub fn detect_ports(db: &AppDatabase, service_id: &str) -> Vec<u16> {
     let logs = crate::services::runtime::service_logs(service_id, 200);
     let working_dir = resolve_working_dir(db, &service);
 
-    let config_ports = config_candidates(service_id, working_dir.as_deref());
+    let config_ports = config_candidates(service_id, working_dir.as_deref(), &service.kind);
     let mut candidates = port_candidates(&logs, &service.command, &config_ports);
 
     // Spring Boot 没配端口时默认 8080。只有在没别的候选时才补，
@@ -109,7 +119,7 @@ fn resolve_working_dir(db: &AppDatabase, service: &crate::services::Service) -> 
 }
 
 /// 从配置文件里找端口候选。结果按服务缓存，TTL 内不重复读盘。
-fn config_candidates(service_id: &str, working_dir: Option<&str>) -> Vec<u16> {
+fn config_candidates(service_id: &str, working_dir: Option<&str>, kind: &str) -> Vec<u16> {
     let Some(dir) = working_dir else {
         return Vec::new();
     };
@@ -128,7 +138,7 @@ fn config_candidates(service_id: &str, working_dir: Option<&str>) -> Vec<u16> {
     }
 
     let mut ports = BTreeSet::new();
-    for file in collect_config_files(root) {
+    for file in collect_config_files(root, kind) {
         let Ok(meta) = std::fs::metadata(&file) else {
             continue;
         };
@@ -152,18 +162,21 @@ fn config_candidates(service_id: &str, working_dir: Option<&str>) -> Vec<u16> {
 ///
 /// 不再往子目录里钻 —— 一个工程下往往有多个子工程（多模块），
 /// 钻进去会把兄弟工程的端口也读进来，三个 Spring 模块就会互相串号。
-fn collect_config_files(root: &Path) -> Vec<std::path::PathBuf> {
+/// 只读该服务类别认的那几种配置，别的类别的配置不碰。
+fn collect_config_files(root: &Path, kind: &str) -> Vec<std::path::PathBuf> {
     let mut out = Vec::new();
-    for name in CONFIG_FILES {
+    for name in config_files_for(kind) {
         let path = root.join(name);
         if path.is_file() {
             out.push(path);
         }
     }
-    for name in RESOURCE_CONFIG_FILES {
-        let path = root.join("src").join("main").join("resources").join(name);
-        if path.is_file() {
-            out.push(path);
+    if kind == crate::dev_env::KIND_JAVA {
+        for name in RESOURCE_CONFIG_FILES {
+            let path = root.join("src").join("main").join("resources").join(name);
+            if path.is_file() {
+                out.push(path);
+            }
         }
     }
     out.sort();
@@ -318,21 +331,43 @@ mod tests {
         let a = root.join("service-a");
         let b = root.join("service-b");
         assert_eq!(
-            config_candidates("svc-a", a.to_str()),
+            config_candidates("svc-a", a.to_str(), crate::dev_env::KIND_JAVA),
             vec![81],
             "A 服务只该看到自己的端口"
         );
         assert_eq!(
-            config_candidates("svc-b", b.to_str()),
+            config_candidates("svc-b", b.to_str(), crate::dev_env::KIND_JAVA),
             vec![82],
             "B 服务只该看到自己的端口"
         );
         assert!(
-            config_candidates("svc-root", root.to_str()).is_empty(),
+            config_candidates("svc-root", root.to_str(), crate::dev_env::KIND_JAVA).is_empty(),
             "工程根目录不该把子工程的端口都读进来"
         );
 
         std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn config_files_are_picked_by_service_kind() {
+        let dir = std::env::temp_dir().join(format!("teacoder-ports-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).expect("建临时目录");
+        std::fs::write(dir.join("application.yml"), "server:\n  port: 8080\n").expect("写配置");
+        std::fs::write(dir.join("package.json"), "{\"scripts\":{\"start\":\"node index.js --port 3000\"}}")
+            .expect("写配置");
+
+        assert_eq!(
+            config_candidates("java-svc", dir.to_str(), crate::dev_env::KIND_JAVA),
+            vec![8080],
+            "Java 服务不该读到 Node 的端口"
+        );
+        assert_eq!(
+            config_candidates("node-svc", dir.to_str(), crate::dev_env::KIND_NODE),
+            vec![3000],
+            "Node 服务不该读到 Java 的端口"
+        );
+
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]
