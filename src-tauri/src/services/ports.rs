@@ -13,9 +13,6 @@ use crate::storage::AppDatabase;
 /// 本机端口没人监听时连接会立刻被拒，这个超时只是兜底，不会真的等满。
 const PROBE_TIMEOUT: Duration = Duration::from_millis(200);
 
-/// 扫描配置文件的深度上限。多模块项目通常不超过三四层。
-const MAX_CONFIG_DEPTH: usize = 4;
-
 /// 单个配置文件的大小上限，避免读进巨大的文件。
 const MAX_CONFIG_BYTES: u64 = 512 * 1024;
 
@@ -39,11 +36,21 @@ const CONFIG_FILES: &[&str] = &[
     "vue.config.js",
 ];
 
+/// Java 工程把配置放在资源目录里，位置是约定好的。
+const RESOURCE_CONFIG_FILES: &[&str] = &[
+    "application.properties",
+    "application.yml",
+    "application.yaml",
+];
+
 /// 探测服务占用的端口。
 ///
 /// 服务没在跑就不占端口，直接返回空。端口来源有三条：
 /// 框架打在日志里的端口最准，命令行参数其次，配置文件里的默认值最后。
 /// 三条都只是「候选」，最后统一探一次 TCP —— 真有人在听才算数。
+///
+/// 端口必须只属于这一个服务 —— 同一工程下的多个子工程各占各的端口，
+/// 不能把兄弟工程的端口也列到这一行上。
 pub fn detect_ports(db: &AppDatabase, service_id: &str) -> Vec<u16> {
     if !crate::services::runtime::is_running(service_id) {
         return Vec::new();
@@ -56,23 +63,33 @@ pub fn detect_ports(db: &AppDatabase, service_id: &str) -> Vec<u16> {
     let logs = crate::services::runtime::service_logs(service_id, 200);
     let working_dir = resolve_working_dir(db, &service);
 
-    let mut candidates: BTreeSet<u16> = BTreeSet::new();
-    for line in &logs {
-        candidates.extend(ports_from_text(line));
-    }
-    candidates.extend(ports_from_text(&service.command));
-
     let config_ports = config_candidates(service_id, working_dir.as_deref());
-    let config_empty = config_ports.is_empty();
-    candidates.extend(config_ports);
+    let mut candidates = port_candidates(&logs, &service.command, &config_ports);
 
     // Spring Boot 没配端口时默认 8080。只有在没别的候选时才补，
     // 免得别的服务占了 8080 却被算到这一行头上。
-    if config_empty && candidates.is_empty() && service.command.contains("spring-boot") {
+    if candidates.is_empty() && config_ports.is_empty() && service.command.contains("spring-boot") {
         candidates.insert(8080);
     }
 
     candidates.into_iter().filter(|port| is_listening(*port)).collect()
+}
+
+/// 汇总端口候选。
+///
+/// 日志与命令行里的端口一定属于这个服务自己，最准；配置文件里的端口未必 ——
+/// 同一工程下常有多个子工程共用一份配置。所以只有前面都没线索时才用配置里的。
+fn port_candidates(logs: &[String], command: &str, config: &[u16]) -> BTreeSet<u16> {
+    let mut candidates: BTreeSet<u16> = BTreeSet::new();
+    for line in logs {
+        candidates.extend(ports_from_text(line));
+    }
+    candidates.extend(ports_from_text(command));
+
+    if candidates.is_empty() {
+        candidates.extend(config.iter().copied());
+    }
+    candidates
 }
 
 /// 服务的工作目录：填了就用填的，没填就退回项目路径。
@@ -131,27 +148,22 @@ fn config_candidates(service_id: &str, working_dir: Option<&str>) -> Vec<u16> {
     result
 }
 
-/// 找出目录下所有可能写着端口的配置文件。
+/// 找出服务自己工程目录下的配置文件。
+///
+/// 不再往子目录里钻 —— 一个工程下往往有多个子工程（多模块），
+/// 钻进去会把兄弟工程的端口也读进来，三个 Spring 模块就会互相串号。
 fn collect_config_files(root: &Path) -> Vec<std::path::PathBuf> {
     let mut out = Vec::new();
-    let walker = walkdir::WalkDir::new(root)
-        .max_depth(MAX_CONFIG_DEPTH)
-        .into_iter()
-        .filter_entry(|entry| {
-            if entry.depth() == 0 {
-                return true;
-            }
-            let name = entry.file_name().to_string_lossy();
-            !crate::services::detector::SKIP_DIRS.contains(&name.as_ref())
-        });
-
-    for entry in walker.flatten() {
-        if !entry.file_type().is_file() {
-            continue;
+    for name in CONFIG_FILES {
+        let path = root.join(name);
+        if path.is_file() {
+            out.push(path);
         }
-        let name = entry.file_name().to_string_lossy();
-        if CONFIG_FILES.contains(&name.as_ref()) {
-            out.push(entry.path().to_path_buf());
+    }
+    for name in RESOURCE_CONFIG_FILES {
+        let path = root.join("src").join("main").join("resources").join(name);
+        if path.is_file() {
+            out.push(path);
         }
     }
     out.sort();
@@ -287,5 +299,56 @@ mod tests {
     fn ignores_out_of_range_ports() {
         assert!(ports("port 99999").is_empty());
         assert!(ports("port 0").is_empty());
+    }
+
+    #[test]
+    fn config_ports_stay_inside_the_service_project() {
+        let root = std::env::temp_dir().join(format!("teacoder-ports-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&root).expect("建临时目录");
+        for (name, port) in [("service-a", 81u16), ("service-b", 82)] {
+            let dir = root.join(name).join("src").join("main").join("resources");
+            std::fs::create_dir_all(&dir).expect("建目录");
+            std::fs::write(
+                dir.join("application.properties"),
+                format!("server.port={port}\n"),
+            )
+            .expect("写配置");
+        }
+
+        let a = root.join("service-a");
+        let b = root.join("service-b");
+        assert_eq!(
+            config_candidates("svc-a", a.to_str()),
+            vec![81],
+            "A 服务只该看到自己的端口"
+        );
+        assert_eq!(
+            config_candidates("svc-b", b.to_str()),
+            vec![82],
+            "B 服务只该看到自己的端口"
+        );
+        assert!(
+            config_candidates("svc-root", root.to_str()).is_empty(),
+            "工程根目录不该把子工程的端口都读进来"
+        );
+
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn log_ports_win_over_config_ports() {
+        let logs = vec!["Tomcat started on port(s): 81 (http)".to_string()];
+        let candidates = port_candidates(&logs, "java -jar {artifact}", &[81, 82, 83]);
+        assert_eq!(
+            candidates.into_iter().collect::<Vec<u16>>(),
+            vec![81],
+            "日志里的端口最准，不该再叠上配置里的其它端口"
+        );
+    }
+
+    #[test]
+    fn config_ports_are_used_when_nothing_else_knows() {
+        let candidates = port_candidates(&[], "java -jar {artifact}", &[81]);
+        assert_eq!(candidates.into_iter().collect::<Vec<u16>>(), vec![81]);
     }
 }
