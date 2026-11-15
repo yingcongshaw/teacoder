@@ -43,11 +43,8 @@ pub fn run() {
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, Some(vec!["--hidden"])))
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
-            // 当通过自启动唤醒时，显示窗口
-            if let Some(window) = app.get_webview_window("main") {
-                window.show().ok();
-                window.set_focus().ok();
-            }
+            // 再次启动程序时把窗口叫回前台，收在托盘里的状态也要一并清掉
+            tray::restore_window(app);
         }))
         .setup(|app| {
             let db = AppDatabase::new(app.handle())?;
@@ -125,9 +122,12 @@ pub fn run() {
 
                 match behavior {
                     CloseBehavior::MinimizeToTray => {
-                        // 隐藏到托盘而不是关闭
+                        // 收进托盘要和「最小化」在托盘菜单里表现一致：
+                        // 菜单上的「最小化」按已最小化显示，点它能把窗口再叫回来。
+                        tray::set_hidden_to_tray(true);
                         window.hide().ok();
                         api.prevent_close();
+                        tray::sync_window_labels(window.app_handle());
                     }
                     CloseBehavior::Exit => {
                         // 允许关闭，程序退出。退出前先收掉后台服务进程，别留孤儿

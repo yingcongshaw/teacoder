@@ -28,6 +28,28 @@ static MINIMIZE_ITEM: Lazy<Mutex<Option<StateMenuItem>>> = Lazy::new(|| Mutex::n
 /// 状态轮询只启动一次，避免托盘重建时叠加多个任务。
 static POLLER_STARTED: AtomicBool = AtomicBool::new(false);
 
+/// 主窗口是不是被「收进托盘」了 —— 关闭按钮按「最小化到托盘」处理时就是这种状态。
+///
+/// 这时窗口是隐藏的，不是最小化，系统的窗口状态里看不出来。
+/// 但托盘菜单必须把它当成最小化：否则菜单上写着「最小化窗口」，
+/// 点下去却是对着一张已经藏起来的窗口执行收起，等于什么也没发生。
+static HIDDEN_TO_TRAY: AtomicBool = AtomicBool::new(false);
+
+/// 标记主窗口当前是不是收在托盘里。
+pub fn set_hidden_to_tray(hidden: bool) {
+    HIDDEN_TO_TRAY.store(hidden, Ordering::Release);
+}
+
+/// 主窗口当前算不算「最小化」：真正最小化了，或者收在托盘里了。
+fn is_minimized_like(app: &AppHandle) -> bool {
+    if HIDDEN_TO_TRAY.load(Ordering::Acquire) {
+        return true;
+    }
+    app.get_webview_window("main")
+        .and_then(|window| window.is_minimized().ok())
+        .unwrap_or(false)
+}
+
 pub fn create_tray(app: &AppHandle) -> Result<(), String> {
     // 如果已存在，先移除
     let _ = app.remove_tray_by_id(TRAY_ID);
@@ -67,7 +89,7 @@ pub fn create_tray(app: &AppHandle) -> Result<(), String> {
         .on_menu_event(|app, event| match event.id.as_ref() {
             "maximize" => {
                 if let Some(window) = app.get_webview_window("main") {
-                    if window.is_minimized().unwrap_or(false) {
+                    if is_minimized_like(app) {
                         // 最小化状态下点这一项：先还原，再最大化
                         restore_window(app);
                         window.maximize().ok();
@@ -82,12 +104,10 @@ pub fn create_tray(app: &AppHandle) -> Result<(), String> {
                 sync_window_labels(app);
             }
             "minimize" => {
-                if let Some(window) = app.get_webview_window("main") {
-                    if window.is_minimized().unwrap_or(false) {
-                        restore_window(app);
-                    } else {
-                        window.minimize().ok();
-                    }
+                if is_minimized_like(app) {
+                    restore_window(app);
+                } else if let Some(window) = app.get_webview_window("main") {
+                    window.minimize().ok();
                 }
                 sync_window_labels(app);
             }
@@ -120,6 +140,10 @@ pub fn create_tray(app: &AppHandle) -> Result<(), String> {
 
 pub fn destroy_tray(app: &AppHandle) {
     let _ = app.remove_tray_by_id(TRAY_ID);
+    // 托盘没了，收在托盘里的窗口就再也叫不回来 —— 得先把窗口放出来
+    if HIDDEN_TO_TRAY.load(Ordering::Acquire) {
+        restore_window(app);
+    }
     // 菜单项句柄跟着托盘一起失效，留着会让改文字时操作到旧菜单
     if let Ok(mut guard) = MAXIMIZE_ITEM.lock() {
         *guard = None;
@@ -130,7 +154,9 @@ pub fn destroy_tray(app: &AppHandle) {
 }
 
 /// 把窗口拉回前台，必要时先取消最小化。
-fn restore_window(app: &AppHandle) {
+pub fn restore_window(app: &AppHandle) {
+    set_hidden_to_tray(false);
+
     // Linux 上 GTK 的 deiconify 只是 XMapWindow，窗口被窗口管理器收起后这条路拉不回来，
     // 得用 present() 让窗口管理器自己把它还原并置前
     #[cfg(target_os = "linux")]
@@ -154,13 +180,14 @@ fn restore_window(app: &AppHandle) {
 
 /// 同步托盘菜单里跟窗口状态联动的两项文字。
 ///
-/// 「最大化窗口」在窗口最大化时变成「还原窗口」；「最小化窗口」在窗口已最小化时变成「还原窗口」。
+/// 「最大化窗口」在窗口最大化时变成「还原窗口」；「最小化窗口」在窗口已最小化
+/// （含收进托盘）时变成「还原窗口」。
 /// 窗口既最大化又最小化时，最大化那项不显示「还原窗口」—— 两项都叫同一个名字会分不清该点哪个。
 pub fn sync_window_labels(app: &AppHandle) {
     let Some(window) = app.get_webview_window("main") else {
         return;
     };
-    let minimized = window.is_minimized().unwrap_or(false);
+    let minimized = is_minimized_like(app);
     let maximized = window.is_maximized().unwrap_or(false);
 
     let maximize_text = if maximized && !minimized {
