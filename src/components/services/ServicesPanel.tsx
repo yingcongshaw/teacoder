@@ -497,7 +497,17 @@ export default function ServicesPanel({ visible, onClose, anchorRef }: ServicesP
         onCancel={() => setDeleteTarget(null)}
         okText="删除"
         cancelText="取消"
-        okButtonProps={{ danger: true }}
+        okButtonProps={{ danger: true, className: "service-delete-ok" }}
+        rootClassName="service-delete-modal"
+        // 弹窗打开后焦点默认落在右上角的关闭按钮上，删服务这种操作要按回车确认，
+        // 焦点得放在「删除」上。rc-dialog 会在动画结束时把焦点收进弹窗，
+        // 所以聚焦要等 afterOpenChange。
+        afterOpenChange={(open) => {
+          if (!open) return;
+          document
+            .querySelector<HTMLButtonElement>(".service-delete-modal .service-delete-ok")
+            ?.focus();
+        }}
         width={360}
         destroyOnHidden
         mask={{ closable: false }}
