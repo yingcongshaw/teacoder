@@ -16,15 +16,15 @@
 
 </div>
 
-## 项目简介
+## 一、项目简介
 
 TeaCoder是一款为 **AI 编程 CLI 工具** 量身打造的桌面管理客户端。它不做 AI 推理，只做"周边设施"——为 Claude Code、Codex CLI、Gemini CLI、OpenCode、Antigravity 提供图形化的会话管理、账号管理、LLM 供应商管理、配置管理。
 
 **核心原则：零额外 Token 开销。** TeaCoder 通过 PTY 直通运行 CLI 工具，**不拦截、不代理任何 API 请求**。Token 统计直接读取各 CLI 工具本地的 JSONL / 数据库，不解析 PTY 输出——CLI 工具的协议怎么变都不会影响 TeaCoder 的统计准确性。
 
-## 核心特性
+## 二、核心特性
 
-### 核心一览表
+### 2.1 核心一览表
 
 | 特性                     | 说明                                                                                                                              |
 | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------- |
@@ -51,77 +51,77 @@ TeaCoder是一款为 **AI 编程 CLI 工具** 量身打造的桌面管理客户�
 > - Window、IOS平台，Arm架构 未实测。本人环境为Linux amd64。
 > - 18 个设置项 尚未完全实现。
 
-### 特性图示-主题风格
+### 2.2 特性图示-主题风格
 
-#### 通用主题
+#### 2.2.1 通用主题
 
 ![通用主题](./public/help/11.png "通用主题")
 
-#### 终端主题
+#### 2.2.2 终端主题
 
 ![终端主题](public/help/12.png "终端主题")
 
-#### 主题示例-蓝色系
+#### 2.2.3 主题示例-蓝色系
 
 ![主题示例1](public/help/13.png "主题示例1")
 
-#### 主题示例-暖色系
+#### 2.2.4 主题示例-暖色系
 
 ![主题示例2](public/help/14.png "主题示例2")
 
-### 特性图示-多会话独立调用不同的LLM
+### 2.3 特性图示-多会话独立调用不同的LLM
 
-#### 自定义LLM供应商
+#### 2.3.1 自定义LLM供应商
 
 ![自定义LLM供应商](public/help/31.png "自定义LLM供应商")
 
-#### 会话独立选择模型，多会话多供应商多模型同时运行：
+#### 2.3.2 会话独立选择模型，多会话多供应商多模型同时运行：
 
 ![会话独立选择模型，多会话多供应商多模型同时运行](public/help/32.png "会话独立选择模型，多会话多供应商多模型同时运行")
 
-### 特性图示-工具支持
+### 2.4 特性图示-工具支持
 
-#### 会话历史+搜索+定位
+#### 2.4.1 会话历史+搜索+定位
 
 ![多标签+分屏](public/help/61.png "会话历史+搜索+定位")
 
-#### 分类型设置快捷命令或代码块
+#### 2.4.2 分类型设置快捷命令或代码块
 
-##### 快捷命令设置
+##### 2.4.2.1 快捷命令设置
 
 ![分类型设置快捷命令或代码块](public/help/41.png "分类型设置快捷命令或代码块")
 
-##### 终端快捷命令示例
+##### 2.4.2.2 终端快捷命令示例
 
 ![终端快捷命令示例](public/help/42.png "终端快捷命令示例")
 
-##### Claude终端终端快捷命令示例
+##### 2.4.2.3 Claude终端终端快捷命令示例
 
 ![Claude终端终端快捷命令示例](public/help/43.png "Claude终端终端快捷命令示例")
 
-#### 多标签+左右分屏
+#### 2.4.3 多标签+左右分屏
 
 ![多标签+分屏](public/help/51.png "多标签+分屏")
 
-#### 集成SSH/sFTP工具
+#### 2.4.4 集成SSH/sFTP工具
 
 ![集成SSH,sFTP工具](public/help/21.png "集成SSH,sFTP工具")
 
-#### 开发/运行环境和服务启动
+#### 2.4.5 开发/运行环境和服务启动
 
-##### 开发/运行环境自动识别
+##### 2.4.5.1 开发/运行环境自动识别
 
 ![开发/运行环境自动识别](public/help/71.png "开发/运行环境自动识别")
 
-##### 项目注入环境
+##### 2.4.5.2 项目注入环境
 
 ![项目注入环境](public/help/72.png "项目注入环境")
 
-##### 会话关联服务启停
+##### 2.4.5.3 会话关联服务启停
 
 ![会话关联服务启停](public/help/73.png "会话关联服务启停")
 
-## 系统要求
+## 三、系统要求
 
 | 平台       | 最低版本                    |
 | ---------- | --------------------------- |
@@ -146,26 +146,26 @@ npm install -g @google/gemini-cli
 npm install -g opencode-ai
 ```
 
-## 快速开始
+## 四、快速开始
 
-### 下载安装
+### 4.1 下载安装
 
 前往 [Releases 页面](https://github.com/yingcongshaw/teacoder/releases) 下载对应平台的安装包，
 历史版本都在这个列表里；只想要最新版可点
 [Latest release](https://github.com/yingcongshaw/teacoder/releases/latest)。
 
-以 v0.1.2 为例：
+以 v0.1.3 为例：
 
-- Windows：`TeaCoder_0.1.2_x64-setup.exe`（NSIS 安装程序，界面为简体中文）/ `TeaCoder_0.1.2_x64_zh-CN.msi`（MSI）
-- macOS：`TeaCoder_0.1.2_universal.dmg`（Intel + Apple Silicon 通用）
-- Ubuntu：`TeaCoder_0.1.2_amd64.deb`
-- 其他 Linux：`TeaCoder_0.1.2_amd64.AppImage`
-- RPM 系（CentOS / Fedora / openEuler 等）：`TeaCoder-0.1.2-1.x86_64.rpm`
+- Windows：`TeaCoder_0.1.3_x64-setup.exe`（NSIS 安装程序，界面为简体中文）/ `TeaCoder_0.1.3_x64_zh-CN.msi`（MSI）
+- macOS：`TeaCoder_0.1.3_universal.dmg`（Intel + Apple Silicon 通用）
+- Ubuntu：`TeaCoder_0.1.3_amd64.deb`
+- 其他 Linux：`TeaCoder_0.1.3_amd64.AppImage`
+- RPM 系（CentOS / Fedora / openEuler 等）：`TeaCoder-0.1.3-1.x86_64.rpm`
 
 > rpm 的命名规则和其他格式不一样：Tauri 的 rpm bundler 用 `产品名-版本-release号.架构.rpm`，
-> 所以是 `TeaCoder-0.1.2-1.x86_64.rpm`（短横线 + 多一段 release 号），不是下划线。
+> 所以是 `TeaCoder-0.1.3-1.x86_64.rpm`（短横线 + 多一段 release 号），不是下划线。
 
-### 首次启动
+### 4.2 首次启动
 
 1. 同意用户协议
 2. 完成三步引导
@@ -175,7 +175,7 @@ npm install -g opencode-ai
 6. 在 Project 上点击"新建会话"，选择 CLI 工具 + Provider + 模型 + 工作目录
 7. 开始与 AI 编程
 
-### 常用快捷键
+### 4.3 常用快捷键
 
 | 快捷键                              | 作用             |
 | ----------------------------------- | ---------------- |
@@ -186,16 +186,16 @@ npm install -g opencode-ai
 | `Ctrl + Shift + C`                  | 复制终端选中内容 |
 | `Ctrl + Shift + V`                  | 粘贴到终端       |
 
-## 开发/编译运行
+## 五、开发/编译运行
 
-### 环境准备
+### 5.1 环境准备
 
 - **Node.js** 22.12+（Vite 7 要求 20.19+ 或 22.12+；仓库内 `.nvmrc` 已固化）
 - **pnpm** 9+（项目强制使用 pnpm）
 - **Rust** stable toolchain
 - **Tauri CLI**：`cargo install tauri-cli --version "^2.0"`
 
-### 克隆与启动
+### 5.2 克隆与启动
 
 ```bash
 git clone https://github.com/codingtea/TeaCoder.git
@@ -204,7 +204,7 @@ pnpm install
 pnpm tauri dev
 ```
 
-### 常用命令
+### 5.3 常用命令
 
 ```bash
 pnpm tauri dev          # 启动开发模式(热重载)
@@ -225,7 +225,7 @@ cargo test              # Rust 单元测试(在 src-tauri/ 下)
 > （`~/.cache/tauri/appimage-runtime/`），没有就从历史产物中切出，网络可达时再回落到
 > 下载，因此离线也能出包。
 
-### 打包 Windows 安装包
+### 5.4 打包 Windows 安装包
 
 `pnpm tauri build` 不带 `--target` 时只产出**当前主机**的安装包 —— 在 Linux 上跑它
 永远出不了 Windows 的 `.exe`。要出 Windows 包必须显式指定目标三元组：
@@ -256,11 +256,11 @@ cargo install --locked cargo-xwin
   且缓存里缺 `NSIS.exe` 时哈希校验必然失败并重建缓存目录。`scripts/build-windows.sh`
   会把两个文件预置到 `~/.cache/tauri/NSIS/`（带 SHA1 校验），命中后不再联网。
 
-### 一次打包多个平台
+### 5.5 一次打包多个平台
 
 ```bash
 pnpm build:all                    # Linux+Windows+MAC（宿主）三套安装包
-pnpm build:all -- --config '{"version":"0.1.2"}'   # 指定版本号
+pnpm build:all -- --config '{"version":"0.1.3"}'   # 指定版本号
 ```
 
 | 宿主平台 | 产物                                                                         |
@@ -277,7 +277,7 @@ pnpm build:all -- --config '{"version":"0.1.2"}'   # 指定版本号
 macOS 的 `.dmg` 需要 macOS 宿主（bundle 与签名都依赖它），Linux 上做不出来 ——
 所以本机一次最多覆盖两个平台，第三个平台交给 GitHub Actions。
 
-### GitHub Actions 打包
+### 5.6 GitHub Actions 打包
 
 `.github/workflows/release.yml` 在**推送 `v*` tag** 时并行打包三平台安装包，
 并自动发布到 GitHub Release：
@@ -289,8 +289,8 @@ macOS 的 `.dmg` 需要 macOS 宿主（bundle 与签名都依赖它），Linux �
 | Linux x64   | `.AppImage` + `.deb` + `.rpm`                         | `ubuntu-latest`  |
 
 ```bash
-# 版本号取自 tag（v0.1.2 → 0.1.2），产物文件名随之变化
-git tag v0.1.2 && git push origin v0.1.2
+# 版本号取自 tag（v0.1.3 → 0.1.3），产物文件名随之变化
+git tag v0.1.3 && git push origin v0.1.3
 ```
 
 也可在 Actions 页面手动触发（`workflow_dispatch`），此时只产出构建产物、不发 Release。
@@ -299,7 +299,7 @@ git tag v0.1.2 && git push origin v0.1.2
 > 产品级文案（如「启动 TeaCoder」）由 Tauri 内置的英文模板生成 —— 要完全中文化需要额外提供
 > 自定义 `.wxl`（`bundle.windows.wix.language.zh-CN.localePath`）。NSIS 安装器已是完整中文。
 
-### 项目目录
+### 5.7 项目目录
 
 ```
 TeaCoder/
@@ -345,7 +345,7 @@ TeaCoder/
 └── README.md               # 本文件
 ```
 
-## 技术栈
+## 六、技术栈
 
 | 层       | 技术                                    |
 | -------- | --------------------------------------- |
@@ -359,14 +359,18 @@ TeaCoder/
 | 持久化   | SQLite (rusqlite) + JSONL               |
 | 包管理   | pnpm                                    |
 
-## 文档
+## 七、文档
 
-- 📍 [路线图](./doc/teacoder-roadmap.md) — v0.1.2 已发布 v1.0.0+ 远期规划
+- 📍 [路线图](./doc/teacoder-roadmap.md) — v0.1.3 已发布 v1.0.0+ 远期规划
 - 📋 [需求规格](./doc/requirements.md) — 完整功能需求、数据模型、IPC 命令清单
 
-## 路线图
+## 八、路线图
 
-### v0.1.2（当前版本）✅
+### v0.1.3（当前版本）✅
+
+开发环境配置与项目服务面板 · 服务按项目绑定的环境识别与启停 · 占用端口可点开 · 关于页更新通知 · 颜色标识色板 · 分屏布局与终端尺寸修复 · 费用扫描移出主线程
+
+### v0.1.2 ✅
 
 全新安装后建项目不再报 `no such table: projects`（迁移脚本改为编进二进制）· 侧边栏可折叠 · Tab 拖拽排序与跨面板拖动
 
@@ -382,7 +386,7 @@ TeaCoder/
 
 Token中转代理 ·Saas认证和授权 ·代理开发数字人 ·代理测试 ·托管智能运维
 
-## 贡献
+## 九、贡献
 
 欢迎贡献！无论是提 Issue、PR 还是分享使用经验：
 
@@ -393,7 +397,7 @@ Token中转代理 ·Saas认证和授权 ·代理开发数字人 ·代理测试 �
 
 提交前请阅读 [CLAUDE.md](./CLAUDE.md) 中的编码规范与提交规范。
 
-## 协议
+## 十、协议
 
 本项目基于 **MIT 协议** 开源，详见 [LICENSE](./LICENSE)。
 
@@ -407,7 +411,7 @@ MIT 协议允许：
 
 唯一要求：在所有副本中保留版权声明与协议声明。
 
-## 致谢
+## 十一、致谢
 
 TeaCoder 的诞生离不开以下开源项目：
 
@@ -419,7 +423,7 @@ TeaCoder 的诞生离不开以下开源项目：
 
 ---
 
-## 联系方式
+## 十二、联系方式
 
 - 作者：苦鼎茶(CodingTea)
 - 邮箱：yingcongshaw@gmail.com
