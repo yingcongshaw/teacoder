@@ -25,10 +25,15 @@ interface TerminalViewProps {
    */
   enableInput?: boolean;
   /**
-   * 是否负责 fit + resize_pty。
-   * 共享 PTY 语义：双开时只有 activePane 推 SIGWINCH,否则两路 xterm 各自
-   * 推 resize 同一 PTY,后端反复收到 SIGWINCH,Claude Code 重排版导致
-   * 屏幕抖动 / 历史被吐。非 active pane 仍订阅 pty:output 同步显示。
+   * 是否负责把尺寸推给后端 PTY（resize_pty）。
+   *
+   * 判据是「这个 PTY 有几个 xterm 实例」，不是「本面板是不是 active」：
+   * 独占自己的 PTY（普通会话）时始终由本实例推，窗口怎么变都跟随；
+   * 双开共享同一 PTY 时只允许一个实例推，否则两路 xterm 各自推尺寸、
+   * 互相覆盖，PTY 在两个 cols 之间反复跳变，触发 SIGWINCH 风暴
+   * （Claude Code 重排版导致屏幕抖动 / 历史被吐）。
+   *
+   * 判定见 utils/paneSize.ts 的 isPaneSizeAuthority。
    */
   enableResize?: boolean;
 }
@@ -379,9 +384,9 @@ const TerminalView = forwardRef<TerminalViewHandle, TerminalViewProps>(function 
     : terminalSettings.colorTheme;
 
   const handleResize = useCallback(() => {
-    // 共享 PTY 语义:非 active pane 仍 fit xterm 到容器(显示对齐),
-    // 但不调 resizePty —— 避免双开时两路各自推 SIGWINCH 风暴,
-    // 触发 Claude Code 反复重排版 / 历史被吐。
+    // 非权威实例仍 fit xterm 到容器(显示对齐),但不调 resizePty ——
+    // 双开共享同一 PTY 时两路各自推尺寸会互相覆盖,触发 SIGWINCH 风暴。
+    // 独占 PTY 的普通会话始终是权威实例,尺寸随窗口实时跟随。
     if (!visibleRef.current || !fitAddonRef.current || !xtermRef.current) return;
     fitAddonRef.current.fit();
     if (!enableResizeRef.current) return;
@@ -730,8 +735,7 @@ const TerminalView = forwardRef<TerminalViewHandle, TerminalViewProps>(function 
 
   // 可见性变更时重新 fit
   useEffect(() => {
-    // 共享 PTY 语义:非 active pane 仍 fit xterm 到容器(显示对齐),
-    // 但不调 resizePty —— 同 handleResize(读最新 ref 避免重建 xterm)。
+    // 同 handleResize:非权威实例只 fit 显示,不推 PTY 尺寸。
     if (!visible || !fitAddonRef.current || !xtermRef.current) return;
     requestAnimationFrame(() => {
       fitAddonRef.current?.fit();

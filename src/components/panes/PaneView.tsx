@@ -11,6 +11,7 @@ import { useAppStore } from "../../stores/appStore";
 import TerminalView, { type TerminalViewHandle } from "../terminal/TerminalView";
 import TabBar from "../tabs/TabBar";
 import { openPathInFileManager, openTerminal } from "../../utils/ipc";
+import { isPaneSizeAuthority } from "../../utils/paneSize";
 
 interface PaneViewProps {
   paneId: string;
@@ -37,7 +38,9 @@ const IS_MAC = typeof navigator !== "undefined" &&
 export default function PaneView({ paneId, isActivePane, terminalRefs, onCopy, onPaste }: PaneViewProps) {
   const sessions = useAppStore((s) => s.sessions);
   const projects = useAppStore((s) => s.projects);
-  const pane = useAppStore((s) => s.panes.find((p) => p.id === paneId));
+  const panes = useAppStore((s) => s.panes);
+  const activePaneId = useAppStore((s) => s.activePaneId);
+  const pane = panes.find((p) => p.id === paneId);
   const activeTabId = pane?.activeTabId ?? null;
   const openTabIds = pane?.openTabIds ?? [];
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -145,7 +148,7 @@ export default function PaneView({ paneId, isActivePane, terminalRefs, onCopy, o
                   tabId={tabId}
                   visible={isActive}
                   enableInput={isActivePane}
-                  enableResize={isActivePane}
+                  enableResize={isPaneSizeAuthority(panes, activePaneId, paneId, tabId)}
                   ref={(handle) => {
                     const k = refKey(paneId, tabId);
                     if (handle) terminalRefs.current.set(k, handle);
