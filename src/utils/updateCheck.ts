@@ -1,5 +1,5 @@
 export interface GithubRelease {
-  /** 版本标签，如 v0.1.2 */
+  /** 版本标签，如 v0.1.3 */
   tagName: string;
   /** 标题，可能为空 */
   name: string;
